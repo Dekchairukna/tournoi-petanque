@@ -206,7 +206,7 @@
   </div>
 
   <h5 class="mb-3">รายการแข่งขันที่กำลังจะมาถึง</h5>
-  <div class="table-responsive bg-light p-4 rounded shadow-sm mb-5">
+  <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
     <table class="table table-borderless table-custom">
       <thead>
         <tr >
@@ -296,6 +296,7 @@
     <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
   {% endif %}
 
+  <!-- Modal เพิ่มรายการใหม่ -->
   <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <form method="POST" action="{{ url_for('add_event_route') }}" enctype="multipart/form-data">
@@ -308,60 +309,68 @@
           </div>
           <div class="modal-body">
             <div class="row g-3">
-              <div class="mb-3">
-                <label for="logo" class="form-label fw-semibold">อัปโหลดโลโก้:</label>
-                <input type="file" name="logo" id="logo" accept="image/*" multiple class="form-control">
+              <!-- ✅ ช่องสำหรับอัปโหลดโลโก้ -->
+              <div>
+                <label for="logo">อัปโหลดโลโก้:</label>
+                <input type="file" name="logo" id="logo" accept="image/*" multiple>
               </div>
-
               <div class="col-md-6">
                 <label for="eventName" class="form-label fw-semibold">ชื่อรายการ</label>
-                <input type="text" class="form-control" id="eventName" name="event_name" required>
+                <input type="text" class="form-control" id="eventName" name="name" required>
               </div>
-
               <div class="col-md-6">
                 <label for="rounds" class="form-label fw-semibold">จำนวนรอบ</label>
-                <input type="number" class="form-control" id="rounds" name="rounds" min="1" max="100" required>
+                <input type="number" class="form-control" id="rounds" name="rounds" min="1" required>
               </div>
-
               <div class="col-md-6">
-                <label for="date" class="form-label fw-semibold">วันที่แข่งขัน</label>
-                <input type="date" class="form-control" id="date" name="date" required>
+                <label for="eventDate" class="form-label fw-semibold">วันที่แข่งขัน</label>
+                <input type="date" class="form-control" id="eventDate" name="date" required>
               </div>
-
               <div class="col-md-6">
                 <label for="location" class="form-label fw-semibold">สถานที่แข่งขัน</label>
-                <input type="text" class="form-control" id="location" name="location" required>
+                <input type="text" class="form-control" id="location" name="location" placeholder="ระบุสถานที่ถ้ามี">
               </div>
-
               <div class="col-md-6">
-                <label for="category" class="form-label fw-semibold">ประเภทการแข่งขัน</label>
-                <select name="category" id="category" class="form-select" required>
-                  <option value="" disabled selected>เลือกประเภท</option>
-                  <option value="ชาย">ชาย</option>
-                  <option value="หญิง">หญิง</option>
+                <label for="category" class="form-label fw-semibold">ประเภท</label>
+                <select id="category" name="category" class="form-select" required>
+                  <option value="เดี่ยวชาย">เดี่ยวชาย</option>
+                  <option value="เดี่ยวหญิง">เดี่ยวหญิง</option>
+                  <option value="คู่ชาย">คู่ชาย</option>
+                  <option value="คู่หญิง">คู่หญิง</option>
+                  <option value="ทีมชาย">ทีมชาย</option>
+                  <option value="ทีมหญิง">ทีมหญิง</option>
                   <option value="คู่ผสม">คู่ผสม</option>
                 </select>
               </div>
-
               <div class="col-md-6">
-                <label for="ageGroup" class="form-label fw-semibold">รุ่น</label>
-                <select name="age_group" id="ageGroup" class="form-select" required>
-                  <option value="" disabled selected>เลือกปีเกิด</option>
-                  <option value="2005-ปัจจุบัน">2005-ปัจจุบัน</option>
-                  <option value="1995-2004">1995-2004</option>
-                  <option value="1990-1994">1990-1994</option>
-                  <option value="ก่อน 1989">ก่อน 1989</option>
+                <label for="age_group" class="form-label fw-semibold">รุ่น</label>
+                <select id="age_group" name="age_group" class="form-select" required>
+                  <option value="ประชาชน">ประชาชน</option>
+                  <option value="เยาวชน">เยาวชน</option>
+                  <option value="อาวุโส">อาวุโส</option>
                 </select>
               </div>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-dark-outline btn-custom" data-bs-dismiss="modal">ยกเลิก</button>
-            <button type="submit" class="btn btn-green btn-custom">บันทึก</button>
+            <!-- ปุ่มเพิ่มใน modal สีฟ้า -->
+            <button type="submit" class="btn btn-pastel-info fw-bold px-4 py-2 d-flex align-items-center gap-2">
+              <i class="bi bi-check-lg fs-5"></i> เพิ่มรายการ
+            </button>
+            <button type="button" class="btn btn-secondary fw-semibold px-4 py-2"
+              data-bs-dismiss="modal">ยกเลิก</button>
           </div>
         </div>
       </form>
     </div>
   </div>
+
 </div>
+
+<body>
+  <footer class="text-center">
+    &copy; {{ current_year }} Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT
+    JARUPARNITKUL(M.D.)
+  </footer>
+</body>
 {% endblock %}

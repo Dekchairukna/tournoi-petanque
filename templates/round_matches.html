@@ -64,10 +64,10 @@
     }
   }
 </style>
-<div class="container my-4">
+<div class="container mb-4">
   {% if event.logo_list %}
   {% for logo in event.logo_list %}
-  <img src="{{ url_for('static', filename='logos/' + logo) }}" alt="โลโก้ของ {{ event.name }}"
+  <img src="{{ url_for('static', filename='logos/' + logo) }} " alt="โลโก้ของ {{ event.name }}"
     style="max-height: 50px; margin-right: 10px;">
   {% endfor %}
   {% endif %}
@@ -149,18 +149,18 @@
                 <td class="text-start">
                   {% if match.team1_id and (not match.team2_id or match.team2_id == 'BYE') %}
                   <input type="number" name="score_{{ match.id }}_1" min="0" value="13" disabled
-                    class="form-control d-inline-block text-center" style="width: 50px" />
+                    class="form-control d-inline-block text-center" style="width: 60px" />
                   -
                   <input type="number" name="score_{{ match.id }}_2" min="0" value="7" disabled
-                    class="form-control d-inline-block text-center" style="width: 50px" />
+                    class="form-control d-inline-block text-center" style="width: 60px" />
                   {% else %}
                   <input type="number" name="score_{{ match.id }}_1" min="0"
                     value="{{ match.team1_score | int if match.team1_score is not none else '' }}"
-                    class="form-control d-inline-block text-center" style="width: 50px" />
+                    class="form-control d-inline-block text-center" style="width: 60px" />
                   -
                   <input type="number" name="score_{{ match.id }}_2" min="0"
                     value="{{ match.team2_score | int if match.team2_score is not none else '' }}"
-                    class="form-control d-inline-block text-center" style="width: 50px" />
+                    class="form-control d-inline-block text-center" style="width: 60px" />
                   {% endif %}
                 </td>
                 <td>
@@ -198,7 +198,7 @@
   </div>
 <div class="card mb-4 shadow-sm">
       <div class="card-header bg-warning text-dark fw-semibold">
-        ตารางจัดลลำดับ
+        ตารางจัดลำดับ
       </div>
       <div class="card-body p-0">   <h5>>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</h5>
         {% if standings %}

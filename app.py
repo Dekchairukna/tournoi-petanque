@@ -667,47 +667,91 @@ def edit_team(event_id, team_id):
     return redirect(url_for('event_detail', event_id=event_id))
 
 
-@app.route("/event/<int:event_id>/pair_next_round", methods=['POST'])
+# app.py
+
+# ... (ส่วน import ต่างๆ ของคุณด้านบน)
+
+@app.route('/event/<int:event_id>/pair_next_round', methods=['POST'])
 @login_required
-@roles_required('admin')
+@roles_required('admin', 'superadmin')
 def pair_next_round(event_id):
-    max_round = db.session.query(db.func.max(Match.round)).filter_by(event_id=event_id).scalar()
-    next_round = (max_round or 0) + 1
+    event = Event.query.get_or_404(event_id)
+    if not event.is_active:
+        flash('ไม่สามารถจับคู่รอบถัดไปได้ เนื่องจากรายการแข่งขันนี้ปิดแล้ว', 'danger')
+        return redirect(url_for('event_detail', event_id=event.id))
 
-    if max_round is None:
-        flash("ยังไม่มีการจับคู่รอบแรก กรุณาจับคู่รอบแรกก่อน", "warning")
-        return redirect(url_for("event_detail", event_id=event_id))
+    current_round = event.current_round  # รอบปัจจุบัน
+    next_round_num = current_round + 1
 
-    # ตรวจสอบว่าแมตช์รอบก่อนหน้าล็อกผลหมดหรือยัง
-    unlocked_matches = Match.query.filter_by(event_id=event_id, round=max_round, is_locked=False).count()
-    if unlocked_matches > 0:
-        flash(f"กรุณาล็อกผลการแข่งขันรอบที่ {max_round} ก่อนจับคู่รอบถัดไป", "warning")
-        return redirect(url_for("event_detail", event_id=event_id))
+    # ตรวจสอบว่ามีทีมลงทะเบียนหรือไม่
+    teams_in_event = Team.query.filter_by(event_id=event.id).all()
+    if not teams_in_event:
+        flash('ไม่มีทีมลงทะเบียนสำหรับรายการแข่งขันนี้', 'warning')
+        return redirect(url_for('event_detail', event_id=event.id))
 
-    event = Event.query.get(event_id)
-    if not event:
-        flash("ไม่พบรายการแข่งขันนี้", "danger")
-        return redirect(url_for("index"))
+    # ดึงข้อมูลการจับคู่ที่ผ่านมาสำหรับตรวจสอบ
+    past_matches = Match.query.filter_by(event_id=event.id).all()
+    past_opponents = defaultdict(set) # เก็บว่าทีมไหนเคยเจอทีมไหนแล้ว
+    for match in past_matches:
+        if match.team1_id and match.team2_id:
+            past_opponents[match.team1_id].add(match.team2_id)
+            past_opponents[match.team2_id].add(match.team1_id)
 
-    if next_round > event.rounds:
-        flash("ครบจำนวนรอบการแข่งขันแล้ว ไม่สามารถจับคู่รอบใหม่ได้", "info")
-        return redirect(url_for("event_detail", event_id=event_id))
+    # ดึงทีมที่เคยได้ BYE ในรอบที่แล้ว
+    bye_teams_ids = set()
+    last_round_matches = Match.query.filter_by(event_id=event.id, round_num=current_round).all()
+    for match in last_round_matches:
+        if match.team1_id is None and match.team2_id:
+            bye_teams_ids.add(match.team2_id)
+        elif match.team2_id is None and match.team1_id:
+            bye_teams_ids.add(match.team1_id)
 
-    # 🔁 เรียก swiss_pairing แล้วตรวจสอบผลลัพธ์
-    success, message = swiss_pairing(event_id, next_round)
+    # แปลง teams_in_event ให้เป็น list ของ team_id เพื่อส่งให้ generate_pairings
+    team_ids_in_event = [t.id for t in teams_in_event]
+    
+    try:
+        # สร้างคู่แข่งขันสำหรับรอบถัดไป
+        # generate_pairings จะคืนค่าเป็น list ของ tuple (team1_id, team2_id) โดยที่ team2_id จะเป็น None ถ้าเป็น BYE
+        pairings = generate_pairings(event_id, next_round_num, team_ids_in_event, past_opponents, bye_teams_ids)
 
-    if not success:
-        flash(message, "warning")
+        if not pairings: # หากไม่มีคู่แข่งขัน (อาจเกิดจากมีทีมเดียวที่ไม่ได้จับคู่ หรือเกิดข้อผิดพลาดในการจับคู่)
+            flash('ไม่สามารถจับคู่ได้ในรอบนี้ อาจมีปัญหาเรื่องจำนวนทีมหรือกฎการจับคู่', 'warning')
+            return redirect(url_for('round_matches', event_id=event_id, round=current_round))
 
-        # ถ้าเป็นกรณี BYE ซ้ำหลายรอบ → ส่งไป manual pairing
-        if "BYE ซ้ำ" in message or "จับคู่ด้วยมือ" in message:
-            return redirect(url_for("manual_pairing", event_id=event_id, round_num=next_round))
+        # บันทึกคู่แข่งขันใหม่ลงฐานข้อมูล
+        for team1_id, team2_id in pairings:
+            score1 = None
+            score2 = None
 
-        # กรณีอื่นๆ กลับหน้า event_detail
-        return redirect(url_for("event_detail", event_id=event_id))
+            # ตรวจสอบว่าเป็นคู่ BYE หรือไม่ และกำหนดคะแนน
+            if team2_id is None: # ถ้า team2_id เป็น None แสดงว่า team1_id ได้ BYE
+                score1 = 13  # ทีมที่ได้ BYE ได้ 13 คะแนน
+                score2 = 7   # กำหนดคะแนนให้คู่ต่อสู้เสมือน (คะแนน BYE)
+            # กรณีที่ team1_id เป็น None ไม่น่าจะเกิดขึ้นจากการ generate_pairings ของคุณ
+            # เพราะ swiss_logic.py จะใส่ทีมที่ได้ BYE ไว้ในตำแหน่งแรกของ tuple (team_id, None)
 
-    flash(f"จับคู่รอบที่ {next_round} เรียบร้อยแล้ว", "success")
-    return redirect(url_for("round_matches", event_id=event_id, round=next_round))
+            new_match = Match(
+                event_id=event_id,
+                round_num=next_round_num,
+                team1_id=team1_id,
+                team2_id=team2_id, # จะเป็น None ถ้าเป็น BYE
+                team1_score=score1, # กำหนดคะแนนตามที่คำนวณไว้
+                team2_score=score2, # กำหนดคะแนนตามที่คำนวณไว้
+                field=None # สามารถกำหนดฟิลด์สำหรับ BYE หรือปล่อยให้เป็น None
+            )
+            db.session.add(new_match)
+
+        # อัปเดตรอบปัจจุบันของ Event
+        event.current_round = next_round_num
+        db.session.commit()
+
+        flash(f'จับคู่สำหรับรอบที่ {next_round_num} สำเร็จแล้ว!', 'success')
+        return redirect(url_for('round_matches', event_id=event_id, round=next_round_num))
+
+    except Exception as e:
+        db.session.rollback() # ถ้ามีข้อผิดพลาด ให้ย้อนกลับการเปลี่ยนแปลง
+        flash(f'เกิดข้อผิดพลาดในการจับคู่: {str(e)}', 'danger')
+        return redirect(url_for('event_detail', event_id=event.id))
 
 
 
