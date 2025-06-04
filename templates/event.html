@@ -8,7 +8,103 @@
 {% block content %}
 
 <style>
-  /* ... โค้ด CSS เดิมของคุณ (ส่วนบน) ... */
+  /* ====== GLOBAL TYPOGRAPHY ====== */
+  @import url("https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap");
+
+  body {
+    font-family: "Prompt", "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f9f9fb;
+  }
+
+  h2,
+  h3,
+  h4,
+  .modal-title {
+    font-weight: 700;
+    color: #212529;
+  }
+
+  .card-header {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #495057;
+  }
+
+  /* ====== CUSTOM BUTTONS ====== */
+  .btn-custom {
+    border-radius: 0.65rem;
+    padding: 0.4rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+
+  .btn-custom i {
+    font-size: 1.1rem;
+  }
+
+  /* สีชุด Pastel / Modern */
+  .btn-yellow {
+    background: #fff3bf;
+    color: #664d03;
+  }
+
+  .btn-yellow:hover {
+    background: #ffe066;
+    color: #000;
+  }
+
+  .btn-blue {
+    background: #d0ebff;
+    color: #084298;
+  }
+
+  .btn-blue:hover {
+    background: #74c0fc;
+    color: #fff;
+  }
+
+  .btn-red {
+    background: #ffc9c9;
+    color: #842029;
+  }
+
+  .btn-red:hover {
+    background: #ff6b6b;
+    color: #fff;
+  }
+
+  .btn-green {
+    background: #d3f9d8;
+    color: #2b8a3e;
+  }
+
+  .btn-green:hover {
+    background: #69db7c;
+    color: #fff;
+  }
+
+  .btn-dark-outline {
+    background: transparent;
+    color: #212529;
+    border: 1px solid #212529;
+  }
+
+  .btn-dark-outline:hover {
+    background: #212529;
+    color: #fff;
+  }
 
   /* ====== TABLE CUSTOM ====== */
   .table-custom {
@@ -85,44 +181,61 @@
     opacity: 0.9;
   }
 
-  /* ====== RESPONSIVE TABLE FOR MOBILE (ADJUSTED) ====== */
-  @media screen and (max-width: 768px) { /* สำหรับหน้าจอที่มีความกว้างไม่เกิน 768px (มือถือ) */
-    .table-bordered.table-sm thead th {
-      font-size: 0.75rem; /* ลดขนาดฟอนต์ของหัวตาราง */
-      padding: 0.4rem 0.5rem; /* ลด padding ของหัวตาราง */
+  /* ====== การปรับขนาดตารางสำหรับมือถือ (Mobile Responsiveness) ====== */
+  @media screen and (max-width: 768px) {
+    /* สำหรับตารางฟอร์มกรอกผลการแข่งขัน (ใน round_matches.html) */
+    .table.table-bordered.table-hover thead th {
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ของหัวตาราง */
+      padding: 0.1rem 0.2rem; /* ลด padding ของหัวตาราง */
       white-space: nowrap; /* ป้องกันข้อความหัวตารางขึ้นบรรทัดใหม่ */
     }
 
-    .table-bordered.table-sm tbody td {
-      font-size: 0.75rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ */
-      padding: 0.4rem 0.5rem; /* ลด padding ของข้อมูลในเซลล์ */
+    .table.table-bordered.table-hover tbody td {
+      font-size: 0.65rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ */
+      padding: 0.1rem 0.2rem; /* ลด padding ของข้อมูลในเซลล์ */
       white-space: nowrap; /* ป้องกันข้อความในเซลล์ขึ้นบรรทัดใหม่ */
     }
 
-    /* ถ้ายังไม่พอดี อาจจะต้องปรับความกว้างของคอลัมน์เฉพาะเจาะจง หรือลดขนาดฟอนต์ลงไปอีก */
-    /* ตัวอย่าง: ลดขนาดฟอนต์ของ TEAM ให้เล็กเป็นพิเศษ */
-    .table-bordered.table-sm tbody td:nth-child(2) { /* คอลัมน์ TEAM */
-      font-size: 0.8rem; /* อาจจะเล็กกว่าคอลัมน์อื่นเล็กน้อย */
-      padding-left: 0.3rem; /* ปรับ padding ด้านซ้าย */
-      padding-right: 0.3rem; /* ปรับ padding ด้านขวา */
+    .table.table-bordered.table-hover tbody td input[type="number"],
+    .table.table-bordered.table-hover tbody td input[type="text"] {
+      width: 45px !important; /* ลดความกว้างของ input field */
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ใน input field */
+      padding: 0.05rem 0.1rem; /* ลด padding ใน input field */
+      height: auto; /* ปรับความสูงอัตโนมัติ */
     }
 
-    /* ยกเลิกการซ่อนคอลัมน์ที่เพิ่มเข้ามาสำหรับ mobile-only-vs-col
-       เพื่อให้แสดงตารางแนวนอนแบบเดิม (ถ้าเคยเพิ่มไปก่อนหน้านี้) */
-    .table-bordered.table-sm td.mobile-only-vs-col {
-        display: table-cell; /* ทำให้คอลัมน์นี้แสดงผลเหมือนเซลล์ตารางปกติ */
+    /* ปรับ margin ของ - ในช่องผลการแข่งขัน */
+    .table.table-bordered.table-hover tbody td .form-control.d-inline-block + span {
+      margin: 0 0.5px; /* ลด margin ของเครื่องหมาย - ให้ชิดขึ้นอีก */
     }
-  }
 
-  /* สำหรับหน้าจอใหญ่ (หรือถ้าเคยเพิ่มไปก่อนหน้านี้)
-     เราจะไม่ซ่อนคอลัมน์ VS_RoundX บน Desktop อีกต่อไป */
-  @media screen and (min-width: 769px) {
-      .table-bordered.table-sm td.vs-round-col {
-          display: table-cell !important; /* ให้คอลัมน์ VS_RoundX แสดงผลปกติบน Desktop */
-      }
-      .table-bordered.table-sm td.mobile-only-vs-col {
-          display: none; /* ซ่อนคอลัมน์ที่รวมข้อมูล VS_Round ไว้สำหรับมือถือบน Desktop */
-      }
+    /* สำหรับตารางคะแนน (ใน event.html และ round_matches.html) */
+    .table.table-bordered.table-sm thead th {
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ของหัวตารางคะแนน */
+      padding: 0.2rem 0.3rem; /* ลด padding ของหัวตารางคะแนน */
+      white-space: nowrap; /* หัวตารางยังคงไม่ขึ้นบรรทัดใหม่ */
+    }
+
+    .table.table-bordered.table-sm tbody td {
+      font-size: 0.63rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ตารางคะแนน */
+      padding: 0.2rem 0.3rem; /* ลด padding ของข้อมูลในเซลล์ตารางคะแนน */
+      /* white-space: nowrap; ถูกลบออกจาก td ทั่วไป เพื่อควบคุมรายคอลัมน์ */
+    }
+
+    .table.table-bordered.table-sm tbody td[data-label="TEAM"] {
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ของชื่อทีมให้เล็กลง */
+      white-space: normal; /* อนุญาตให้ชื่อทีมขึ้นบรรทัดใหม่ได้ */
+    }
+
+    /* กำหนดให้คอลัมน์อื่นๆ ของตารางคะแนนไม่ขึ้นบรรทัดใหม่ (เพื่อจัดระเบียบ) */
+    .table.table-bordered.table-sm tbody td[data-label="No."],
+    .table.table-bordered.table-sm tbody td[data-label^="VS_Round"],
+    .table.table-bordered.table-sm tbody td[data-label="score"],
+    .table.table-bordered.table-sm tbody td[data-label="BHN"],
+    .table.table-bordered.table-sm tbody td[data-label="fBHN"],
+    .table.table-bordered.table-sm tbody td[data-label="+_"] {
+      white-space: nowrap; /* ให้คอลัมน์อื่น ๆ ไม่ขึ้นบรรทัดใหม่ */
+    }
   }
 
 </style>
@@ -280,25 +393,25 @@
             <tbody>
               {% for team in standings %}
               <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-                <td data-label="No.">{{ loop.index }}</td>
-                <td data-label="TEAM" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td>{{ loop.index }}</td>
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                   {{ team.team_name }}
                 </td>
                 {% for i in range(1, event.rounds + 1) %}
-                <td data-label="VS_Round{{ i }}" class="{{ macros.score_class(team.score) }}">
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                   {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
                 </td>
                 {% endfor %}
-                <td data-label="คะแนน" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                   {{ team.score }}
                 </td>
-                <td data-label="BHN" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                   {{ team.buchholz }}
                 </td>
-                <td data-label="fBHN" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                   {{ team.final_buchholz }}
                 </td>
-                <td data-label="+-" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                   {{ team.point_diff }}
                 </td>
               </tr>

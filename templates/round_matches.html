@@ -6,11 +6,68 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  /* ====== การปรับขนาดตารางสำหรับมือถือ (Mobile Responsiveness) - สำหรับ round_matches.html โดยเฉพาะ ====== */
+  @media screen and (max-width: 768px) {
+    /* สำหรับตารางฟอร์มกรอกผลการแข่งขัน */
+    .table.table-bordered.table-hover thead th {
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ของหัวตาราง */
+      padding: 0.1rem 0.2rem; /* ลด padding ของหัวตาราง */
+      white-space: nowrap; /* ป้องกันข้อความหัวตารางขึ้นบรรทัดใหม่ */
+    }
+
+    .table.table-bordered.table-hover tbody td {
+      font-size: 0.65rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ */
+      padding: 0.1rem 0.2rem; /* ลด padding ของข้อมูลในเซลล์ */
+      white-space: nowrap; /* ป้องกันข้อความในเซลล์ขึ้นบรรทัดใหม่ */
+    }
+
+    .table.table-bordered.table-hover tbody td input[type="number"],
+    .table.table-bordered.table-hover tbody td input[type="text"] {
+      width: 45px !important; /* ลดความกว้างของ input field */
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ใน input field */
+      padding: 0.05rem 0.1rem; /* ลด padding ใน input field */
+      height: auto; /* ปรับความสูงอัตโนมัติ */
+    }
+
+    /* ปรับ margin ของ - ในช่องผลการแข่งขัน */
+    .table.table-bordered.table-hover tbody td .form-control.d-inline-block + span {
+      margin: 0 0.5px; /* ลด margin ของเครื่องหมาย - ให้ชิดขึ้นอีก */
+    }
+
+    /* สำหรับตารางคะแนน */
+    .table.table-bordered.table-sm thead th {
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ของหัวตารางคะแนน */
+      padding: 0.2rem 0.3rem; /* ลด padding ของหัวตารางคะแนน */
+      white-space: nowrap; /* หัวตารางยังคงไม่ขึ้นบรรทัดใหม่ */
+    }
+
+    .table.table-bordered.table-sm tbody td {
+      font-size: 0.63rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ตารางคะแนน */
+      padding: 0.2rem 0.3rem; /* ลด padding ของข้อมูลในเซลล์ตารางคะแนน */
+    }
+
+    .table.table-bordered.table-sm tbody td[data-label="TEAM"] {
+      font-size: 0.6rem; /* ลดขนาดฟอนต์ของชื่อทีมให้เล็กลง */
+      white-space: normal; /* อนุญาตให้ชื่อทีมขึ้นบรรทัดใหม่ได้ */
+    }
+
+    /* กำหนดให้คอลัมน์อื่นๆ ของตารางคะแนนไม่ขึ้นบรรทัดใหม่ (เพื่อจัดระเบียบ) */
+    .table.table-bordered.table-sm tbody td[data-label="No."],
+    .table.table-bordered.table-sm tbody td[data-label^="VS_Round"],
+    .table.table-bordered.table-sm tbody td[data-label="score"],
+    .table.table-bordered.table-sm tbody td[data-label="BHN"],
+    .table.table-bordered.table-sm tbody td[data-label="fBHN"],
+    .table.table-bordered.table-sm tbody td[data-label="+_"] {
+      white-space: nowrap; /* ให้คอลัมน์อื่น ๆ ไม่ขึ้นบรรทัดใหม่ */
+    }
+  }
+</style>
 <div class="container my-4">
   {% if event.logo_list %}
   {% for logo in event.logo_list %}
   <img src="{{ url_for('static', filename='logos/' + logo) }}" alt="โลโก้ของ {{ event.name }}"
-    style="max-height: 100px; margin-right: 10px;">
+    style="max-height: 55px; margin-right: 10px;">
   {% endfor %}
   {% endif %}
   <h2 class="mb-3">{{ event.name }}</h2>
@@ -18,13 +75,10 @@
     {% if selected_round %} ครั้งที่ {{ selected_round }} {% else %} ทุกคู่แข่งขัน {% endif %}
   </h4>
 
-  <!-- ปุ่มเข้าสู่รอบการแข่งขัน -->
-<div class="mb-4">
+  <div class="mb-4">
   <h4>เข้าสู่การแข่งขัน</h4>
 
-  <!-- ปุ่มเข้าสู่รอบการแข่งขัน (ในแถวเดียวกัน) -->
-<div class="d-flex justify-content-between align-items-center flex-wrap mb-4">
-  <!-- ปุ่มรอบต่าง ๆ ด้านซ้าย -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-4">
   <div class="d-flex flex-wrap align-items-center">
     {% for round_num in range(1, event.rounds + 1) %}
     <a href="{{ url_for('round_matches', event_id=event.id, round=round_num) }}"
@@ -34,7 +88,6 @@
     {% endfor %}
   </div>
 
-  <!-- ปุ่มดูตารางประกบคู่ ด้านขวา -->
   <div class="mb-2">
     <a href="{{ url_for('match_pairs', event_id=event.id, round=selected_round) }}"
       class="btn btn-info">ดูตารางประกบคู่</a>
@@ -45,20 +98,17 @@
 
 
 
-  <!-- FORM กรอกผลการแข่งขัน -->
   <div class="card mb-5 shadow-sm">
     <div class="card-header bg-info text-white fw-semibold fs-5">
       ฟอร์มกรอกผลการแข่งขัน
     </div>
-    <div class="card-body p-3">
+    <div class="card-body p-0">
       {% if error_message %}
       <div class="alert alert-warning">{{ error_message }}</div>
       {% endif %}
 
       {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
       <form method="POST">
-        <!-- ส่วนอื่นๆ ของฟอร์ม -->
-
         <div class="mb-3">
           <label for="fieldStart" class="form-label">เริ่มที่สนามหมายเลข</label>
           <input type="number" class="form-control" id="fieldStart" name="field_start" value="{{ field_start or '' }}"
@@ -71,7 +121,6 @@
             value="{{ field_exclude or '' }}">
         </div>
 
-        <!-- ปุ่ม toggle auto assign field -->
         <button type="submit" name="toggle_auto_assign" class="btn btn-outline-primary mb-3">
           {% if auto_assign_field %}
           ปิดการกำหนดเลขสนามอัตโนมัติ
@@ -81,50 +130,51 @@
         </button>
 
         {% endif %}
-        <table class="table table-bordered table-hover align-middle text-center mb-3">
-          <thead class="table-light">
-            <tr>
-              <th>ทีม</th>
-              <th>ทีม</th>
-              <th>ผลการแข่งขัน</th>
-              <th>สนาม</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for match in matches %}
-            <tr>
-              <td>{{ teams[match.team1_id] if match.team1_id else '-' }}</td>
-              <td>{{ teams[match.team2_id] if match.team2_id else '-' }}</td>
-              <td>
-                {% if match.team1_id and (not match.team2_id or match.team2_id == 'BYE') %}
-                <input type="number" name="score_{{ match.id }}_1" min="0" value="13" disabled
-                  class="form-control d-inline-block text-center" style="width: 70px" />
-                -
-                <input type="number" name="score_{{ match.id }}_2" min="0" value="7" disabled
-                  class="form-control d-inline-block text-center" style="width: 70px" />
-                {% else %}
-                <input type="number" name="score_{{ match.id }}_1" min="0"
-                  value="{{ match.team1_score | int if match.team1_score is not none else '' }}"
-                  class="form-control d-inline-block text-center" style="width: 70px" />
-                -
-                <input type="number" name="score_{{ match.id }}_2" min="0"
-                  value="{{ match.team2_score | int if match.team2_score is not none else '' }}"
-                  class="form-control d-inline-block text-center" style="width: 70px" />
-                {% endif %}
-              </td>
-              <td>
-                <input type="text" name="field_{{ match.id }}"
-                  value="{% if auto_assign_field and match.field %}{{ match.field }}{% elif not auto_assign_field and match.field %}{{ match.field }}{% else %}{% endif %}"
-                  class="form-control" {% if auto_assign_field %}readonly{% endif %}>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="table-responsive p-0">
+          <table class="table table-bordered table-hover align-middle text-center mb-3">
+            <thead class="table-light">
+              <tr>
+                <th>ทีม</th>
+                <th>ทีม</th>
+                <th>ผลการแข่งขัน</th>
+                <th>สนาม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for match in matches %}
+              <tr>
+                <td>{{ teams[match.team1_id] if match.team1_id else '-' }}</td>
+                <td>{{ teams[match.team2_id] if match.team2_id else '-' }}</td>
+                <td>
+                  {% if match.team1_id and (not match.team2_id or match.team2_id == 'BYE') %}
+                  <input type="number" name="score_{{ match.id }}_1" min="0" value="13" disabled
+                    class="form-control d-inline-block text-center" style="width: 70px" />
+                  -
+                  <input type="number" name="score_{{ match.id }}_2" min="0" value="7" disabled
+                    class="form-control d-inline-block text-center" style="width: 70px" />
+                  {% else %}
+                  <input type="number" name="score_{{ match.id }}_1" min="0"
+                    value="{{ match.team1_score | int if match.team1_score is not none else '' }}"
+                    class="form-control d-inline-block text-center" style="width: 70px" />
+                  -
+                  <input type="number" name="score_{{ match.id }}_2" min="0"
+                    value="{{ match.team2_score | int if match.team2_score is not none else '' }}"
+                    class="form-control d-inline-block text-center" style="width: 70px" />
+                  {% endif %}
+                </td>
+                <td>
+                  <input type="text" name="field_{{ match.id }}"
+                    value="{% if auto_assign_field and match.field %}{{ match.field }}{% elif not auto_assign_field and match.field %}{{ match.field }}{% else %}{% endif %}"
+                    class="form-control" {% if auto_assign_field %}readonly{% endif %}>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
         <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start mb-3">
 
-          <!-- ปุ่มด้านซ้าย -->
           <div class="d-flex flex-wrap gap-2">
             <a href="{{ url_for('score_sheet_all', event_id=event.id) }}?round={{ round }}" target="_blank"
               class="btn btn-outline-secondary">พิมพ์ใบบันทึกคะแนน</a>
@@ -146,56 +196,66 @@
     </div>
   </div>
 
-  <!-- STANDINGS -->
-  <h4 class="mb-3">ตารางคะแนน</h4>
-  {% if standings %}
-  <div class="table-responsive shadow-sm rounded">
-    <table class="table table-bordered table-sm align-middle text-center mb-5">
-      <thead class="table-light">
-        <tr>
-          <th>No.</th>
-          <th>TEAM</th>
-          {% for i in range(1, event.rounds + 1) %}
-          <th>VS_Round{{ i }}</th>
-          {% endfor %}
-          <th>score</th>
-          <th>BHN</th>
-          <th>fBHN</th>
-          <th>+-</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for team in standings %}
-        <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-          <td>{{ loop.index }}</td>
-          <td class="{{ macros.score_class(team.score) }}">{{ team.team_name }}</td>
-          {% for i in range(1, event.rounds + 1) %}
-          <td class="{{ macros.score_class(team.score) }}">
-            {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
-          </td>
-          {% endfor %}
-          <td class="{{ macros.score_class(team.score) }}">{{ team.score }}</td>
-          <td class="{{ macros.score_class(team.score) }}">{{ team.buchholz }}</td>
-          <td class="{{ macros.score_class(team.score) }}">{{ team.final_buchholz }}</td>
-          <td class="{{ macros.score_class(team.score) }}">{{ team.point_diff }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    
-  </div>
-  {% else %}
-  <p class="text-muted fst-italic">No standings available.</p>
-  {% endif %}
+   ตารางคะแนน
+      </div>
+      <div class="card-body p-0">
+        {% if standings %}
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm align-middle text-center mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>No.</th>
+                <th>TEAM</th>
+                {% for i in range(1, event.rounds + 1) %}
+                <th>VS_Round{{ i }}</th>
+                {% endfor %}
+                <th>score</th>
+                <th>BHN</th>
+                <th>fBHN</th>
+                <th>+-</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for team in standings %}
+              <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td data-label="No.">{{ loop.index }}</td>
+                <td data-label="TEAM" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.team_name }}
+                </td>
+                {% for i in range(1, event.rounds + 1) %}
+                <td data-label="VS_Round{{ i }}" class="{{ macros.score_class(team.score) }}">
+                  {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
+                </td>
+                {% endfor %}
+                <td data-label="คะแนน" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.score }}
+                </td>
+                <td data-label="BHN" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.buchholz }}
+                </td>
+                <td data-label="fBHN" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.final_buchholz }}
+                </td>
+                <td data-label="+-" class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.point_diff }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="p-3">ยังไม่มีตารางคะแนน</p>
+        {% endif %}
+      </div>
+    </div>
 
   
 
-<!-- ปุ่มด้านขวา -->
-          <form method="post" action="{{ url_for('pair_next_round', event_id=event.id) }}">
+<form method="post" action="{{ url_for('pair_next_round', event_id=event.id) }}">
             <button type="submit" class="btn btn-info mb-4">จับคู่รอบถัดไป</button>
           </form>
 
-  <!-- ปุ่มกลับ -->
   <div class="mb-4">
     <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-secondary me-2">← กลับรายการแข่งขัน</a>
     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← กลับหน้าแรก</a>
