@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+  <h2 class="mb-4">แก้ไขผู้ใช้</h2>
+
+  <form method="POST">
+    <div class="mb-3">
+      <label for="username" class="form-label">ชื่อผู้ใช้</label>
+      <input type="text" class="form-control" name="username" id="username" value="{{ user.username }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="password" class="form-label">รหัสผ่านใหม่</label>
+      <input type="password" class="form-control" name="password" id="password" placeholder="กรอกเฉพาะถ้าต้องการเปลี่ยนรหัสผ่าน">
+    </div>
+    <div class="mb-3">
+      <label for="role" class="form-label">สิทธิ์</label>
+      <select name="role" id="role" class="form-select" required>
+        <option value="user" {% if user.role == 'user' %}selected{% endif %}>user</option>
+        <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>admin</option>
+        <option value="superadmin" {% if user.role == 'superadmin' %}selected{% endif %}>superadmin</option>
+      </select>
+    </div>
+    <div class="mb-3">
+      <label for="duration" class="form-label">ระยะเวลาใช้งาน</label>
+      <select name="duration" id="duration" class="form-select">
+        <option value="1m" {% if user.duration == '1m' %}selected{% endif %}>1 เดือน</option>
+        <option value="3m" {% if user.duration == '3m' %}selected{% endif %}>3 เดือน</option>
+        <option value="6m" {% if user.duration == '6m' %}selected{% endif %}>6 เดือน</option>
+        <option value="1y" {% if user.duration == '1y' %}selected{% endif %}>1 ปี</option>
+        <option value="forever" {% if user.duration == 'forever' %}selected{% endif %}>ถาวร</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-yellow btn-custom">บันทึกการแก้ไข</button>
+  </form>
+
+  <div class="mt-4">
+    <a href="{{ url_for('admin_users') }}" class="btn btn-dark-outline btn-custom" style="min-width: 120px;">← กลับ</a>
+  </div>
+</div>
+{% endblock %}

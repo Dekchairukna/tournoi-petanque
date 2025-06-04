@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <title>ใบบันทึกคะแนน - {{ event.name }}</title>
+
+  <style>
+    .small-font {
+  font-size: 15px;
+}
+
+.large-font {
+  font-size: 18px;
+}
+    @media print {
+      .page-break {
+        page-break-after: always;
+      }
+    }
+
+    body {
+      font-family: Tahoma, sans-serif;
+      font-size: 15px;
+      margin: 1px;
+    }
+
+    .score-sheet {
+      border: 3px solid #000;
+      padding: 5px;
+      margin-bottom: 1px;
+      height: 45%;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0;
+      padding: 0 5px;
+      line-height: 1.2;
+    }
+
+    .event-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .event-name {
+      font-weight: bold;
+      
+      margin-bottom: 2px;
+    }
+
+    .event-details {
+      font-size: 14px;
+    }
+
+    .logo-wrapper {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .logo-on-sheet {
+      height: 40px;
+      width: 30px;
+      object-fit: contain;
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-start;
+      margin: 3px 0;
+    }
+
+    .label {
+      width: 50px;
+      min-width: 50px;
+      padding-top: 3px;
+    }
+
+    .outer-box {
+      border: 1px solid #000;
+      padding: 1px;
+    }
+
+    .boxes {
+      display: grid;
+      grid-template-columns: 170px repeat(14, 30px);
+      /* กล่องแรกชื่อทีม, ตามด้วย 13 ช่อง + รวม */
+      gap: 2px;
+    }
+
+    .box {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #000;
+  text-align: center;
+  line-height: 30px;
+  box-sizing: border-box;
+}
+
+/* ช่องสุดท้าย (รวมคะแนน) ให้กว้างขึ้น */
+.box:last-child {
+  width: 60px;  /* ปรับขนาดตามที่ต้องการ */
+}
+.team-name {
+  display: inline-block;
+  white-space: nowrap;
+}
+    .team-name-box {
+  width: 170px;
+  height: 30px;
+  line-height: 30px;
+  padding-left: 5px;
+  border: 1px solid #000;
+  box-sizing: border-box;
+  text-align: left;
+  font-size: 13px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+
+    .signature {
+      margin-top: 7px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+
+  {# วนลูปแสดงแต่ละแมตช์ #}
+  {% for match in matches %}
+  <div class="score-sheet">
+    <div class="header">
+      <div class="event-info">
+        
+
+        <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">{{ event.name }}</div>
+        <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">
+          ประเภท: {{ event.category }} &nbsp;&nbsp;
+          รุ่น: {{ event.age_group }} &nbsp;&nbsp;
+          รอบ: {{ match.round }} &nbsp;&nbsp;
+          สนาม: {{ match.field if match.field is not none else '__________' }}
+        </div>
+      </div>
+      <div class="logo-wrapper">
+        {% for logo in event.logo_list %}
+        <img src="{{ url_for('static', filename='logos/' + logo) }}" class="logo-on-sheet"
+          alt="โลโก้ของ {{ event.name }}">
+        {% endfor %}
+      </div>
+    </div>
+
+
+    <!-- แถวของทีม A -->
+    <div class="row">
+      <div class="label"><strong>ทีม:</strong></div>
+
+      <div class="boxes">
+        <!-- ช่องชื่อทีม -->
+        <div class="team-name-box"><span class="team-name">{{ match.team1.name }}</span></div>
+        <!-- ช่องคะแนน 13 ช่อง -->
+        {% for _ in range(13) %}
+        <div class="box"></div>
+        {% endfor %}
+        <!-- ช่องรวมคะแนน -->
+        <div class="box"></div>
+      </div>
+
+    </div>
+
+    <!-- แถวของคะแนน -->
+    <div class="row">
+      <div class="label"><strong>คะแนน:</strong></div>
+
+      <div class="boxes">
+        <!-- ช่องว่าง (ไม่มีชื่อทีม) -->
+        <div class="team-name-box"></div>
+        <!-- ช่องตัวเลข 1-13 -->
+        {% for i in range(1, 14) %}
+        <div class="box">{{ i }}</div>
+        {% endfor %}
+        <!-- ช่อง "รวม" -->
+        <div class="box">รวม</div>
+      </div>
+
+    </div>
+
+    <!-- แถวของทีม B -->
+    <div class="row">
+      <div class="label"><strong>ทีม:</strong></div>
+
+      <div class="boxes">
+        <!-- ช่องชื่อทีม -->
+        <div class="team-name-box"><span class="team-name">{{ match.team2.name }}</span></div>
+        <!-- ช่องคะแนน 13 ช่อง -->
+        {% for _ in range(13) %}
+        <div class="box"></div>
+        {% endfor %}
+        <!-- ช่องรวมคะแนน -->
+        <div class="box"></div>
+      </div>
+
+    </div>
+
+    <!-- ลายเซ็นกรรมการและทีม -->
+    <div class="signature">
+      ลงชื่อทีม : _________________________________&nbsp;&nbsp;&nbsp;
+      ลงชื่อทีม : ________________________________<br>
+      ทีม _________________ เปลี่ยนตัว: _____________________ แทน ______________________________<br>
+      ทีม _________________ เปลี่ยนตัว: _____________________ แทน ______________________________<br>
+      ลงชื่อกรรมการ: _________________________________________________________________________
+    </div>
+  </div>
+
+  {% set team_count = event.teams|length %}
+
+  {% if loop.index % ((team_count // 2)+1) == 0 %}
+  <div class="page-break"></div>
+  {% endif %}
+  {% endfor %}
+
+</body>
+<script>
+  function adjustFontSizeToFit(container, textElement, minFontSize = 8) {
+    let fontSize = parseFloat(window.getComputedStyle(textElement).fontSize);
+    const containerWidth = container.clientWidth;
+    while (textElement.scrollWidth > containerWidth && fontSize > minFontSize) {
+      fontSize -= 0.5;
+      textElement.style.fontSize = fontSize + 'px';
+    }
+  }
+
+  document.querySelectorAll('.team-name-box').forEach(box => {
+    const name = box.querySelector('.team-name');
+    if (name) {
+      adjustFontSizeToFit(box, name);
+    }
+  });
+</script>
+
+</html>

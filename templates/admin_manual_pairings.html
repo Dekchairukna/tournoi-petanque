@@ -1,0 +1,235 @@
+{% import 'macros.html' as macros %}
+{% extends 'base.html' %}
+
+{% block title %}
+{% if selected_round %}รอบที่ {{ selected_round }}{% else %}ทุกคู่แข่งขัน{% endif %} - {{ event.name }}
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+  {% if event.logo_list %}
+  {% for logo in event.logo_list %}
+  <img src="{{ url_for('static', filename='logos/' + logo) }}" alt="โลโก้ของ {{ event.name }}"
+    style="max-height: 100px; margin-right: 10px;">
+  {% endfor %}
+  {% endif %}
+  <h2 class="mb-3">จับคู่แมนนวลสำหรับ {{ event.name }}</h2>
+
+  <!-- Toast แจ้งเตือน -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% for category, message in messages %}
+  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  {% if error_message %}
+  <div class="alert alert-warning">{{ error_message }}</div>
+  {% endif %}
+
+  {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+
+  {% if auto_pairings %}
+  <div class="alert alert-info">
+    <strong>ระบบจับคู่อัตโนมัติ (รอบที่ {{ selected_round }}):</strong>
+    <ul>
+      {% for p in auto_pairings %}
+      <li>{{ teams[p[0]] if p[0] != 0 else "BYE" }} พบ {{ teams[p[1]] if p[1] != 0 else "BYE" }}</li>
+      {% endfor %}
+    </ul>
+    {% if unpaired_teams %}
+    <div class="text-danger">ทีมที่ยังจับคู่ไม่ได้:
+      {% for team_id in unpaired_teams %}
+      <strong>{{ teams[team_id] }}</strong>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  
+  </div>
+
+  <form method="POST" id="manualPairForm" >
+    <input type="hidden" name="selected_round" value="{{ selected_round }}">
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <p class="text-muted mb-0">
+        จำนวนทีมทั้งหมด: <strong>{{ teams|length }}</strong> ทีม |
+        จำนวนคู่ที่ควรได้: <strong>{{ pairings_count }}</strong> คู่
+      </p>
+    </div>
+
+    <table class="table table-bordered table-hover align-middle text-center mb-3">
+  <thead class="table-light">
+    <tr>
+      <th>คู่ที่</th>
+      <th>ทีมที่ 1</th>
+      <th>ทีมที่ 2</th>
+      <th>แนะนำ</th>
+    </tr>
+  </thead>
+  <tbody >
+    {% for i in range(pairings_count) %}
+    {% set pair = pairings[i] if pairings and i < pairings|length else ['BYE', 'BYE'] %}
+    <tr class="text-center">
+      <td>{{ i + 1 }}</td>
+      <td>
+        <select class="form-select team1 text-center" data-index="{{ i }}">
+          <option value="">-- เลือกทีม --</option>
+          <option value="0" {% if pair[0]=='BYE' or pair[0]==0 %}selected{% endif %}>BYE</option>
+          {% for id, name in teams.items() %}
+          <option value="{{ id }}" {% if pair[0]==id %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+        <select class="form-select team2 text-center" data-index="{{ i }}">
+          <option value="">-- เลือกทีม --</option>
+          <option value="0" {% if pair[1]=='BYE' or pair[1]==0 %}selected{% endif %}>BYE</option>
+          {% for id, name in teams.items() %}
+          <option value="{{ id }}" {% if pair[1]==id %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td class="text-center ">
+        {% if pairing_notes and i < pairing_notes|length %}
+          {{ pairing_notes[i] }}
+        {% else %}
+          <span class="text-muted">-</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+
+
+    <!-- hidden inputs pairs จะถูกเติมด้วย JS ก่อน submit -->
+    <div id="hiddenPairsInputs"></div>
+
+    <button type="submit" class="btn btn-primary">บันทึกการจับคู่แมนนวล</button>
+    <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-secondary ms-2">กลับรายการแข่งขัน</a>
+  </form>
+
+  <!-- START: ตารางคะแนน standings -->
+  <h4 class="mt-5 mb-3">ตารางคะแนน</h4>
+  {% if standings %}
+  <div class="table-responsive shadow-sm rounded">
+    <table class="table table-bordered table-sm align-middle text-center mb-5">
+      <thead class="table-light">
+        <tr>
+          <th>No.</th>
+          <th>TEAM</th>
+          {% for i in range(1, event.rounds + 1) %}
+          <th>VS_Round{{ i }}</th>
+          {% endfor %}
+          <th>score</th>
+          <th>BHN</th>
+          <th>fBHN</th>
+          <th>+-</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for team in standings %}
+        <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+          <td>{{ loop.index }}</td>
+          <td class="{{ macros.score_class(team.score) }}">{{ team.team_name }}</td>
+          {% for i in range(1, event.rounds + 1) %}
+          <td class="{{ macros.score_class(team.score) }}">
+            {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
+          </td>
+          {% endfor %}
+          <td class="{{ macros.score_class(team.score) }}">{{ team.score }}</td>
+          <td class="{{ macros.score_class(team.score) }}">{{ team.buchholz }}</td>
+          <td class="{{ macros.score_class(team.score) }}">{{ team.final_buchholz }}</td>
+          <td class="{{ macros.score_class(team.score) }}">{{ team.point_diff }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted fst-italic">No standings available.</p>
+  {% endif %}
+  <!-- END: ตารางคะแนน standings -->
+
+  {% else %}
+  <p>คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+  {% endif %}
+</div>
+</body>
+
+<footer class="text-center mt-4 mb-4">
+  &copy; {{ current_year }} Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT
+  JARUPARNITKUL(M.D.)
+</footer>
+
+<!-- JS: รวมคู่ทีมเป็น input ชื่อ pairs[] ก่อนส่ง พร้อมเช็คทีมซ้ำ -->
+<script>
+  document.getElementById('manualPairForm').addEventListener('submit', function (e) {
+    const pairsContainer = document.getElementById('hiddenPairsInputs');
+    pairsContainer.innerHTML = '';  // ล้างก่อน
+
+    const team1Selects = document.querySelectorAll('select.team1');
+    const team2Selects = document.querySelectorAll('select.team2');
+
+    let selectedTeams = new Set();
+    let duplicate = false;
+
+    for (let i = 0; i < team1Selects.length; i++) {
+      let t1 = team1Selects[i].value || "0";  // 0 = BYE
+      let t2 = team2Selects[i].value || "0";
+
+      // เช็คทีมซ้ำข้ามคู่ (ยกเว้น BYE = 0)
+      if (t1 !== "0") {
+        if (selectedTeams.has(t1)) duplicate = true;
+        selectedTeams.add(t1);
+      }
+      if (t2 !== "0") {
+        if (selectedTeams.has(t2)) duplicate = true;
+        selectedTeams.add(t2);
+      }
+
+      // สร้าง hidden input pairs[] เช่น pairs=1,2
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'pairs';
+      input.value = `${t1},${t2}`;
+      pairsContainer.appendChild(input);
+    }
+
+    if (duplicate) {
+      alert("พบทีมซ้ำในหลายคู่ กรุณาตรวจสอบอีกครั้ง");
+      e.preventDefault();
+    }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}
+
+{% block footer %}
+<footer class="text-center mt-4 mb-2">
+  &copy; {{ current_year }} Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT
+  JARUPARNITKUL(M.D.)
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const autoAssignField = document.getElementById("autoAssignField");
+    if (autoAssignField) {
+      autoAssignField.addEventListener("change", function () {
+        this.form.submit();
+      });
+    }
+  });
+</script>
+{% endblock %}

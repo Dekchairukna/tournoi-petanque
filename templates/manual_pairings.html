@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <h2>จับคู่รอบที่ {{ round_no }} - {{ event.name }}</h2>
+  <p class="text-warning">ระบบจับคู่อัตโนมัติไม่สำเร็จ กรุณาจับคู่ด้วยมือ</p>
+
+  <form method="POST">
+    <table class="table table-bordered table-hover align-middle text-center">
+      <thead class="table-light">
+        <tr>
+          <th>คู่ที่</th>
+          <th>ทีมที่ 1</th>
+          <th>เลือกทีมคู่แข่งขันที่ 2</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i, (team1_id, current_team2_id) in enumerate(pairings, 1) %}
+        <tr>
+          <td>{{ i }}</td>
+          <td>{{ teams[team1_id] if team1_id else '-' }}</td>
+          <td>
+            <select name="team2_{{ i }}" class="form-select" required>
+              <option value="">-- กรุณาเลือกทีมคู่แข่งขัน --</option>
+              <option value="BYE" {% if current_team2_id == "BYE" %}selected{% endif %}>BYE (ผ่านรอบ)</option>
+              {% for t_id, t_name in teams.items() %}
+                {% if t_id != team1_id %}
+                <option value="{{ t_id }}" {% if current_team2_id == t_id %}selected{% endif %}>{{ t_name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <button type="submit" class="btn btn-primary">ยืนยันจับคู่</button>
+    <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-secondary ms-2">ยกเลิก</a>
+  </form>
+</div>
+{% endblock %}

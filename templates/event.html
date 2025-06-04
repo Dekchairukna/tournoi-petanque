@@ -1,0 +1,416 @@
+{% import 'macros.html' as macros %}
+{% extends 'base.html' %}
+
+{% block title %}
+{% if selected_round %}รอบที่ {{ selected_round }}{% else %}ทุกคู่แข่งขัน{% endif %} - {{ event.name }}
+{% endblock %}
+
+{% block content %}
+
+<style>
+  /* ====== GLOBAL TYPOGRAPHY ====== */
+  @import url("https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap");
+
+  body {
+    font-family: "Prompt", "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f9f9fb;
+  }
+
+  h2,
+  h3,
+  h4,
+  .modal-title {
+    font-weight: 700;
+    color: #212529;
+  }
+
+  .card-header {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #495057;
+  }
+
+  /* ====== CUSTOM BUTTONS ====== */
+  .btn-custom {
+    border-radius: 0.65rem;
+    padding: 0.4rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+
+  .btn-custom i {
+    font-size: 1.1rem;
+  }
+
+  /* สีชุด Pastel / Modern */
+  .btn-yellow {
+    background: #fff3bf;
+    color: #664d03;
+  }
+
+  .btn-yellow:hover {
+    background: #ffe066;
+    color: #000;
+  }
+
+  .btn-blue {
+    background: #d0ebff;
+    color: #084298;
+  }
+
+  .btn-blue:hover {
+    background: #74c0fc;
+    color: #fff;
+  }
+
+  .btn-red {
+    background: #ffc9c9;
+    color: #842029;
+  }
+
+  .btn-red:hover {
+    background: #ff6b6b;
+    color: #fff;
+  }
+
+  .btn-green {
+    background: #d3f9d8;
+    color: #2b8a3e;
+  }
+
+  .btn-green:hover {
+    background: #69db7c;
+    color: #fff;
+  }
+
+  .btn-dark-outline {
+    background: transparent;
+    color: #212529;
+    border: 1px solid #212529;
+  }
+
+  .btn-dark-outline:hover {
+    background: #212529;
+    color: #fff;
+  }
+
+  /* ====== TABLE CUSTOM ====== */
+  .table-custom {
+    border-collapse: separate !important;
+    border-spacing: 0 0.5rem;
+    width: 100%;
+  }
+
+  .table-custom thead tr {
+    background: #6c757d;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .table-custom thead th {
+    padding: 0.75rem 1rem;
+    border: none;
+  }
+
+  .table-custom tbody tr {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: background 0.3s ease;
+  }
+
+  .table-custom tbody tr:hover {
+    background: #e9f5ff;
+    cursor: pointer;
+  }
+
+  .table-custom tbody tr:nth-child(even) {
+    background: #f8f9fa !important;
+  }
+
+  .table-custom tbody td {
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+    border: none;
+    text-align: center;
+    font-size: 0.92rem;
+  }
+
+  /* ====== MODAL ====== */
+  .modal-header.bg-info {
+    background: linear-gradient(135deg, #7b4397, #dc2430);
+    color: #fff;
+  }
+
+  .modal-content {
+    border-radius: 1rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  }
+
+  body {
+    font-family: "Prompt", sans-serif;
+  }
+
+  h2 {
+    font-weight: 600;
+  }
+
+  button.btn,
+  .btn {
+    font-weight: 500;
+    border-radius: 50rem !important;
+    transition: 0.2s;
+    padding-left: 1.2rem;
+    padding-right: 1.2rem;
+  }
+
+  .btn:hover {
+    transform: scale(1.03);
+    opacity: 0.9;
+  }
+</style>
+</head>
+
+<body class="bg-light">
+  {% if event.logo_list %}
+  {% for logo in event.logo_list %}
+  <img src="{{ url_for('static', filename='logos/' + logo) }}" alt="โลโก้ของ {{ event.name }}"
+    style="max-height: 100px; margin-right: 10px;">
+  {% endfor %}
+  {% endif %}
+
+  <div class="container my-4">
+
+    <h2 class="mb-3">{{ event.name }}</h2>
+
+    <p>
+      <strong>สถานที่:</strong> {{ event.location }} |
+      <strong>ประเภท:</strong> {{ event.category }} |
+      <strong>รุ่นอายุ:</strong> {{ event.age_group }}
+    </p>
+    <p>
+      <strong>จำนวนครั้ง:</strong> {{ event.rounds }} |
+      <strong>ปัจจุบัน:</strong> ครั้งที่ {{ current_round }}
+    </p>
+
+    <!--{% with messages = get_flashed_messages(with_categories=true) %} {% if
+    messages %} {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %} {% endif %} {% endwith %}
+    <hr />-->
+
+    {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+    <!-- ฟอร์มเพิ่มทีม -->
+    <div class="card mb-4 shadow-sm">
+
+      <div class="card-header bg-primary bg-gradient text-white fw-semibold">
+        เพิ่มทีม
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_team_route', event_id=event.id) }}" class="row g-2">
+          <div class="col-md-6">
+            <input type="text" name="team_name" class="form-control" placeholder="ชื่อทีม" required />
+          </div>
+          <div class="col-md-auto">
+            <button class="btn btn-success btn-lg">เพิ่ม</button>
+          </div>
+        </form>
+          <!-- Upload Form -->
+        <form method="POST" action="{{ url_for('upload_teams', event_id=event.id) }}" enctype="multipart/form-data"
+          class="mt-3">
+          <label for="file" class="form-label">
+            นำเข้าทีมจาก Excel (.xlsx): ต้องมีคอลัมน์ชื่อ 'team_name'
+          </label>
+          <div class="input-group">
+            <input type="file" name="file" class="form-control" id="file" accept=".xls,.xlsx" required />
+            <button class="btn btn-primary" type="submit">
+              อัปโหลด
+            </button>
+          </div>
+        </form>
+
+
+        <form method="POST" action="{{ url_for('clear_teams_route', event_id=event.id) }}" class="mt-3">
+          <button type="submit" class="btn btn-danger btn-lg"
+            onclick="return confirm('คุณแน่ใจหรือไม่ที่จะลบทีมทั้งหมด?')">
+            ลบทีมทั้งหมด
+          </button>
+        </form>
+      </div>
+
+    </div>
+    {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+    <!-- ปุ่มจับคู่รอบ -->
+    <div class="mb-4">
+      {% if teams|length >= 2 and matches_round_1|length == 0 %}
+      <form method="post" action="{{ url_for('pair_first_round', event_id=event.id) }}" class="d-inline">
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name">
+          <label class="form-check-label" for="separate_same_name">
+            แยกทีมที่ชื่อเหมือนกันออกจากกัน
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg mb-1">
+          จับคู่รอบแรก
+        </button>
+      </form>
+      {% elif current_round >= 1 %}
+      <form method="post" action="{{ url_for('pair_next_round', event_id=event.id) }}" class="d-inline">
+        <button type="submit" class="btn btn-primary btn-lg">
+          จับคู่รอบถัดไป
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  {% endif %}
+  {% endif %}  
+    <!-- ลิงก์ไปรอบแข่งขัน -->
+    <div class="mb-4">
+      {% for round_num in range(1, event.rounds + 1) %}
+      <a href="{{ url_for('round_matches', event_id=event.id, round=round_num) }}"
+        class="btn btn-outline-dark mb-2 {% if round_num == current_round %}fw-bold{% endif %}">
+        รอบที่ {{ round_num }}
+      </a>
+      {% endfor %}
+    </div>
+   {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}  
+    <!-- รายชื่อทีม -->
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-secondary text-white fw-semibold">
+        รายชื่อทีม
+      </div>
+      <div class="card-body">
+        {% if teams %}
+        <ul class="list-group">
+          {% for team in teams %}
+          <li class="list-group-item d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <span>{{ team.name }}</span>
+
+            <form method="POST" action="{{ url_for('edit_teams_route', event_id=event.id, team_id=team.id) }}"
+              class="d-flex gap-2 flex-grow-1">
+              <input type="text" name="new_name" class="form-control form-control-sm" placeholder="แก้ชื่อทีม"
+                required />
+              <button class="btn btn-warning btn-sm">แก้ไข</button>
+            </form>
+
+            <form method="POST" action="{{ url_for('delete_team_route', event_id=event.id, team_id=team.id) }}">
+              <button class="btn btn-danger btn-sm" onclick="return confirm('ลบทีมนี้ใช่หรือไม่?')">
+                ลบ
+              </button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>ยังไม่มีทีม</p>
+        {% endif %}
+      </div>
+
+    </div>
+    {% endif %}
+    <!-- ตารางคะแนน -->
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-warning text-dark fw-semibold">
+        ตารางคะแนน
+      </div>
+      <div class="card-body p-0">
+        {% if standings %}
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm align-middle text-center mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>No.</th>
+                <th>TEAM</th>
+                {% for i in range(1, event.rounds + 1) %}
+                <th>VS_Round{{ i }}</th>
+                {% endfor %}
+                <th>score</th>
+                <th>BHN</th>
+                <th>fBHN</th>
+                <th>+-</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for team in standings %}
+              <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                <td>{{ loop.index }}</td>
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.team_name }}
+                </td>
+                {% for i in range(1, event.rounds + 1) %}
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
+                </td>
+                {% endfor %}
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.score }}
+                </td>
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.buchholz }}
+                </td>
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.final_buchholz }}
+                </td>
+                <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                  {{ team.point_diff }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="p-3">ยังไม่มีตารางคะแนน</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="mb-4"><a href="{{ url_for('match.download_standings', event_id=event.id) }}"
+        class="btn btn-dark-outline btn-custom">
+        <i class="bi bi-download mb-4"></i> ดาวน์โหลดตารางคะแนน
+      </a></div>
+
+
+    <div class="mb-4">
+      <a href="{{ url_for('index') }}" class="btn btn-secondary btn-lg">← กลับหน้าแรก</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  {% endblock %}
+
+  {% block footer %}
+  <footer class="text-center mt-4 mb-2">
+    &copy; {{ current_year }} Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT
+    JARUPARNITKUL(M.D.)
+  </footer>
+  {% endblock %}
+
+  {% block scripts %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const autoAssignField = document.getElementById("autoAssignField");
+      if (autoAssignField) {
+        autoAssignField.addEventListener("change", function () {
+          this.form.submit();
+        });
+      }
+    });
+  </script>
+  {% endblock %}

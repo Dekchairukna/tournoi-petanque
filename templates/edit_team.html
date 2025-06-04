@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>แก้ไขทีม</title>
+</head>
+<body>
+    <h1>แก้ไขทีม {{ team.name }}</h1>
+    <form method="post">
+        <input type="text" name="name" value="{{ team.name }}" required>
+        <button type="submit">บันทึก</button>
+    </form>
+    <a href="{{ url_for('event_detail', event_id=event_id) }}">กลับ</a>
+</body>
+</html>

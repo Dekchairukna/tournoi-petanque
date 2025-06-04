@@ -1,0 +1,61 @@
+swiss_system_project/
+│
+├── app.py               # ไฟล์หลัก Flask app รันเว็บ**
+├── swiss_system.py      # โมดูลจัดการฐานข้อมูล และ logic Swiss system**
+├── init_db.py           # สคริปต์สำหรับสร้างฐานข้อมูลและตาราง**
+├── swiss.db             # ไฟล์ฐานข้อมูล SQLite**
+│
+├── templates/           # โฟลเดอร์เก็บ HTML templates (ใช้ Jinja2 + Bootstrap5)
+│   ├── base.html        # เทมเพลตหลัก (navbar, css, js)**
+│   ├── index.html       # หน้าแสดงรายการ event**
+│   ├── event.html       # หน้ารายละเอียด event, จับคู่, กรอกคะแนน**
+│   └── login.html       # หน้าล็อกอิน (ถ้ามีระบบ user)**
+│
+└── static/              # โฟลเดอร์เก็บไฟล์ static เช่น CSS, JS, รูปภาพ
+    └── css/
+        └── bootstrap.min.css   # Bootstrap5 CSS (ถ้าโหลดมาเก็บเอง)
+
+
+สรุปสิ่งที่ควรทำต่อ:
+ลบการประกาศ Flask(__name__) ซ้ำ
+
+เลือกใช้ sqlite3 หรือ SQLAlchemy อย่างใดอย่างหนึ่งให้ครบ
+
+ถ้าเลือก SQLAlchemy:
+
+ย้าย logic ที่ใช้ sqlite3 ไปใช้ SQLAlchemy แทน
+
+สร้าง models ให้ครบทุกตาราง
+
+แยก logic แต่ละส่วนให้อยู่ในไฟล์ของมัน (models.py, utils.py, routes.py)
+
+
+ถ้าต้องการเพิ่มความซับซ้อนมากขึ้น เช่นจัดการปัจจัยอื่นๆ เช่นสี, คะแนนสะสม, หลีกเลี่ยงคู่ที่ซ้ำซ้อน, หลีกเลี่ยงทีมที่มี bye มากเกินไป ก็สามารถเขียนฟังก์ชันจับคู่ให้ละเอียดกว่านี้ได้ครับ
+
+----------------ลบยูเซอร์กันตาย---------------------
+def delete_user(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        flash('ไม่พบผู้ใช้')
+        return redirect(url_for('admin_users'))
+
+    # หา superadmin คนอื่นเพื่อโยกย้าย event
+    superadmin = User.query.filter_by(role='superadmin').first()
+    if not superadmin:
+        flash('ไม่พบ superadmin ในระบบ กรุณาสร้างก่อนลบผู้ใช้')
+        return redirect(url_for('admin_users'))
+
+    if user.role == 'superadmin' and user.id == superadmin.id:
+        # กรณีพยายามลบ superadmin คนเดียวในระบบ
+        flash('ไม่สามารถลบ superadmin คนเดียวในระบบได้')
+        return redirect(url_for('admin_users'))
+
+    # โยกย้าย event ก่อนลบ user
+    events = Event.query.filter_by(creator_id=user.id).all()
+    for event in events:
+        event.creator_id = superadmin.id
+
+    db.session.delete(user)
+    db.session.commit()
+    flash('ลบผู้ใช้เรียบร้อยแล้ว')
+    return redirect(url_for('admin_users'))

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8" />
+    <title>ตารางคะแนน Event {{ event_id }}</title>
+    <style>
+        table { border-collapse: collapse; width: 80%; margin: 20px auto; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: center; }
+        th { background-color: #eee; }
+    </style>
+</head>
+<body>
+    <h1 style="text-align:center;">ตารางคะแนน Event {{ event_id }}</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>อันดับ</th>
+                <th>ทีม</th>
+                <th>แข่ง</th>
+                <th>ชนะ</th>
+                <th>เสมอ</th>
+                <th>แพ้</th>
+                <th>คะแนน</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for i, team in enumerate(standings, 1) %}
+            <tr>
+                <td>{{ i }}</td>
+                <td>{{ team.name }}</td>
+                <td>{{ team.played }}</td>
+                <td>{{ team.win }}</td>
+                <td>{{ team.draw }}</td>
+                <td>{{ team.lose }}</td>
+                <td>{{ team.points }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7">ยังไม่มีข้อมูลการแข่งขัน</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

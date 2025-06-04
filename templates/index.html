@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- ─────────────────────  CUSTOM CSS  ───────────────────── -->
+<style>
+  /* ====== GLOBAL TYPOGRAPHY ====== */
+  @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap');
+
+  body {
+    font-family: 'Prompt', 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f9f9fb;
+  }
+
+  h2,
+  h3,
+  h4,
+  .modal-title {
+    font-weight: 700;
+    color: #212529;
+  }
+
+  .card-header {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #495057;
+  }
+
+  /* ====== CUSTOM BUTTONS ====== */
+  .btn-custom {
+    border-radius: 0.65rem;
+    padding: 0.4rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    transition: all .25s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .08);
+  }
+
+  .btn-custom i {
+    font-size: 1.1rem;
+  }
+
+  /* สีชุด Pastel / Modern */
+  .btn-yellow {
+    background: #fff3bf;
+    color: #664d03;
+  }
+
+  .btn-yellow:hover {
+    background: #ffe066;
+    color: #000;
+  }
+
+  .btn-blue {
+    background: #d0ebff;
+    color: #084298;
+  }
+
+  .btn-blue:hover {
+    background: #74c0fc;
+    color: #fff;
+  }
+
+  .btn-red {
+    background: #ffc9c9;
+    color: #842029;
+  }
+
+  .btn-red:hover {
+    background: #ff6b6b;
+    color: #fff;
+  }
+
+  .btn-green {
+    background: #d3f9d8;
+    color: #2b8a3e;
+  }
+
+  .btn-green:hover {
+    background: #69db7c;
+    color: #fff;
+  }
+
+  .btn-dark-outline {
+    background: transparent;
+    color: #212529;
+    border: 1px solid #212529;
+  }
+
+  .btn-dark-outline:hover {
+    background: #212529;
+    color: #fff;
+  }
+
+  /* ====== TABLE CUSTOM ====== */
+  .table-custom {
+    border-collapse: separate !important;
+    border-spacing: 0 .5rem;
+    width: 100%;
+  }
+
+  .table-custom thead tr {
+    background: #6c757d;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .table-custom thead th {
+    padding: .75rem 1rem;
+    border: none;
+  }
+
+  .table-custom tbody tr {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+    transition: background .3s ease;
+  }
+
+  .table-custom tbody tr:hover {
+    background: #e9f5ff;
+    cursor: pointer;
+  }
+
+  .table-custom tbody tr:nth-child(even) {
+    background: #f8f9fa !important;
+  }
+
+  .table-custom tbody td {
+    padding: .75rem 1rem;
+    vertical-align: middle;
+    border: none;
+    text-align: center;
+    font-size: .92rem;
+  }
+
+
+  /* ====== MODAL ====== */
+  .modal-header.bg-info {
+    background: linear-gradient(135deg, #7b4397, #dc2430);
+    color: #fff;
+  }
+
+  .modal-content {
+    border-radius: 1rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .1);
+  }
+</style>
+
+<!-- ─────────────────────  PAGE CONTENT  ───────────────────── -->
+<div class="container my-4">
+  <!-- Header & Add Event Button -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-semibold">รายการแข่งขันทั้งหมด</h4>
+    <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal">
+      <i class="bi bi-plus-lg"></i> เพิ่มรายการ
+    </button>
+  </div>
+
+  <!-- Flash Messages 
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% for category, message in messages %}
+  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endwith %}-->
+
+  <!-- ── Event Table: รายการแข่งขันที่กำลังจะมาถึง ── -->
+  <h5 class="mb-3">รายการแข่งขันที่กำลังจะมาถึง</h5>
+  <div class="table-responsive bg-light p-4 rounded shadow-sm mb-5">
+    <table class="table table-borderless table-custom">
+      <thead>
+        <tr class="text-center">
+          <th>ชื่อรายการ</th>
+          <th>จำนวนรอบ</th>
+          <th>วันที่</th>
+          <th>สถานที่</th>
+          <th>ประเภท</th>
+          <th>รุ่น</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in upcoming_events %}
+        <tr>
+          <td>{{ event.name }}</td>
+          <td>{{ event.rounds }}</td>
+          <td>{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+          <td>{{ event.location or '-' }}</td>
+          <td>{{ event.category or '-' }}</td>
+          <td>{{ event.age_group or '-' }}</td>
+          <td>
+            <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
+              <i class="bi bi-box-arrow-in-right"></i> เข้าร่วม
+            </a>
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+            <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
+              onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
+              <i class="bi bi-trash"></i> ลบ
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="text-center text-muted">ไม่มีรายการแข่งขันที่กำลังจะมาถึง</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Finished Events by Year ── -->
+  <h5 class="mb-3">รายการแข่งขันที่จบแล้ว</h5>
+  {% if finished_events_by_year %}
+  {% for year, events_in_year in finished_events_by_year.items() %}
+  <h6 class="mt-4">{{ year }}</h6>
+  <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
+    <table class="table table-borderless table-custom">
+      <thead>
+        <tr class="text-center">
+          <th>ชื่อรายการ</th>
+          <th>จำนวนรอบ</th>
+          <th>วันที่</th>
+          <th>สถานที่</th>
+          <th>ประเภท</th>
+          <th>รุ่น</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events_in_year %}
+        <tr>
+          <td>{{ event.name }}</td>
+          <td>{{ event.rounds }}</td>
+          <td>{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+          <td>{{ event.location or '-' }}</td>
+          <td>{{ event.category or '-' }}</td>
+          <td>{{ event.age_group or '-' }}</td>
+          <td>
+            <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
+              <i class="bi bi-box-arrow-in-right"></i> ดูผล
+            </a>
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+            <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
+              onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
+              <i class="bi bi-trash"></i> ลบ
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
+  {% endif %}
+
+  <!-- Modal เพิ่มรายการใหม่ -->
+  <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <form method="POST" action="{{ url_for('add_event_route') }}" enctype="multipart/form-data">
+        <div class="modal-content">
+          <div class="modal-header bg-info text-white">
+            <h5 class="modal-title" id="addEventModalLabel">
+              <i class="bi bi-calendar-plus"></i> เพิ่มรายการแข่งขันใหม่
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row g-3">
+              <!-- ✅ ช่องสำหรับอัปโหลดโลโก้ -->
+              <div>
+                <label for="logo">อัปโหลดโลโก้:</label>
+                <input type="file" name="logo" id="logo" accept="image/*" multiple>
+              </div>
+              <div class="col-md-6">
+                <label for="eventName" class="form-label fw-semibold">ชื่อรายการ</label>
+                <input type="text" class="form-control" id="eventName" name="name" required>
+              </div>
+              <div class="col-md-6">
+                <label for="rounds" class="form-label fw-semibold">จำนวนรอบ</label>
+                <input type="number" class="form-control" id="rounds" name="rounds" min="1" required>
+              </div>
+              <div class="col-md-6">
+                <label for="eventDate" class="form-label fw-semibold">วันที่แข่งขัน</label>
+                <input type="date" class="form-control" id="eventDate" name="date" required>
+              </div>
+              <div class="col-md-6">
+                <label for="location" class="form-label fw-semibold">สถานที่แข่งขัน</label>
+                <input type="text" class="form-control" id="location" name="location" placeholder="ระบุสถานที่ถ้ามี">
+              </div>
+              <div class="col-md-6">
+                <label for="category" class="form-label fw-semibold">ประเภท</label>
+                <select id="category" name="category" class="form-select" required>
+                  <option value="เดี่ยวชาย">เดี่ยวชาย</option>
+                  <option value="เดี่ยวหญิง">เดี่ยวหญิง</option>
+                  <option value="คู่ชาย">คู่ชาย</option>
+                  <option value="คู่หญิง">คู่หญิง</option>
+                  <option value="ทีมชาย">ทีมชาย</option>
+                  <option value="ทีมหญิง">ทีมหญิง</option>
+                  <option value="คู่ผสม">คู่ผสม</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="age_group" class="form-label fw-semibold">รุ่น</label>
+                <select id="age_group" name="age_group" class="form-select" required>
+                  <option value="ประชาชน">ประชาชน</option>
+                  <option value="เยาวชน">เยาวชน</option>
+                  <option value="อาวุโส">อาวุโส</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <!-- ปุ่มเพิ่มใน modal สีฟ้า -->
+            <button type="submit" class="btn btn-pastel-info fw-bold px-4 py-2 d-flex align-items-center gap-2">
+              <i class="bi bi-check-lg fs-5"></i> เพิ่มรายการ
+            </button>
+            <button type="button" class="btn btn-secondary fw-semibold px-4 py-2"
+              data-bs-dismiss="modal">ยกเลิก</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<body>
+  <footer class="text-center">
+    &copy; {{ current_year }} Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT
+    JARUPARNITKUL(M.D.)
+  </footer>
+</body>
+{% endblock %}

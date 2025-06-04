@@ -1,0 +1,100 @@
+.score-level-7 {
+  background-color: #d7c9f3 !important; /* ม่วงพาสเทล */
+  color: #4b367c !important;
+}
+.score-level-6 {
+  background-color: #a9c5f5 !important; /* ครามพาสเทล */
+  color: #2c4a8a !important;
+}
+.score-level-5 {
+  background-color: #92b7fc !important; /* น้ำเงินพาสเทล */
+  color: #1c3d99 !important;
+}
+.score-level-4 {
+  background-color: #a8e6a3 !important; /* เขียวพาสเทล */
+  color: #336633 !important;
+}
+.score-level-3 {
+  background-color: #fff9b1 !important; /* เหลืองพาสเทล */
+  color: #827500 !important;
+}
+.score-level-2 {
+  background-color: #ffc78e !important; /* แสดพาสเทล */
+  color: #7a3c00 !important;
+}
+.score-level-1 {
+  background-color: #f5b5b1 !important; /* แดงพาสเทล */
+  color: #8b2b26 !important;
+}
+
+/* ===== GLOBAL BUTTON STYLE ===== */
+button.btn,
+.btn {
+  font-family: "Prompt", "Segoe UI", sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.4rem 1rem;
+  border-radius: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.25s ease;
+  text-transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  border: none;
+  cursor: pointer;
+}
+
+.btn:hover {
+  transform: scale(1.03);
+  opacity: 0.9;
+}
+
+/* ===== THEME COLORS ===== */
+.btn-yellow {
+  background: #fff3bf;
+  color: #664d03;
+}
+.btn-yellow:hover {
+  background: #ffe066;
+  color: #000;
+}
+
+.btn-blue {
+  background: #d0ebff;
+  color: #084298;
+}
+.btn-blue:hover {
+  background: #74c0fc;
+  color: #fff;
+}
+
+.btn-red {
+  background: #ffc9c9;
+  color: #842029;
+}
+.btn-red:hover {
+  background: #ff6b6b;
+  color: #fff;
+}
+
+.btn-green {
+  background: #d3f9d8;
+  color: #2b8a3e;
+}
+.btn-green:hover {
+  background: #69db7c;
+  color: #fff;
+}
+
+.btn-dark-outline {
+  background: transparent;
+  color: #212529;
+  border: 1px solid #212529;
+}
+.btn-dark-outline:hover {
+  background: #212529;
+  color: #fff;
+}
+

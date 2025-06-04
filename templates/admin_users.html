@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  /* นำ CSS จากเทมเพลต index มาปรับให้ตรงกับตารางและปุ่มหน้าแอดมิน */
+  /* ปรับ table */
+  .table-custom {
+    border-collapse: separate !important;
+    border-spacing: 0 .5rem;
+    width: 100%;
+  }
+  .table-custom thead tr {
+    background: #6c757d;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .table-custom thead th {
+    padding: .75rem 1rem;
+    border: none;
+    text-align: center;
+  }
+  .table-custom tbody tr {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+    transition: background .3s ease;
+  }
+  .table-custom tbody tr:hover {
+    background: #e9f5ff;
+    cursor: pointer;
+  }
+  .table-custom tbody tr:nth-child(even) {
+    background: #f8f9fa !important;
+  }
+  .table-custom tbody td {
+    padding: .75rem 1rem;
+    vertical-align: middle;
+    border: none;
+    text-align: center;
+    font-size: .92rem;
+  }
+
+  /* ปุ่มแบบเดียวกับ index */
+  .btn-custom {
+    border-radius: 0.65rem;
+    padding: 0.4rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    transition: all .25s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .08);
+  }
+  .btn-success {
+    background: #d3f9d8;
+    color: #2b8a3e;
+  }
+  .btn-success:hover {
+    background: #69db7c;
+    color: #fff;
+  }
+  .btn-warning {
+    background: #fff3bf;
+    color: #664d03;
+  }
+  .btn-warning:hover {
+    background: #ffe066;
+    color: #000;
+  }
+  .btn-danger {
+    background: #ffc9c9;
+    color: #842029;
+  }
+  .btn-danger:hover {
+    background: #ff6b6b;
+    color: #fff;
+  }
+  .btn-secondary {
+    background: #d0ebff;
+    color: #084298;
+  }
+  .btn-secondary:hover {
+    background: #74c0fc;
+    color: #fff;
+  }
+</style>
+
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+    <h3 class="text-primary mb-3 mb-sm-0">จัดการผู้ใช้</h3>
+    {% if current_user.role == 'superadmin' %}
+    <a href="{{ url_for('admin_add_user') }}" class="btn btn-success btn-custom" style="min-width: 140px;">
+      + เพิ่มผู้ใช้
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="table-responsive bg-light p-4 rounded shadow-sm">
+    <table class="table table-borderless table-custom align-middle">
+      <thead>
+        <tr>
+          <th>ชื่อผู้ใช้</th>
+          <th>สิทธิ์</th>
+          <th>หมดอายุ</th>
+          {% if current_user.role == 'superadmin' %}
+          <th>การจัดการ</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ u.role }}</td>
+          <td>
+            {% if u.end_time %}
+              {{ u.end_time.strftime('%Y-%m-%d %H:%M:%S') }}
+            {% else %}
+              <span class="badge bg-success">ถาวร</span>
+            {% endif %}
+          </td>
+          {% if current_user.role == 'superadmin' %}
+          <td>
+            <div class="d-flex gap-2 justify-content-center flex-wrap">
+              <a href="{{ url_for('edit_user', user_id=u.id) }}" class="btn btn-warning btn-custom" style="min-width: 90px;">
+                แก้ไข
+              </a>
+              <form action="{{ url_for('delete_user', user_id=u.id) }}" method="POST" onsubmit="return confirm('แน่ใจว่าจะลบ?');" style="margin: 0;">
+                <button type="submit" class="btn btn-danger btn-custom" style="min-width: 90px;">ลบ</button>
+              </form>
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-custom" style="min-width: 120px;">
+      ← กลับ
+    </a>
+  </div>
+</div>
+{% endblock %}

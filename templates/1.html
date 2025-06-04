@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- ... style และส่วนอื่นเหมือนเดิม ... -->
+ <style>
+  /* ตารางปรับแต่ง */
+  .table-custom {
+    border-collapse: separate !important;
+    border-spacing: 0 0.5rem; /* เว้นระยะห่างระหว่างแถว */
+    width: 100%;
+  }
+
+  .table-custom thead tr {
+    background-color: #6c757d; /* สีพื้นหลังหัวตาราง (เทาเข้ม) */
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 0.5rem;
+  }
+
+  .table-custom thead th {
+    padding: 0.75rem 1rem;
+    border: none;
+  }
+
+  .table-custom tbody tr {
+    background-color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+  }
+
+  .table-custom tbody tr:hover {
+    background-color: #e9f5ff;
+    cursor: pointer;
+  }
+
+  .table-custom tbody tr:nth-child(even) {
+    background-color: #f8f9fa !important;
+  }
+
+  .table-custom tbody td {
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+    border-top: none;
+    border-bottom: none;
+    text-align: center;
+  }
+
+  /* ปุ่มปรับแต่ง */
+  .btn-pastel-blue {
+    background-color: #d0ebff;
+    color: #084298;
+    border: none;
+  }
+
+  .btn-pastel-blue:hover {
+    background-color: #74c0fc;
+    color: #fff;
+  }
+
+  .btn-pastel-red {
+    background-color: #ffc9c9;
+    color: #a61e4d;
+    border: none;
+  }
+
+  .btn-pastel-red:hover {
+    background-color: #ff6b6b;
+    color: #fff;
+  }
+
+  .btn-pastel-yellow {
+    background-color: #fff3bf;
+    color: #997404;
+    border: none;
+  }
+
+  .btn-pastel-yellow:hover {
+    background-color: #ffe066;
+    color: #fff;
+  }
+
+  .btn-pastel-info {
+    background-color: #74c0fc;
+    color: #fff;
+    border: none;
+  }
+
+  .btn-pastel-info:hover {
+    background-color: #4dabf7;
+    color: #fff;
+  }
+
+  /* ปรับปุ่มในตารางให้เล็กลงและดูสะอาด */
+  .table-custom .btn {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.5rem;
+  }
+
+  body {
+    background-color: #f9f9fb;
+  }
+
+  h4, h3, .modal-title {
+    color: #333;
+  }
+
+  .btn {
+    border-radius: 0.75rem;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  .modal-header.bg-info {
+    background: linear-gradient(135deg, #7b4397, #dc2430);
+    color: #fff;
+  }
+
+  .modal-content {
+    border-radius: 1rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
+<div class="container my-4">
+
+  <h4 class="fw-semibold text-dark mb-3">รายการแข่งขันกำลังจะเริ่ม</h4>
+  <div class="table-responsive bg-light p-4 rounded shadow-sm mb-5">
+    <table class="table table-borderless table-custom">
+      <thead class="text-center">
+        <tr>
+          <th>ชื่อรายการ</th>
+          <th>จำนวนรอบ</th>
+          <th>วันที่</th>
+          <th>สถานที่</th>
+          <th>ประเภท</th>
+          <th>รุ่น</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in upcoming_events %}
+        <tr>
+          <td>{{ event.name }}</td>
+          <td>{{ event.rounds }}</td>
+          <td>{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+          <td>{{ event.location or '-' }}</td>
+          <td>{{ event.category or '-' }}</td>
+          <td>{{ event.age_group or '-' }}</td>
+          <td class="text-center">
+            <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-pastel-blue btn-sm me-2">
+              <i class="bi bi-box-arrow-in-right"></i> เข้าร่วม
+            </a>
+            <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-pastel-red btn-sm"
+              onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
+              <i class="bi bi-trash"></i> ลบ
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted">ไม่มีรายการแข่งขันกำลังจะเริ่ม</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="fw-semibold text-dark mb-3">รายการแข่งขันที่จบแล้ว</h4>
+  <div class="table-responsive bg-light p-4 rounded shadow-sm">
+    <table class="table table-borderless table-custom">
+      <thead class="text-center">
+        <tr>
+          <th>ชื่อรายการ</th>
+          <th>จำนวนรอบ</th>
+          <th>วันที่</th>
+          <th>สถานที่</th>
+          <th>ประเภท</th>
+          <th>รุ่น</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in finished_events %}
+        <tr>
+          <td>{{ event.name }}</td>
+          <td>{{ event.rounds }}</td>
+          <td>{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+          <td>{{ event.location or '-' }}</td>
+          <td>{{ event.category or '-' }}</td>
+          <td>{{ event.age_group or '-' }}</td>
+          <td class="text-center">
+            <!-- อาจจะไม่ต้องมีปุ่มเข้าร่วมกับลบ ถ้าจบแล้ว -->
+            <span class="text-muted">จบการแข่งขัน</span>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted">ไม่มีรายการแข่งขันที่จบแล้ว</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Modal เพิ่มรายการเหมือนเดิม -->
+  <!-- ... modal code ... -->
+
+</div>
+{% endblock %}
