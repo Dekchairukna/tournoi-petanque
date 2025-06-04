@@ -59,7 +59,7 @@ class Event(db.Model):
     field_exclude = db.Column(db.String, default='')  # เช่น '3,7,11
     logo_filename = db.Column(db.Text)  # เก็บเป็น JSON list
 
-    created_at = db.Column(db.DateTime, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
+    created_at = db.Column(db.DateTime, server_default=text('CURRENT_TIMESTAMP'), nullable=True)
 
     # เพิ่มบรรทัดนี้
     creator_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
