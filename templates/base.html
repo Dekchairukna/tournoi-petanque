@@ -5,29 +5,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
   <style>
-    /* Navbar Gradient + Shadow */
+    /* โค้ดเดิมของคุณ */
     .navbar-custom {
       background: linear-gradient(135deg, #7b4397, #dc2430);
-      /* purple-red gradient */
       box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
     }
 
-    /* เพิ่มความสูงและขนาดฟอนต์ของ navbar */
     .navbar {
       font-size: 1.15rem;
-      /* เพิ่มขนาดตัวอักษร */
       padding-top: 1rem;
       padding-bottom: 1rem;
     }
 
-    /* Brand (ชื่อเว็บ) ขนาดใหญ่ขึ้น */
     .navbar-brand {
       font-size: 1.5rem;
     }
 
-    /* Nav link style */
     .navbar-custom .nav-link {
       color: #fff !important;
       transition: background-color 0.3s ease, color 0.3s ease;
@@ -47,6 +44,55 @@
       font-weight: 600;
       border-radius: 0.5rem;
     }
+
+    /* เพิ่มส่วนนี้สำหรับมือถือ */
+    @media (max-width: 576px) {
+      .navbar {
+        font-size: 1rem;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+      }
+
+      .navbar-brand {
+        font-size: 0.9rem;
+      }
+
+      .navbar-custom .nav-link {
+        padding: 0.4rem 0.75rem;
+        font-weight: 500;
+        font-size: 0.9rem;
+      }
+
+      .navbar-nav.gap-2 {
+        gap: 0.5rem;
+      }
+    }
+
+    @media (max-width: 576px) {
+    .table-custom th,
+    .table-custom td {
+      font-size: 0.85rem;        /* ขนาดกำลังดี */
+      padding: 0.4rem 0.6rem;     /* ยังเหลือพื้นที่ให้มองเห็นได้ */
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .btn-custom {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+      white-space: nowrap;
+    }
+
+    .table-responsive {
+      padding: 1rem 0.75rem;
+    }
+
+    /* ปรับ icon ให้ไม่ใหญ่เกิน */
+    .btn-custom i {
+      font-size: 0.85rem;
+      margin-right: 0.25rem;
+    }
+  }
   </style>
 </head>
 
@@ -57,9 +103,9 @@
   <nav class="navbar navbar-expand-lg navbar-dark navbar-custom shadow-sm py-3">
     <div class="container">
       <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="{{ url_for('index') }}">
-        <i class="bi bi-trophy-fill fs-4"></i> Swiss Tournament For Petanque Sport
+        <i class="bi bi-trophy-fill fs-4 "></i> Swiss Tournament For Petanque Sport
       </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+      <button class="navbar-toggler " type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
         aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
@@ -72,12 +118,13 @@
             </a>
           </li>
           {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
-  <li class="nav-item">
-    <a class="nav-link px-3 rounded {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
-      <i class="bi bi-people-fill me-1"></i> จัดการผู้ใช้
-    </a>
-  </li>
-  {% endif %}
+          <li class="nav-item">
+            <a class="nav-link px-3 rounded {% if request.endpoint == 'admin_users' %}active{% endif %}"
+              href="{{ url_for('admin_users') }}">
+              <i class="bi bi-people-fill me-1"></i> จัดการผู้ใช้
+            </a>
+          </li>
+          {% endif %}
           {% if current_user.is_authenticated %}
           <li class="nav-item">
             <a class="nav-link px-3 rounded" href="{{ url_for('logout') }}">
@@ -99,7 +146,7 @@
 
 
   <!-- Main Container -->
-  <div class="container">
+  <div class="container-fluid px-3 px-sm-4">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div class="mt-2">
@@ -137,16 +184,16 @@
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-  // ซ่อน alert หลังจาก 5 วินาที
-  setTimeout(() => {
-    const alerts = document.querySelectorAll('.alert');
-    alerts.forEach(alert => {
-      // ใช้ Bootstrap method เพื่อ fade out แล้วลบ
-      const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
-      bsAlert.close();
-    });
-  }, 5000); // 5000 มิลลิวินาที = 5 วินาที
-</script>
+    // ซ่อน alert หลังจาก 5 วินาที
+    setTimeout(() => {
+      const alerts = document.querySelectorAll('.alert');
+      alerts.forEach(alert => {
+        // ใช้ Bootstrap method เพื่อ fade out แล้วลบ
+        const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+        bsAlert.close();
+      });
+    }, 5000); // 5000 มิลลิวินาที = 5 วินาที
+  </script>
 </body>
 
 </html>
