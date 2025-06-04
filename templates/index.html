@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- ──────────────── CUSTOM CSS ──────────────── -->
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap');
 
@@ -198,9 +197,7 @@
 </style>
 
 
-<!-- ──────────────── PAGE CONTENT ──────────────── -->
 <div class="container-fluid my-4">
-  <!-- Header & Add Button -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h4 class="fw-semibold">รายการแข่งขันทั้งหมด</h4>
     <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal">
@@ -208,7 +205,6 @@
     </button>
   </div>
 
-  <!-- Upcoming Events Table -->
   <h5 class="mb-3">รายการแข่งขันที่กำลังจะมาถึง</h5>
   <div class="table-responsive bg-light p-4 rounded shadow-sm mb-5">
     <table class="table table-borderless table-custom">
@@ -223,16 +219,16 @@
           <th>จัดการ</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody >
         {% for event in upcoming_events %}
         <tr>
-          <td data-label="ชื่อรายการ">{{ event.name }}</td>
-          <td data-label="จำนวนรอบ" >{{ event.rounds }}</td>
-          <td data-label="วันที่" >{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-          <td data-label="สถานที่">{{ event.location or '-' }}</td>
-          <td data-label="ประเภท">{{ event.category or '-' }}</td>
-          <td data-label="รุ่น">{{ event.age_group or '-' }}</td>
-          <td data-label="จัดการ" >
+          <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
+          <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
+          <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+          <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
+          <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
+          <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
+          <td data-label="จัดการ" class="text-center">
             <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
               <i class="bi bi-box-arrow-in-right"></i> เข้าร่วม
             </a>
@@ -253,7 +249,6 @@
     </table>
   </div>
 
-  <!-- Finished Events by Year -->
   <h5 class="mb-3">รายการแข่งขันที่จบแล้ว</h5>
   {% if finished_events_by_year %}
     {% for year, events_in_year in finished_events_by_year.items() %}
@@ -274,13 +269,13 @@
           <tbody>
             {% for event in events_in_year %}
             <tr>
-              <td data-label="ชื่อรายการ">{{ event.name }}</td>
-              <td data-label="จำนวนรอบ" >{{ event.rounds }}</td>
-              <td data-label="วันที่" >{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-              <td data-label="สถานที่">{{ event.location or '-' }}</td>
-              <td data-label="ประเภท">{{ event.category or '-' }}</td>
-              <td data-label="รุ่น">{{ event.age_group or '-' }}</td>
-              <td data-label="จัดการ" >
+              <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
+              <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
+              <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+              <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
+              <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
+              <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
+              <td data-label="จัดการ" class="text-center">
                 <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
                   <i class="bi bi-box-arrow-in-right"></i> ดูผล
                 </a>
@@ -301,7 +296,6 @@
     <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
   {% endif %}
 
-  <!-- Modal: Add New Event -->
   <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <form method="POST" action="{{ url_for('add_event_route') }}" enctype="multipart/form-data">
@@ -314,7 +308,6 @@
           </div>
           <div class="modal-body">
             <div class="row g-3">
-              <!-- Upload Logo -->
               <div class="mb-3">
                 <label for="logo" class="form-label fw-semibold">อัปโหลดโลโก้:</label>
                 <input type="file" name="logo" id="logo" accept="image/*" multiple class="form-control">
