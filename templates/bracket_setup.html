@@ -1,59 +1,169 @@
-{% extends 'base.html' %} {# สมมติว่ามี base template #}
+{% extends 'base.html' %}
 
 {% block content %}
 <div class="container mt-4">
-    <h2>จัดตารางรอบน็อคเอาท์ - {{ event.name }}</h2>
-    <p>จำนวนทีมที่เข้ารอบ: {{ qualified_teams | length }} ทีม</p>
+    <h2>ตารางแบ่งสายการแข่งขัน: {{ event.name }}</h2>
+    <p>จำนวนทีมที่เข้ารอบ: **{{ qualified_teams | length }}** ทีม</p>
 
-    <h3>ทีมที่เข้ารอบ:</h3>
-    <ul class="list-group mb-4">
-        {% for team in qualified_teams %}
-        <li class="list-group-item">{{ loop.index }}. {{ team.team_name }} (คะแนน: {{ team.score }})</li>
-        {% endfor %}
-    </ul>
+    <div class="mb-4">
+        <h3>ทีมที่เข้ารอบทั้งหมด:</h3>
+        {# แสดงทีมที่เข้ารอบทั้งหมด อาจใช้ team_id เป็น data-attribute สำหรับ JavaScript #}
+        <ul class="list-group list-group-horizontal-md flex-wrap">
+            {% for team in qualified_teams %}
+            <li class="list-group-item col-md-3">
+                <span class="badge bg-primary me-2" data-team-id="{{ team.team_id }}">{{ team.team_name }} (คะแนน: {{ team.score }})</span>
+            </li>
+            {% endfor %}
+        </ul>
+        <small class="text-muted mt-2">Team ID คือรหัสเฉพาะของทีมสำหรับใช้ในการจับคู่</small>
+    </div>
 
-    <div class="mt-4">
-        <h4>การจับคู่รอบน็อคเอาท์:</h4>
-        <p>ลากและวางทีมเพื่อจับคู่ หรือเลือกจาก dropdowns (ตัวอย่าง UI)</p>
-
-        <form id="bracketPairingForm" action="{{ url_for('save_bracket_pairings', event_id=event.id) }}" method="POST">
-            <div id="bracket-ui">
-                <h5>รอบที่ 1:</h5>
-                <div class="row mb-3">
-                    {% for i in range(qualified_teams | length // 2) %}
-                    <div class="col-md-6 mb-2">
-                        <div class="input-group">
-                            <span class="input-group-text">คู่ที่ {{ loop.index }}</span>
-                            <select class="form-select" name="team1_match{{ loop.index }}">
+    <form id="bracketSetupForm" action="{{ url_for('save_bracket_pairings', event_id=event.id) }}" method="POST">
+        <div class="row">
+            {# รอบ 16 ทีม #}
+            <div class="col-md-3 border p-3">
+                <h4>รอบ 16 ทีม</h4>
+                {% for i in range(qualified_teams | length // 2) %} {# สมมติว่ามี 16 ทีม จะได้ 8 คู่ #}
+                <div class="card mb-3 p-2" data-round="1" data-match-id="{{ loop.index }}">
+                    <div class="card-body p-2">
+                        <h6 class="card-title">คู่ที่ {{ loop.index }}</h6>
+                        <div class="mb-2">
+                            <label for="team1_round1_match{{ loop.index }}" class="form-label visually-hidden">ทีม 1 คู่ที่ {{ loop.index }}</label>
+                            <select class="form-select team-select" id="team1_round1_match{{ loop.index }}" name="round1_match{{ loop.index }}_team1">
                                 <option value="">เลือกทีม 1</option>
                                 {% for team in qualified_teams %}
                                 <option value="{{ team.team_id }}">{{ team.team_name }}</option>
                                 {% endfor %}
                             </select>
-                            <span class="input-group-text"> vs </span>
-                            <select class="form-select" name="team2_match{{ loop.index }}">
+                        </div>
+                        <div class="mb-2">
+                            <label for="team2_round1_match{{ loop.index }}" class="form-label visually-hidden">ทีม 2 คู่ที่ {{ loop.index }}</label>
+                            <select class="form-select team-select" id="team2_round1_match{{ loop.index }}" name="round1_match{{ loop.index }}_team2">
                                 <option value="">เลือกทีม 2</option>
                                 {% for team in qualified_teams %}
                                 <option value="{{ team.team_id }}">{{ team.team_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
+                        <div class="mb-2">
+                            <label for="field_round1_match{{ loop.index }}" class="form-label">สนาม:</label>
+                            <input type="text" class="form-control form-control-sm" id="field_round1_match{{ loop.index }}" name="round1_match{{ loop.index }}_field" placeholder="เลขสนาม">
+                        </div>
                     </div>
-                    {% endfor %}
                 </div>
-
-                <input type="hidden" name="pairings_data" id="pairingsDataInput">
-
+                {% endfor %}
             </div>
 
-            <button type="submit" class="btn btn-primary mt-3">บันทึกการจับคู่</button>
-        </form>
-
-        <div class="mt-4">
-            <h4>สำหรับปริ้นท์:</h4>
-            <p>คุณสามารถเพิ่มปุ่มหรือลิงก์เพื่อปริ้นท์หน้านี้ หรือสร้าง PDF/รูปภาพของตารางก้างปลา</p>
-            <button onclick="window.print()" class="btn btn-info">ปริ้นท์ตารางก้างปลา</button>
+            {# รอบ 8 ทีม #}
+            <div class="col-md-3 border p-3">
+                <h4>รอบ 8 ทีม</h4>
+                {% for i in range(qualified_teams | length // 4) %} {# ถ้ามี 8 ทีม จะได้ 4 คู่ #}
+                <div class="card mb-3 p-2" data-round="2" data-match-id="{{ (qualified_teams | length // 2) + loop.index }}">
+                    <div class="card-body p-2">
+                        <h6 class="card-title">คู่ที่ {{ (qualified_teams | length // 2) + loop.index }}</h6> {# คู่ต่อจากรอบ 16 ทีม #}
+                        <div class="mb-2">
+                            <label for="team1_round2_match{{ (qualified_teams | length // 2) + loop.index }}" class="form-label">ผู้ชนะคู่ที่:</label>
+                            <select class="form-select winner-select" id="team1_round2_match{{ (qualified_teams | length // 2) + loop.index }}" name="round2_match{{ (qualified_teams | length // 2) + loop.index }}_team1">
+                                <option value="">เลือกผู้ชนะคู่...</option>
+                                {% for j in range(qualified_teams | length // 2) %}
+                                <option value="winner_of_match_{{ j + 1 }}">ผู้ชนะ คู่ที่ {{ j + 1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="team2_round2_match{{ (qualified_teams | length // 2) + loop.index }}" class="form-label">ผู้ชนะคู่ที่:</label>
+                            <select class="form-select winner-select" id="team2_round2_match{{ (qualified_teams | length // 2) + loop.index }}" name="round2_match{{ (qualified_teams | length // 2) + loop.index }}_team2">
+                                <option value="">เลือกผู้ชนะคู่...</option>
+                                {% for j in range(qualified_teams | length // 2) %}
+                                <option value="winner_of_match_{{ j + 1 }}">ผู้ชนะ คู่ที่ {{ j + 1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="field_round2_match{{ (qualified_teams | length // 2) + loop.index }}" class="form-label">สนาม:</label>
+                            <input type="text" class="form-control form-control-sm" id="field_round2_match{{ (qualified_teams | length // 2) + loop.index }}" name="round2_match{{ (qualified_teams | length // 2) + loop.index }}_field" placeholder="เลขสนาม">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
+
+            {# รอบรองชนะเลิศ #}
+            <div class="col-md-3 border p-3">
+                <h4>รอบรองชนะเลิศ</h4>
+                {% for i in range(qualified_teams | length // 8) %}
+                <div class="card mb-3 p-2" data-round="3" data-match-id="{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}">
+                    <div class="card-body p-2">
+                        <h6 class="card-title">คู่ที่ {{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}</h6>
+                        <div class="mb-2">
+                            <label for="team1_round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}" class="form-label">ผู้ชนะคู่ที่:</label>
+                            <select class="form-select winner-select" id="team1_round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}" name="round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}_team1">
+                                <option value="">เลือกผู้ชนะคู่...</option>
+                                {% for j in range(qualified_teams | length // 4) %}
+                                <option value="winner_of_match_{{ (qualified_teams | length // 2) + j + 1 }}">ผู้ชนะ คู่ที่ {{ (qualified_teams | length // 2) + j + 1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                         <div class="mb-2">
+                            <label for="team2_round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}" class="form-label">ผู้ชนะคู่ที่:</label>
+                            <select class="form-select winner-select" id="team2_round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}" name="round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}_team2">
+                                <option value="">เลือกผู้ชนะคู่...</option>
+                                {% for j in range(qualified_teams | length // 4) %}
+                                <option value="winner_of_match_{{ (qualified_teams | length // 2) + j + 1 }}">ผู้ชนะ คู่ที่ {{ (qualified_teams | length // 2) + j + 1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="field_round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}" class="form-label">สนาม:</label>
+                            <input type="text" class="form-control form-control-sm" id="field_round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}" name="round3_match{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}_field" placeholder="เลขสนาม">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {# รอบชิงชนะเลิศ #}
+            <div class="col-md-3 border p-3">
+                <h4>รอบชิงชนะเลิศ</h4>
+                 {% for i in range(qualified_teams | length // 16) %} {# มักจะมีแค่ 1 คู่ #}
+                 <div class="card mb-3 p-2" data-round="4" data-match-id="{{ (qualified_teams | length // 8) + (qualified_teams | length // 4) + (qualified_teams | length // 2) + loop.index }}">
+                    <div class="card-body p-2">
+                        <h6 class="card-title">Champion Match</h6>
+                        <div class="mb-2">
+                            <label for="team1_round4_match1" class="form-label">ผู้ชนะคู่ที่:</label>
+                            <select class="form-select winner-select" id="team1_round4_match1" name="round4_match1_team1">
+                                <option value="">เลือกผู้ชนะคู่...</option>
+                                {% for j in range(qualified_teams | length // 8) %}
+                                <option value="winner_of_match_{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + j + 1 }}">ผู้ชนะ คู่ที่ {{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + j + 1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="team2_round4_match1" class="form-label">ผู้ชนะคู่ที่:</label>
+                            <select class="form-select winner-select" id="team2_round4_match1" name="round4_match1_team2">
+                                <option value="">เลือกผู้ชนะคู่...</option>
+                                {% for j in range(qualified_teams | length // 8) %}
+                                <option value="winner_of_match_{{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + j + 1 }}">ผู้ชนะ คู่ที่ {{ (qualified_teams | length // 4) + (qualified_teams | length // 2) + j + 1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label for="field_round4_match1" class="form-label">สนาม:</label>
+                            <input type="text" class="form-control form-control-sm" id="field_round4_match1" name="round4_match1_field" placeholder="เลขสนาม">
+                        </div>
+                    </div>
+                 </div>
+                 {% endfor %}
+            </div>
+        </div>
+
+        <input type="hidden" name="bracket_data" id="bracketDataInput">
+        <button type="submit" class="btn btn-primary mt-4">บันทึกตารางก้างปลา</button>
+    </form>
+
+    <div class="mt-5">
+        <h4>สำหรับปริ้นท์:</h4>
+        <button onclick="window.print()" class="btn btn-info">ปริ้นท์ตารางก้างปลา</button>
     </div>
 </div>
 {% endblock %}
@@ -61,47 +171,102 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('bracketPairingForm');
+        const form = document.getElementById('bracketSetupForm');
+        const bracketDataInput = document.getElementById('bracketDataInput');
+
         form.addEventListener('submit', function(e) {
-            // นี่คือตัวอย่างการเตรียมข้อมูลการจับคู่ก่อนส่ง
-            // ในกรณีที่คุณสร้าง UI ที่ซับซ้อนกว่า dropdowns
-            // คุณจะต้องรวบรวมข้อมูลจาก UI ของคุณ
-            
-            const pairings = [];
-            // ตัวอย่างการรวบรวมจาก dropdowns ด้านบน
-            const matchGroups = document.querySelectorAll('.row.mb-3 > div');
-            matchGroups.forEach((group, index) => {
-                const team1Select = group.querySelector(`select[name="team1_match${index + 1}"]`);
-                const team2Select = group.querySelector(`select[name="team2_match${index + 1}"]`);
-                
-                if (team1Select && team2Select && team1Select.value && team2Select.value) {
-                    pairings.push({
-                        round: 1, // หรือคำนวณรอบที่ถูกต้อง
-                        team1_id: parseInt(team1Select.value),
-                        team2_id: parseInt(team2Select.value)
+            e.preventDefault(); // ป้องกันการส่งฟอร์มปกติเพื่อประมวลผลข้อมูล
+
+            const bracket = {
+                event_id: {{ event.id }},
+                rounds: []
+            };
+
+            // ---- รวบรวมข้อมูลแต่ละรอบ ----
+            document.querySelectorAll('.col-md-3').forEach(column => {
+                const roundNumber = parseInt(column.querySelector('h4').textContent.match(/\d+/)) || 
+                                   (column.querySelector('h4').textContent.includes('ชิงชนะเลิศ') ? 4 : 0); // กำหนดเลขรอบถ้าเป็นรอบชิง
+
+                if (!roundNumber) return; // ถ้าไม่เจอเลขรอบ ให้ข้ามไป
+
+                const matchesInRound = [];
+                column.querySelectorAll('.card').forEach(card => {
+                    const matchId = parseInt(card.dataset.matchId);
+                    const team1Select = card.querySelector('select[name$="_team1"]'); // เลือก select ที่ลงท้ายด้วย _team1
+                    const team2Select = card.querySelector('select[name$="_team2"]'); // เลือก select ที่ลงท้ายด้วย _team2
+                    const fieldInput = card.querySelector('input[name$="_field"]'); // เลือก input ที่ลงท้ายด้วย _field
+
+                    if (team1Select && team2Select) { // ต้องมีทั้งสองทีมเป็นอย่างน้อย
+                        matchesInRound.push({
+                            match_id: matchId,
+                            team1: team1Select.value, // จะเป็น team_id หรือ 'winner_of_match_X'
+                            team2: team2Select.value, // จะเป็น team_id หรือ 'winner_of_match_X'
+                            field: fieldInput ? fieldInput.value : ''
+                        });
+                    }
+                });
+
+                if (matchesInRound.length > 0) {
+                    bracket.rounds.push({
+                        round_number: roundNumber,
+                        matches: matchesInRound
                     });
                 }
             });
 
-            // ใส่ข้อมูล pairings ใน input hidden field ก่อนส่ง
-            document.getElementById('pairingsDataInput').value = JSON.stringify(pairings);
-            // ถ้าไม่ใช้ input hidden, สามารถใช้ Fetch API เพื่อส่ง JSON ได้โดยตรง
-            // e.preventDefault(); // ป้องกันการ submit ฟอร์มปกติ
+            // ใส่ข้อมูลทั้งหมดใน input hidden field
+            bracketDataInput.value = JSON.stringify(bracket);
+            
+            // ส่งฟอร์ม
+            form.submit();
+
+            // คุณสามารถใช้ Fetch API เพื่อส่งข้อมูล JSON โดยตรงได้
+            // ซึ่งจะทำให้หน้าไม่โหลดใหม่ ถ้าต้องการ
             // fetch(form.action, {
             //     method: 'POST',
             //     headers: {
             //         'Content-Type': 'application/json',
             //     },
-            //     body: JSON.stringify(pairings),
+            //     body: JSON.stringify(bracket),
             // }).then(response => response.json())
             //   .then(data => {
-            //       console.log(data);
-            //       // จัดการ response (เช่น แสดง flash message, redirect)
+            //       console.log('Response:', data);
+            //       if (data.status === 'success') {
+            //           alert('บันทึกตารางก้างปลาสำเร็จ!');
+            //           //window.location.href = `{{ url_for('event_detail', event_id=event.id) }}`; 
+            //       } else {
+            //           alert('บันทึกตารางก้างปลาไม่สำเร็จ: ' + data.message);
+            //       }
             //   })
             //   .catch(error => {
             //       console.error('Error:', error);
+            //       alert('เกิดข้อผิดพลาดในการบันทึกตารางก้างปลา');
             //   });
         });
+
+        // เพิ่มการตรวจสอบให้ dropdown ไม่เลือกทีมซ้ำในคู่เดียวกัน
+        document.querySelectorAll('.team-select').forEach(select => {
+            select.addEventListener('change', function() {
+                const selectedTeamId = this.value;
+                if (selectedTeamId === "") return; // ถ้าไม่ได้เลือกอะไร ไม่ต้องเช็ค
+
+                // หา select ตัวอื่นในคู่เดียวกัน
+                const siblings = Array.from(this.closest('.card-body').querySelectorAll('.team-select'))
+                                    .filter(s => s !== this);
+                
+                siblings.forEach(sibling => {
+                    if (sibling.value === selectedTeamId) {
+                        alert("ทีมนี้ถูกเลือกไปแล้วในคู่นี้ กรุณาเลือกทีมอื่น");
+                        this.value = ""; // รีเซ็ตการเลือก
+                    }
+                });
+            });
+        });
+
+        // (Optional) การตรวจสอบไม่ให้ทีมซ้ำกันในรอบแรก (ซับซ้อนกว่า)
+        // ถ้าต้องการไม่ให้ทีมซ้ำกันตลอดทั้งรอบ 16 ทีม
+        // คุณจะต้องเก็บสถานะของทีมที่ถูกเลือกทั้งหมดและอัปเดต dropdowns อื่นๆ
+        // ซึ่งจะซับซ้อนกว่าการตรวจสอบภายในคู่เดียว
     });
 </script>
 {% endblock %}

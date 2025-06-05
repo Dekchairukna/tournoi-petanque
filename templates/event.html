@@ -425,16 +425,13 @@
         {% endif %}
       </div>
     </div>
-    <div class="mb-4"><a href="{{ url_for('match.download_standings', event_id=event.id) }}"
-        class="btn btn-dark-outline btn-custom">
-        <i class="bi bi-download mb-4"></i> ดาวน์โหลดตารางคะแนน
-      </a></div>
-      <a href="{{ url_for('event_standings', event_id=event.id) }}" class="btn btn-primary">
+    
+      <a href="{{ url_for('event_standings', event_id=event.id) }}" class="btn btn-dark-outline btn-custom margin-2">
     ดูตารางจัดลำดับกิจกรรม
 </a>
 
 
-    <div class="mb-4">
+    <div class="mb-4 p-2">
       <a href="{{ url_for('index') }}" class="btn btn-secondary btn-lg">← กลับหน้าแรก</a>
     </div>
   </div>
