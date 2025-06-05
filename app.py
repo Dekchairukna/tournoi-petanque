@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
 from datetime import datetime, timedelta, date
 from flask import session
@@ -21,6 +21,11 @@ from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
 from flask_wtf.file import FileField, FileAllowed
 import json
+# สำหรับ Excel
+import io
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
 
 load_dotenv()
 app = Flask(__name__)
@@ -93,10 +98,7 @@ def safe_int(value):
     except (TypeError, ValueError):
         return 0
 
-@app.route("/event/<int:event_id>/standings")
-def standings(event_id):
-    standings_list = calculate_standings(event_id)
-    return render_template("standings.html", standings=standings_list, event_id=event_id)
+
 
 
 def swiss_pairing(event_id, round_no):
@@ -665,93 +667,48 @@ def edit_team(event_id, team_id):
     db.session.commit()
     flash('แก้ไขชื่อทีมเรียบร้อยแล้ว', 'success')
     return redirect(url_for('event_detail', event_id=event_id))
-
-
-# app.py
-
-# ... (ส่วน import ต่างๆ ของคุณด้านบน)
-
-@app.route('/event/<int:event_id>/pair_next_round', methods=['POST'])
+@app.route("/event/<int:event_id>/pair_next_round", methods=['POST'])
 @login_required
-@roles_required('admin', 'superadmin')
+@roles_required('admin')
 def pair_next_round(event_id):
-    event = Event.query.get_or_404(event_id)
-    if not event.is_active:
-        flash('ไม่สามารถจับคู่รอบถัดไปได้ เนื่องจากรายการแข่งขันนี้ปิดแล้ว', 'danger')
-        return redirect(url_for('event_detail', event_id=event.id))
+    max_round = db.session.query(db.func.max(Match.round)).filter_by(event_id=event_id).scalar()
+    next_round = (max_round or 0) + 1
 
-    current_round = event.current_round  # รอบปัจจุบัน
-    next_round_num = current_round + 1
+    if max_round is None:
+        flash("ยังไม่มีการจับคู่รอบแรก กรุณาจับคู่รอบแรกก่อน", "warning")
+        return redirect(url_for("event_detail", event_id=event_id))
 
-    # ตรวจสอบว่ามีทีมลงทะเบียนหรือไม่
-    teams_in_event = Team.query.filter_by(event_id=event.id).all()
-    if not teams_in_event:
-        flash('ไม่มีทีมลงทะเบียนสำหรับรายการแข่งขันนี้', 'warning')
-        return redirect(url_for('event_detail', event_id=event.id))
+    # ตรวจสอบว่าแมตช์รอบก่อนหน้าล็อกผลหมดหรือยัง
+    unlocked_matches = Match.query.filter_by(event_id=event_id, round=max_round, is_locked=False).count()
+    if unlocked_matches > 0:
+        flash(f"กรุณาล็อกผลการแข่งขันรอบที่ {max_round} ก่อนจับคู่รอบถัดไป", "warning")
+        return redirect(url_for("event_detail", event_id=event_id))
 
-    # ดึงข้อมูลการจับคู่ที่ผ่านมาสำหรับตรวจสอบ
-    past_matches = Match.query.filter_by(event_id=event.id).all()
-    past_opponents = defaultdict(set) # เก็บว่าทีมไหนเคยเจอทีมไหนแล้ว
-    for match in past_matches:
-        if match.team1_id and match.team2_id:
-            past_opponents[match.team1_id].add(match.team2_id)
-            past_opponents[match.team2_id].add(match.team1_id)
+    event = Event.query.get(event_id)
+    if not event:
+        flash("ไม่พบรายการแข่งขันนี้", "danger")
+        return redirect(url_for("index"))
 
-    # ดึงทีมที่เคยได้ BYE ในรอบที่แล้ว
-    bye_teams_ids = set()
-    last_round_matches = Match.query.filter_by(event_id=event.id, round_num=current_round).all()
-    for match in last_round_matches:
-        if match.team1_id is None and match.team2_id:
-            bye_teams_ids.add(match.team2_id)
-        elif match.team2_id is None and match.team1_id:
-            bye_teams_ids.add(match.team1_id)
+    if next_round > event.rounds:
+        flash("ครบจำนวนรอบการแข่งขันแล้ว ไม่สามารถจับคู่รอบใหม่ได้", "info")
+        return redirect(url_for("event_detail", event_id=event_id))
 
-    # แปลง teams_in_event ให้เป็น list ของ team_id เพื่อส่งให้ generate_pairings
-    team_ids_in_event = [t.id for t in teams_in_event]
-    
-    try:
-        # สร้างคู่แข่งขันสำหรับรอบถัดไป
-        # generate_pairings จะคืนค่าเป็น list ของ tuple (team1_id, team2_id) โดยที่ team2_id จะเป็น None ถ้าเป็น BYE
-        pairings = generate_pairings(event_id, next_round_num, team_ids_in_event, past_opponents, bye_teams_ids)
+    # 🔁 เรียก swiss_pairing แล้วตรวจสอบผลลัพธ์
+    success, message = swiss_pairing(event_id, next_round)
 
-        if not pairings: # หากไม่มีคู่แข่งขัน (อาจเกิดจากมีทีมเดียวที่ไม่ได้จับคู่ หรือเกิดข้อผิดพลาดในการจับคู่)
-            flash('ไม่สามารถจับคู่ได้ในรอบนี้ อาจมีปัญหาเรื่องจำนวนทีมหรือกฎการจับคู่', 'warning')
-            return redirect(url_for('round_matches', event_id=event_id, round=current_round))
+    if not success:
+        flash(message, "warning")
 
-        # บันทึกคู่แข่งขันใหม่ลงฐานข้อมูล
-        for team1_id, team2_id in pairings:
-            score1 = None
-            score2 = None
+        # ถ้าเป็นกรณี BYE ซ้ำหลายรอบ → ส่งไป manual pairing
+        if "BYE ซ้ำ" in message or "จับคู่ด้วยมือ" in message:
+            return redirect(url_for("manual_pairing", event_id=event_id, round_num=next_round))
 
-            # ตรวจสอบว่าเป็นคู่ BYE หรือไม่ และกำหนดคะแนน
-            if team2_id is None: # ถ้า team2_id เป็น None แสดงว่า team1_id ได้ BYE
-                score1 = 13  # ทีมที่ได้ BYE ได้ 13 คะแนน
-                score2 = 7   # กำหนดคะแนนให้คู่ต่อสู้เสมือน (คะแนน BYE)
-            # กรณีที่ team1_id เป็น None ไม่น่าจะเกิดขึ้นจากการ generate_pairings ของคุณ
-            # เพราะ swiss_logic.py จะใส่ทีมที่ได้ BYE ไว้ในตำแหน่งแรกของ tuple (team_id, None)
+        # กรณีอื่นๆ กลับหน้า event_detail
+        return redirect(url_for("event_detail", event_id=event_id))
 
-            new_match = Match(
-                event_id=event_id,
-                round_num=next_round_num,
-                team1_id=team1_id,
-                team2_id=team2_id, # จะเป็น None ถ้าเป็น BYE
-                team1_score=score1, # กำหนดคะแนนตามที่คำนวณไว้
-                team2_score=score2, # กำหนดคะแนนตามที่คำนวณไว้
-                field=None # สามารถกำหนดฟิลด์สำหรับ BYE หรือปล่อยให้เป็น None
-            )
-            db.session.add(new_match)
+    flash(f"จับคู่รอบที่ {next_round} เรียบร้อยแล้ว", "success")
+    return redirect(url_for("round_matches", event_id=event_id, round=next_round))
 
-        # อัปเดตรอบปัจจุบันของ Event
-        event.current_round = next_round_num
-        db.session.commit()
-
-        flash(f'จับคู่สำหรับรอบที่ {next_round_num} สำเร็จแล้ว!', 'success')
-        return redirect(url_for('round_matches', event_id=event_id, round=next_round_num))
-
-    except Exception as e:
-        db.session.rollback() # ถ้ามีข้อผิดพลาด ให้ย้อนกลับการเปลี่ยนแปลง
-        flash(f'เกิดข้อผิดพลาดในการจับคู่: {str(e)}', 'danger')
-        return redirect(url_for('event_detail', event_id=event.id))
 
 
 
@@ -1135,7 +1092,255 @@ def match_pairs(event_id):
         selected_round=selected_round
     )
 
+#--------------------------------------------------------------------------------------
+# Swiss System Logic & Standings Display - เริ่มปรับปรุงที่นี่
 
+# ฟังก์ชันคำนวณ Buchholz (BHN) และ Fine Buchholz (fBHN) ที่นำมาจาก standings.py
+# (ถ้า standings.py คำนวณให้แล้ว ไม่ต้องทำซ้ำตรงนี้)
+# จากที่ดู standings.py ของคุณ calculate_standings จะคืนค่า bhn และ fbhn มาให้แล้ว
+
+@app.route('/event/<int:event_id>/standings')
+@login_required
+def event_standings(event_id):
+    current_event = Event.query.get_or_404(event_id)
+
+    # เรียกใช้ calculate_standings จาก standings.py
+    # ฟังก์ชันนี้ควรจะคืนค่า standings_data ที่จัดเรียงแล้วและมีข้อมูล BHN, fBHN, point_diff ครบถ้วน
+    standings_data = calculate_standings(event_id) # standings_data จะเป็น list ของ dicts
+
+    # รับค่าจำนวนทีมที่เข้ารอบจากฟอร์ม (หรือใช้ค่าเริ่มต้น)
+    # ถ้าไม่มีการส่งค่ามาหรือค่าว่าง จะใช้ 8 เป็นค่าเริ่มต้น
+    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=8)
+
+    # ตรวจสอบว่าค่าไม่เกินจำนวนทีมทั้งหมด
+    if num_qualified_teams > len(standings_data):
+        num_qualified_teams = len(standings_data)
+    if num_qualified_teams < 0: # ป้องกันค่าติดลบ
+        num_qualified_teams = 0
+
+    return render_template(
+        'event_standings.html',
+        event=current_event,
+        standings=standings_data,
+        num_qualified_teams=num_qualified_teams # ส่งค่านี่ไปที่ template ด้วย
+    )
+
+# เส้นทางใหม่สำหรับดาวน์โหลด Excel
+
+@app.route('/event/<int:event_id>/download_standings_excel')
+@login_required
+def download_standings_excel(event_id):
+    current_event = Event.query.get_or_404(event_id)
+    
+    # ดึงค่า 'num_qualified_teams' จาก URL (Frontend)
+    # ถ้าไม่ได้ส่งมา ให้ใช้ค่าเริ่มต้น เช่น 8
+    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=8)
+    
+    # ดึงข้อมูล Round ที่อาจจะส่งมา (ถ้ามี)
+    # ถ้า 'round' ไม่ได้ถูกส่งมา, อาจจะถือว่าเป็นการดาวน์โหลดตารางคะแนนรวม
+    requested_round = request.args.get('round', type=int) 
+    
+    standings_data = calculate_standings(event_id) # เรียกใช้ฟังก์ชันเดิม
+    
+    # ถ้ามีการระบุ round ให้กรองข้อมูล (สำหรับตอนนี้ ยังคง pass ไว้)
+    if requested_round:
+        # คุณอาจจะต้องปรับ calculate_standings ในไฟล์ standings.py ให้รับ round_number
+        # หรือกรองข้อมูล standings_data ที่นี่ หากข้อมูลที่ได้กลับมามีรายละเอียดรอบอยู่
+        pass 
+
+    output = io.BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Standings"
+
+    # --- Header Information (ชื่อกิจกรรม, ประเภท, รุ่น) ---
+    ws.merge_cells('A1:F1') # รวมเซลล์สำหรับหัวข้อหลัก
+    ws['A1'] = f"รายงานผลจัดลำดับ: {current_event.name}"
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+
+    ws.merge_cells('A2:F2') # รวมเซลล์สำหรับประเภทและรุ่น
+    # ใช้ฟิลด์ category และ age_group ตามที่เราได้ตกลงกันไว้ใน models.py
+    event_type_str = current_event.category if hasattr(current_event, 'category') and current_event.category else 'ไม่ระบุประเภท'
+    event_category_str = current_event.age_group if hasattr(current_event, 'age_group') and current_event.age_group else 'ไม่ระบุรุ่น'
+    ws['A2'] = f"ประเภท: {event_type_str} | รุ่น: {event_category_str}"
+    ws['A2'].font = Font(size=12)
+    ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
+
+    # ถ้ามีข้อมูลรอบที่เฉพาะเจาะจงที่ดาวน์โหลด
+    if requested_round:
+        ws.merge_cells('A3:F3') # รวมเซลล์สำหรับรอบที่
+        ws['A3'] = f"ครั้งการแข่งขัน: รอบที่ {requested_round}"
+        ws['A3'].font = Font(bold=True)
+        ws['A3'].alignment = Alignment(horizontal='center', vertical='center')
+        header_row_start = 5 # ถ้ามีรอบ จะเริ่มหัวตารางที่แถว 5
+    else:
+        header_row_start = 4 # ไม่มีรอบ จะเริ่มหัวตารางที่แถว 4
+    
+    ws.row_dimensions[1].height = 25 # กำหนดความสูงของแถว
+    ws.row_dimensions[2].height = 20
+    if requested_round: ws.row_dimensions[3].height = 20
+
+    # --- Table Headers (หัวตาราง) ---
+    # ******************************** สำคัญ: ลบ "Point For" และ "Point Against" ออกจาก headers ********************************
+    headers = ["อันดับ", "ชื่อทีม", "คะแนน", "BHN", "FBHN", "Point Diff"] 
+    col_start = 1 # เริ่มต้นคอลัมน์ A (Excel)
+    for col_num, header in enumerate(headers, col_start):
+        cell = ws.cell(row=header_row_start, column=col_num, value=header)
+        cell.font = Font(bold=True, color="FFFFFF") # กำหนดฟอนต์ตัวหนาและสีข้อความเป็นสีขาว
+        cell.alignment = Alignment(horizontal='center', vertical='center') # จัดกึ่งกลาง
+        cell.fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid") # สีพื้นหลังหัวตารางเป็นสีเขียวเข้ม
+        cell.border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin')) # ขอบเซลล์
+
+    # --- Data Rows (ข้อมูลทีมและการกำหนดสีแถว) ---
+    row_num = header_row_start + 1 # เริ่มต้นแถวข้อมูลหลังจากหัวตาราง
+    for i, team in enumerate(standings_data, 1): # i คืออันดับทีม
+        # กำหนดสไตล์เริ่มต้น (ไม่มีพื้นหลัง)
+        row_fill = None
+        row_font = Font() # ฟอนต์ปกติ
+        row_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        
+        # ถ้าทีมนี้เป็นทีมที่เข้ารอบ (อันดับ <= num_qualified_teams) ให้กำหนดสีพื้นหลัง
+        if i <= num_qualified_teams:
+            row_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid") # สีเขียวอ่อนสำหรับทีมเข้ารอบ
+            row_font = Font(color="000000") # สีข้อความดำสำหรับทีมเข้ารอบ
+        else:
+            # กำหนดสีพื้นหลังสำหรับทีมที่ตกรอบ
+            row_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid") # สีขาวสำหรับทีมตกรอบ
+            row_font = Font(color="000000") # สีข้อความดำสำหรับทีมตกรอบ
+
+
+        # ใส่ข้อมูลและกำหนดสไตล์ให้กับแต่ละเซลล์ในแถวนี้
+        ws.cell(row=row_num, column=1, value=i).alignment = Alignment(horizontal='center')
+        ws.cell(row=row_num, column=2, value=team['team_name'])
+        ws.cell(row=row_num, column=3, value=team['score']).alignment = Alignment(horizontal='center')
+        ws.cell(row=row_num, column=4, value=team['buchholz']).alignment = Alignment(horizontal='center')
+        ws.cell(row=row_num, column=5, value=team['final_buchholz']).alignment = Alignment(horizontal='center')
+        # ******************************** สำคัญ: ลบ team['point_for'] และ team['point_against'] ออก ********************************
+        # ******************************** และปรับ column ของ 'point_diff' เป็น 6 ********************************
+        ws.cell(row=row_num, column=6, value=f"{team['point_for']}:{team['point_against']}").alignment = Alignment(horizontal='center') 
+
+        # วนลูปเพื่อกำหนดสีพื้นหลัง, ฟอนต์ และขอบให้กับทุกเซลล์ในแถวปัจจุบัน
+        # len(headers) จะเป็น 6 (ตามจำนวน headers ใหม่) ทำให้ลูปวนแค่ 6 คอลัมน์
+        for col_idx in range(1, len(headers) + 1): 
+            cell = ws.cell(row=row_num, column=col_idx)
+            if row_fill:
+                cell.fill = row_fill
+            if row_font:
+                cell.font = row_font
+            cell.border = row_border # ใช้ border ที่กำหนดไว้
+        
+        row_num += 1
+
+    # --- Auto-size Columns --- 
+    for col_cells in ws.columns: # 'col_cells' ตอนนี้คือ tuple ของเซลล์ในคอลัมน์นั้นๆ แล้ว
+        max_length = 0
+        # เราจะวนลูปโดยตรงผ่าน tuple ของเซลล์ในคอลัมน์นั้นๆ
+        for cell in col_cells:
+            try:
+                if cell.value is not None: # ตรวจสอบว่ามีค่าในเซลล์ก่อน
+                    cell_value_str = str(cell.value)
+                    if len(cell_value_str) > max_length:
+                        max_length = len(cell_value_str)
+            except:
+                pass
+        
+        # ปรับความกว้างของคอลัมน์
+        adjusted_width = (max_length + 2)
+        if col_cells: # ตรวจสอบว่า col_cells ไม่ว่างเปล่าก่อนเข้าถึง [0] เพื่อหา column letter
+            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = adjusted_width
+
+    wb.save(output)
+    output.seek(0)
+
+    # --- ตั้งชื่อไฟล์ Excel สำหรับดาวน์โหลด ---
+    # ทำให้ชื่อไฟล์สะอาดสำหรับ URL
+    event_name_safe = current_event.name.replace(" ", "_").replace("/", "-")
+    # ใช้ค่าที่ได้จาก current_event.category และ current_event.age_group
+    event_type_safe = event_type_str.replace(" ", "_").replace("/", "-")
+    event_category_safe = event_category_str.replace(" ", "_").replace("/", "-")
+    
+    filename_parts = [
+        event_name_safe,
+        event_type_safe,
+        event_category_safe
+    ]
+    if requested_round:
+        filename_parts.append(f"Round_{requested_round}")
+
+    filename = "_".join(part for part in filename_parts if part) + "_Standings.xlsx"
+
+    return send_file(output, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+#--------------------------------------------------------------------------------------
+# เส้นทางใหม่สำหรับนำข้อมูลทีมที่ได้ไปจัดทำตารางรอบน็อคเอาท์
+@app.route('/event/<int:event_id>/create_bracket')
+@login_required
+def create_bracket(event_id):
+    current_event = Event.query.get_or_404(event_id)
+    standings_data = calculate_standings(event_id)
+
+    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=8)
+    if num_qualified_teams > len(standings_data):
+        num_qualified_teams = len(standings_data)
+    if num_qualified_teams < 0:
+        num_qualified_teams = 0
+
+    qualified_teams = standings_data[:num_qualified_teams]
+
+    # ส่งข้อมูลทีมที่เข้ารอบไปยัง template ใหม่สำหรับสร้างตารางรอบน็อคเอาท์
+    return render_template(
+        'bracket_setup.html', # คุณจะต้องสร้างไฟล์นี้ขึ้นมา
+        event=current_event,
+        qualified_teams=qualified_teams
+    )
+
+# --- เพิ่ม Route สำหรับบันทึกการจับคู่ ---
+@app.route('/event/<int:event_id>/save_bracket_pairings', methods=['POST'])
+@login_required # ถ้าต้องการให้ต้อง Login ก่อน
+def save_bracket_pairings(event_id):
+    """
+    ฟังก์ชันนี้จะรับข้อมูลการจับคู่รอบน็อคเอาท์จากฟอร์มใน bracket_setup.html
+    และทำการบันทึกข้อมูลนั้นลงในฐานข้อมูล
+    """
+    try:
+        # รับข้อมูลการจับคู่จากฟอร์ม
+        # วิธีการรับข้อมูลขึ้นอยู่กับว่าคุณสร้างฟอร์มใน bracket_setup.html อย่างไร
+        # ตัวอย่าง: หากคุณใช้ JavaScript ส่งข้อมูลเป็น JSON
+        # pairings_data = request.get_json()
+
+        # ตัวอย่าง: หากคุณใช้ input hidden field ชื่อ 'pairings_json' เก็บ JSON string
+        pairings_json = request.form.get('pairings_data') # สมมติว่ามี input field ชื่อ 'pairings_data'
+        if pairings_json:
+            pairings_list = json.loads(pairings_json)
+            
+            # === ส่วนนี้คือที่คุณจะเขียนโค้ดเพื่อบันทึกข้อมูลลงฐานข้อมูล ===
+            # วนลูปผ่าน pairings_list และสร้าง/อัปเดต Match objects
+            # for pairing in pairings_list:
+            #     team1_id = pairing['team1_id']
+            #     team2_id = pairing['team2_id']
+            #     round_num = pairing.get('round', 1) # กำหนดรอบเริ่มต้น
+            #     
+            #     # ตรวจสอบว่าคู่นี้มีอยู่แล้วหรือไม่ หรือสร้างใหม่
+            #     # existing_match = Match.query.filter_by(event_id=event_id, round=round_num, team1_id=team1_id, team2_id=team2_id).first()
+            #     # if not existing_match:
+            #     #    new_match = Match(event_id=event_id, team1_id=team1_id, team2_id=team2_id, round=round_num, is_locked=False)
+            #     #    db.session.add(new_match)
+            # db.session.commit() # บันทึกการเปลี่ยนแปลงทั้งหมดในคราวเดียว
+            # === จบส่วนบันทึกข้อมูล ===
+            
+            flash('บันทึกการจับคู่รอบน็อคเอาท์สำเร็จ!', 'success')
+        else:
+            flash('ไม่พบข้อมูลการจับคู่ที่จะบันทึก', 'warning')
+
+        # หลังจากบันทึกเสร็จแล้ว Redirect ไปยังหน้าที่แสดง Bracket ที่สร้างเสร็จ
+        # หรือกลับไปหน้า create_bracket อีกครั้ง
+        return redirect(url_for('create_bracket', event_id=event_id))
+
+    except Exception as e:
+        # db.session.rollback() # หากมีการใช้ db.session.add/commit และเกิดข้อผิดพลาด
+        flash(f'เกิดข้อผิดพลาดในการบันทึกการจับคู่: {str(e)}', 'danger')
+        return redirect(url_for('create_bracket', event_id=event_id))
 
 
 

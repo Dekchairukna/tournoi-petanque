@@ -37,18 +37,18 @@
 
     /* สำหรับตารางคะแนน */
     .table.table-bordered.table-sm thead th {
-      font-size: 0.6rem; /* ลดขนาดฟอนต์ของหัวตารางคะแนน */
+      font-size: 0.5rem; /* ลดขนาดฟอนต์ของหัวตารางคะแนน */
       padding: 0.2rem 0.3rem; /* ลด padding ของหัวตารางคะแนน */
       white-space: nowrap; /* หัวตารางยังคงไม่ขึ้นบรรทัดใหม่ */
     }
 
     .table.table-bordered.table-sm tbody td {
-      font-size: 0.63rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ตารางคะแนน */
-      padding: 0.2rem 0.3rem; /* ลด padding ของข้อมูลในเซลล์ตารางคะแนน */
+      font-size: 0.53rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ตารางคะแนน */
+      padding: 0.1rem 0.13rem; /* ลด padding ของข้อมูลในเซลล์ตารางคะแนน */
     }
 
     .table.table-bordered.table-sm tbody td[data-label="TEAM"] {
-      font-size: 0.6rem; /* ลดขนาดฟอนต์ของชื่อทีมให้เล็กลง */
+      font-size: 0.5rem; /* ลดขนาดฟอนต์ของชื่อทีมให้เล็กลง */
       white-space: normal; /* อนุญาตให้ชื่อทีมขึ้นบรรทัดใหม่ได้ */
       word-break: break-word; /* **เพิ่ม: ตัดคำยาวๆ ได้ถ้าจำเป็น** */
     }
@@ -103,7 +103,7 @@
     <div class="card-header bg-info text-white fw-semibold fs-5">
       ฟอร์มกรอกผลการแข่งขัน
     </div>
-    <div class="card-body p-0">
+    <div class="card-body p-3">
       {% if error_message %}
       <div class="alert alert-warning">{{ error_message }}</div>
       {% endif %}

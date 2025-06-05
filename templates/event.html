@@ -211,19 +211,19 @@
 
     /* สำหรับตารางคะแนน (ใน event.html และ round_matches.html) */
     .table.table-bordered.table-sm thead th {
-      font-size: 0.6rem; /* ลดขนาดฟอนต์ของหัวตารางคะแนน */
+      font-size: 0.5rem; /* ลดขนาดฟอนต์ของหัวตารางคะแนน */
       padding: 0.2rem 0.3rem; /* ลด padding ของหัวตารางคะแนน */
       white-space: nowrap; /* หัวตารางยังคงไม่ขึ้นบรรทัดใหม่ */
     }
 
     .table.table-bordered.table-sm tbody td {
-      font-size: 0.63rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ตารางคะแนน */
-      padding: 0.2rem 0.3rem; /* ลด padding ของข้อมูลในเซลล์ตารางคะแนน */
+      font-size: 0.53rem; /* ลดขนาดฟอนต์ของข้อมูลในเซลล์ตารางคะแนน */
+      padding: 0.1rem 0.13rem; /* ลด padding ของข้อมูลในเซลล์ตารางคะแนน */
       /* white-space: nowrap; ถูกลบออกจาก td ทั่วไป เพื่อควบคุมรายคอลัมน์ */
     }
 
     .table.table-bordered.table-sm tbody td[data-label="TEAM"] {
-      font-size: 0.6rem; /* ลดขนาดฟอนต์ของชื่อทีมให้เล็กลง */
+      font-size: 0.5rem; /* ลดขนาดฟอนต์ของชื่อทีมให้เล็กลง */
       white-space: normal; /* อนุญาตให้ชื่อทีมขึ้นบรรทัดใหม่ได้ */
     }
 
@@ -373,9 +373,9 @@
       <div class="card-header bg-warning text-dark fw-semibold">
         ตารางจัดลำดับ
       </div>
-      <div class="card-body p-0">   <h5>>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</h5>
+      <div class="card-body p-0">   <p>>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</p>
         {% if standings %}
-        <div class="table-responsive">
+        <div class="table-responsive p-1">
           <table class="table table-bordered table-sm align-middle text-center mb-0">
             <thead class="table-light">
               <tr>
@@ -388,6 +388,7 @@
                 <th>BHN</th>
                 <th>fBHN</th>
                 <th>+-</th>
+                
               </tr>
             </thead>
             <tbody>
@@ -428,6 +429,9 @@
         class="btn btn-dark-outline btn-custom">
         <i class="bi bi-download mb-4"></i> ดาวน์โหลดตารางคะแนน
       </a></div>
+      <a href="{{ url_for('event_standings', event_id=event.id) }}" class="btn btn-primary">
+    ดูตารางจัดลำดับกิจกรรม
+</a>
 
 
     <div class="mb-4">

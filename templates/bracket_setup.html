@@ -1,0 +1,107 @@
+{% extends 'base.html' %} {# สมมติว่ามี base template #}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>จัดตารางรอบน็อคเอาท์ - {{ event.name }}</h2>
+    <p>จำนวนทีมที่เข้ารอบ: {{ qualified_teams | length }} ทีม</p>
+
+    <h3>ทีมที่เข้ารอบ:</h3>
+    <ul class="list-group mb-4">
+        {% for team in qualified_teams %}
+        <li class="list-group-item">{{ loop.index }}. {{ team.team_name }} (คะแนน: {{ team.score }})</li>
+        {% endfor %}
+    </ul>
+
+    <div class="mt-4">
+        <h4>การจับคู่รอบน็อคเอาท์:</h4>
+        <p>ลากและวางทีมเพื่อจับคู่ หรือเลือกจาก dropdowns (ตัวอย่าง UI)</p>
+
+        <form id="bracketPairingForm" action="{{ url_for('save_bracket_pairings', event_id=event.id) }}" method="POST">
+            <div id="bracket-ui">
+                <h5>รอบที่ 1:</h5>
+                <div class="row mb-3">
+                    {% for i in range(qualified_teams | length // 2) %}
+                    <div class="col-md-6 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text">คู่ที่ {{ loop.index }}</span>
+                            <select class="form-select" name="team1_match{{ loop.index }}">
+                                <option value="">เลือกทีม 1</option>
+                                {% for team in qualified_teams %}
+                                <option value="{{ team.team_id }}">{{ team.team_name }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="input-group-text"> vs </span>
+                            <select class="form-select" name="team2_match{{ loop.index }}">
+                                <option value="">เลือกทีม 2</option>
+                                {% for team in qualified_teams %}
+                                <option value="{{ team.team_id }}">{{ team.team_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <input type="hidden" name="pairings_data" id="pairingsDataInput">
+
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-3">บันทึกการจับคู่</button>
+        </form>
+
+        <div class="mt-4">
+            <h4>สำหรับปริ้นท์:</h4>
+            <p>คุณสามารถเพิ่มปุ่มหรือลิงก์เพื่อปริ้นท์หน้านี้ หรือสร้าง PDF/รูปภาพของตารางก้างปลา</p>
+            <button onclick="window.print()" class="btn btn-info">ปริ้นท์ตารางก้างปลา</button>
+            </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('bracketPairingForm');
+        form.addEventListener('submit', function(e) {
+            // นี่คือตัวอย่างการเตรียมข้อมูลการจับคู่ก่อนส่ง
+            // ในกรณีที่คุณสร้าง UI ที่ซับซ้อนกว่า dropdowns
+            // คุณจะต้องรวบรวมข้อมูลจาก UI ของคุณ
+            
+            const pairings = [];
+            // ตัวอย่างการรวบรวมจาก dropdowns ด้านบน
+            const matchGroups = document.querySelectorAll('.row.mb-3 > div');
+            matchGroups.forEach((group, index) => {
+                const team1Select = group.querySelector(`select[name="team1_match${index + 1}"]`);
+                const team2Select = group.querySelector(`select[name="team2_match${index + 1}"]`);
+                
+                if (team1Select && team2Select && team1Select.value && team2Select.value) {
+                    pairings.push({
+                        round: 1, // หรือคำนวณรอบที่ถูกต้อง
+                        team1_id: parseInt(team1Select.value),
+                        team2_id: parseInt(team2Select.value)
+                    });
+                }
+            });
+
+            // ใส่ข้อมูล pairings ใน input hidden field ก่อนส่ง
+            document.getElementById('pairingsDataInput').value = JSON.stringify(pairings);
+            // ถ้าไม่ใช้ input hidden, สามารถใช้ Fetch API เพื่อส่ง JSON ได้โดยตรง
+            // e.preventDefault(); // ป้องกันการ submit ฟอร์มปกติ
+            // fetch(form.action, {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //     },
+            //     body: JSON.stringify(pairings),
+            // }).then(response => response.json())
+            //   .then(data => {
+            //       console.log(data);
+            //       // จัดการ response (เช่น แสดง flash message, redirect)
+            //   })
+            //   .catch(error => {
+            //       console.error('Error:', error);
+            //   });
+        });
+    });
+</script>
+{% endblock %}
