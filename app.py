@@ -37,7 +37,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
 
-socketio = SocketIO(app, cors_allowed_origins=["https://tournoi.up.railway.app/"])
+socketio = SocketIO(app, cors_allowed_origins="*")  # หรือใส่ origin จริง
 
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
