@@ -37,7 +37,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
 
-socketio = SocketIO(app, cors_allowed_origins="*")  # หรือใส่ origin จริง
+# ************* แก้ไข Cors_allowed_origins เพื่อรองรับ Production URL *************
+# socketio = SocketIO(app, cors_allowed_origins="*")  # หรือใส่ origin จริง
+socketio = SocketIO(app, cors_allowed_origins=[
+    "http://127.0.0.1:5001",
+    "http://localhost:5001",
+    "https://tournou.up.railway.app" # เพิ่ม URL ของ Railway ของคุณที่นี่
+], async_mode='eventlet') # ใช้ eventlet_mode ที่ระบุไว้ใน Railway
+# ********************************************************************************
 
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
@@ -1459,8 +1466,9 @@ if __name__ == '__main__':
     setup() 
 
     print("\n--- Starting Flask-SocketIO Server ---\n")
-    print("Server will be available at http://127.0.0.1:5001/")
-    print("Press Ctrl+C to exit.")
-
-    # รัน Flask app ด้วย Eventlet เพื่อรองรับ SocketIO
-    eventlet.wsgi.server(eventlet.listen(('', 5001)), app)
+    
+    # ************* แก้ไขตรงนี้ให้รับ PORT จาก Environment Variable *************
+    port = int(os.environ.get("PORT", 5001)) # ดึง PORT จาก Environment Variable, ถ้าไม่มีให้ใช้ 5001
+    print(f"Server will be available on port {port}")
+    eventlet.wsgi.server(eventlet.listen(('', port)), app) # listen ที่พอร์ตที่ได้มา
+    # *************************************************************************
