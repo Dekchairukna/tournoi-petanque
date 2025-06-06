@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+import eventlet
 from flask_socketio import SocketIO, emit
 
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
@@ -36,6 +37,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vpIukBThkAUpgSjNc
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
+eventlet.monkey_patch() 
+
 
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=[
     "http://127.0.0.1:5001", 
