@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask_socketio import SocketIO, emit
+
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
 from datetime import datetime, timedelta, date
 from flask import session
@@ -35,6 +37,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
 
+socketio = SocketIO(app, cors_allowed_origins=["http://127.0.0.1:5001", "http://localhost:5001"])
+
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
 migrate = Migrate(app, db)
@@ -52,6 +56,73 @@ with app.app_context():
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+#------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
+
+# app.py
+
+# ... (Make sure these imports are at the top of your app.py file) ...
+from flask_socketio import SocketIO, emit
+from flask_login import current_user, login_required # Ensure login_required is imported
+from datetime import datetime
+
+# ... (your app, db, socketio setup and other routes/functions) ...
+
+@socketio.on('update_score')
+@login_required
+def handle_update_score(data):
+    """
+    Handles score updates via SocketIO.
+    Requires user to be logged in.
+    Updates the database and broadcasts the new score to all connected clients.
+    """
+    match_id = data.get('match_id')
+    team_a_score = data.get('team_a_score')
+    team_b_score = data.get('team_b_score')
+
+    # Get user information from the current_user Flask-Login object
+    user_id = current_user.id
+    username = current_user.username
+
+    with app.app_context():
+        # Find the match in the database
+        match = Match.query.get(match_id) # Assuming Match model is imported from models.py
+        
+        if match:
+            try:
+                # Update scores (convert to int to ensure correct data type)
+                match.team1_score = int(team_a_score)
+                match.team2_score = int(team_b_score)
+                db.session.commit() # Save changes to the database
+                
+                print(f"Score updated for Match {match_id} by {username}: {team_a_score}-{team_b_score}")
+
+                # Emit the updated score to all connected clients
+                # Including username and timestamp for potential future use/debugging
+                emit('score_updated', {
+                    'match_id': match.id, # Use match.id to ensure it's the correct integer ID
+                    'team_a_score': match.team1_score,
+                    'team_b_score': match.team2_score,
+                    'updated_by_username': username,
+                    'timestamp': datetime.utcnow().isoformat()
+                }, broadcast=True)
+
+            except ValueError:
+                # Handle cases where score might not be a valid integer
+                print(f"Invalid score value received for Match {match_id}: team_a_score={team_a_score}, team_b_score={team_b_score}")
+                emit('error_message', {'message': 'Invalid score format'}, room=request.sid)
+            except Exception as e:
+                # Catch any other unexpected database errors
+                db.session.rollback() # Rollback changes in case of error
+                print(f"Database error updating score for Match {match_id}: {e}")
+                emit('error_message', {'message': 'Server error updating score'}, room=request.sid)
+        else:
+            print(f"Match with ID {match_id} not found.")
+            emit('error_message', {'message': 'Match not found'}, room=request.sid)
+
+
+
+
 
 # ฟังก์ชันแปลงวันที่เป็นภาษาไทยแบบเต็ม
 def thai_date_full(dt):
@@ -229,7 +300,7 @@ def manual_pairing(event_id, round_num):
 def index():
     today = date.today()
 
-    all_events = Event.query.order_by(Event.date).all()
+    all_events = Event.query.order_by(Event.date.desc()).all()
 
     upcoming_events = []
     finished_events_by_year = defaultdict(list)
@@ -1183,7 +1254,7 @@ def download_standings_excel(event_id):
 
     # --- Table Headers (หัวตาราง) ---
     # ******************************** สำคัญ: ลบ "Point For" และ "Point Against" ออกจาก headers ********************************
-    headers = ["อันดับ", "ชื่อทีม", "คะแนน", "BHN", "FBHN", "Point Diff"] 
+    headers = ["อันดับ", "ชื่อทีม", "คะแนน", "BHN", "fBHN", "Point Diff"] 
     col_start = 1 # เริ่มต้นคอลัมน์ A (Excel)
     for col_num, header in enumerate(headers, col_start):
         cell = ws.cell(row=header_row_start, column=col_num, value=header)
@@ -1384,9 +1455,21 @@ def setup():
         db.session.commit()
 
 
-
 if __name__ == '__main__':
+    import eventlet
+    import eventlet.wsgi
+
+    # ตรวจสอบและสร้างโฟลเดอร์ uploads หากไม่มี
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
-    setup()
-    app.run(debug=True)
+
+    # เรียกฟังก์ชัน setup เพื่อสร้างตารางและผู้ใช้เริ่มต้น (สำคัญมาก)
+    # ตรวจสอบว่า setup() รันเสร็จสมบูรณ์โดยไม่มีข้อผิดพลาด
+    setup() 
+
+    print("\n--- Starting Flask-SocketIO Server ---\n")
+    print("Server will be available at http://127.0.0.1:5001/")
+    print("Press Ctrl+C to exit.")
+
+    # รัน Flask app ด้วย Eventlet เพื่อรองรับ SocketIO
+    eventlet.wsgi.server(eventlet.listen(('', 5001)), app)
