@@ -303,7 +303,7 @@
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = io('http://127.0.0.1:5001');
+  const socket = io();
 
   socket.on('connect', () => {
     console.log("✅ Socket.IO connected successfully");
