@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
-import eventlet
 from flask_socketio import SocketIO, emit
 
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
@@ -37,15 +36,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vpIukBThkAUpgSjNc
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
-eventlet.monkey_patch() 
 
-
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=[
-    "http://127.0.0.1:5001", 
-    "http://localhost:5001", 
-    "https://tournoi.up.railway.app"
-])
-
+socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
 migrate = Migrate(app, db)
@@ -167,8 +159,6 @@ def safe_int(value):
         return int(value)
     except (TypeError, ValueError):
         return 0
-
-
 
 
 def swiss_pairing(event_id, round_no):
@@ -1462,10 +1452,13 @@ if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
 
-    setup()  # สร้างตาราง/ผู้ใช้เริ่มต้น
+    # เรียกฟังก์ชัน setup เพื่อสร้างตารางและผู้ใช้เริ่มต้น (สำคัญมาก)
+    # ตรวจสอบว่า setup() รันเสร็จสมบูรณ์โดยไม่มีข้อผิดพลาด
+    setup() 
 
     print("\n--- Starting Flask-SocketIO Server ---\n")
+    print("Server will be available at http://127.0.0.1:5001/")
+    print("Press Ctrl+C to exit.")
 
-    # ✅ ใช้ socketio.run แทน eventlet.wsgi.server
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port)
+    # รัน Flask app ด้วย Eventlet เพื่อรองรับ SocketIO
+    eventlet.wsgi.server(eventlet.listen(('', 5001)), app)
