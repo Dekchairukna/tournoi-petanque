@@ -37,7 +37,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
 
-socketio = SocketIO(app, cors_allowed_origins=["http://127.0.0.1:5001", "http://localhost:5001"])
+socketio = SocketIO(app, cors_allowed_origins=["https://tournoi.up.railway.app/"])
 
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
@@ -58,15 +58,6 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
-
-# app.py
-
-# ... (Make sure these imports are at the top of your app.py file) ...
-from flask_socketio import SocketIO, emit
-from flask_login import current_user, login_required # Ensure login_required is imported
-from datetime import datetime
-
-# ... (your app, db, socketio setup and other routes/functions) ...
 
 @socketio.on('update_score')
 @login_required
