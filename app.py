@@ -43,7 +43,7 @@ eventlet.monkey_patch()
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=[
     "http://127.0.0.1:5001", 
     "http://localhost:5001", 
-    "https://tournou.up.railway.app"
+    "https://tournoi.up.railway.app"
 ])
 
 
