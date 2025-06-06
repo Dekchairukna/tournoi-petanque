@@ -303,8 +303,8 @@
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = io("https://tournou.up.railway.app");
-
+  const socket = io(window.location.origin);  // ✅ ทำให้ใช้ได้ทั้ง local และ Railway production
+  
   socket.on('connect', () => {
     console.log("✅ Socket.IO connected successfully");
   });

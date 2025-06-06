@@ -37,14 +37,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
 
-# ************* แก้ไข Cors_allowed_origins เพื่อรองรับ Production URL *************
-# socketio = SocketIO(app, cors_allowed_origins="*")  # หรือใส่ origin จริง
-socketio = SocketIO(app, cors_allowed_origins=[
-    "http://127.0.0.1:5001",
-    "http://localhost:5001",
-    "https://tournou.up.railway.app" # เพิ่ม URL ของ Railway ของคุณที่นี่
-], async_mode='eventlet') # ใช้ eventlet_mode ที่ระบุไว้ใน Railway
-# ********************************************************************************
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=[
+    "http://127.0.0.1:5001", 
+    "http://localhost:5001", 
+    "https://tournou.up.railway.app"
+])
 
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
@@ -65,6 +62,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
+
 
 @socketio.on('update_score')
 @login_required
@@ -1461,14 +1459,10 @@ if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
 
-    # เรียกฟังก์ชัน setup เพื่อสร้างตารางและผู้ใช้เริ่มต้น (สำคัญมาก)
-    # ตรวจสอบว่า setup() รันเสร็จสมบูรณ์โดยไม่มีข้อผิดพลาด
-    setup() 
+    setup()  # สร้างตาราง/ผู้ใช้เริ่มต้น
 
     print("\n--- Starting Flask-SocketIO Server ---\n")
-    
-    # ************* แก้ไขตรงนี้ให้รับ PORT จาก Environment Variable *************
-    port = int(os.environ.get("PORT", 5001)) # ดึง PORT จาก Environment Variable, ถ้าไม่มีให้ใช้ 5001
-    print(f"Server will be available on port {port}")
-    eventlet.wsgi.server(eventlet.listen(('', port)), app) # listen ที่พอร์ตที่ได้มา
-    # *************************************************************************
+
+    # ✅ ใช้ socketio.run แทน eventlet.wsgi.server
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port)
