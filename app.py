@@ -616,10 +616,19 @@ def edit_teams_route(event_id, team_id):
 @login_required
 @roles_required('admin')
 def pair_first_round(event_id):
+    import re
+    import random
+    from collections import defaultdict
+
+    def extract_base_name(name):
+        # ลบรหัสตัวเลข หรือเครื่องหมายด้านหลังชื่อ เช่น "ขอนแก่น 1", "ขอนแก่น-2" → "ขอนแก่น"
+        base = re.split(r'[\s\-]*\d+$', name.strip())[0]
+        return base
+
     event = Event.query.get(event_id)
     if event is None:
         flash("ไม่พบรายการแข่งขันนี้", "warning")
-        return redirect(url_for("event.html"))
+        return redirect(url_for("event_detail", event_id=event_id))
 
     existing_matches = Match.query.filter_by(event_id=event_id, round=1).count()
     if existing_matches > 0:
@@ -633,7 +642,7 @@ def pair_first_round(event_id):
 
     separate_same_name = request.form.get('separate_same_name') == 'on'
 
-    import random
+    # สุ่มลำดับทีม
     teams = teams[:]  # copy
     random.shuffle(teams)
 
@@ -647,8 +656,8 @@ def pair_first_round(event_id):
             team2 = teams[j]
             if team2.id in used_ids:
                 continue
-            if separate_same_name and team1.name == team2.name:
-                continue  # ข้ามถ้าชื่อซ้ำ
+            if separate_same_name and extract_base_name(team1.name) == extract_base_name(team2.name):
+                continue  # ข้ามถ้ารากชื่อเหมือนกัน เช่น "ขอนแก่น 1" vs "ขอนแก่น 2"
             # จับคู่
             pairings.append((team1, team2))
             used_ids.add(team1.id)
@@ -673,6 +682,7 @@ def pair_first_round(event_id):
     db.session.commit()
     flash("จับคู่รอบแรกเสร็จสิ้น", "success")
     return redirect(url_for("round_matches", event_id=event_id, round=1))
+
 
 
 
