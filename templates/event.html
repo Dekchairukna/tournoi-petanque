@@ -331,7 +331,7 @@
       {% for round_num in range(1, event.rounds + 1) %}
       <a href="{{ url_for('round_matches', event_id=event.id, round=round_num) }}"
         class="btn btn-outline-dark mb-2 {% if round_num == current_round %}fw-bold{% endif %}">
-        รอบที่ {{ round_num }}
+        ครั้งที่ {{ round_num }}
       </a>
       {% endfor %}
     </div>
