@@ -685,7 +685,6 @@ def pair_first_round(event_id):
 
 
 
-
 @app.route('/event/<int:event_id>/team/<int:team_id>/delete', methods=['POST'])
 @login_required
 @roles_required('admin')  # เพิ่มบรรทัดนี้
@@ -737,10 +736,21 @@ def edit_team(event_id, team_id):
     db.session.commit()
     flash('แก้ไขชื่อทีมเรียบร้อยแล้ว', 'success')
     return redirect(url_for('event_detail', event_id=event_id))
+
+
 @app.route("/event/<int:event_id>/pair_next_round", methods=['POST'])
 @login_required
 @roles_required('admin')
 def pair_next_round(event_id):
+    import re
+    import random
+    from collections import defaultdict
+
+    def extract_base_name(name):
+        # ลบรหัสตัวเลข หรือเครื่องหมายด้านหลังชื่อ เช่น "ขอนแก่น 1", "ขอนแก่น-2" → "ขอนแก่น"
+        base = re.split(r'[\s\-]*\d+$', name.strip())[0]
+        return base
+    
     max_round = db.session.query(db.func.max(Match.round)).filter_by(event_id=event_id).scalar()
     next_round = (max_round or 0) + 1
 
