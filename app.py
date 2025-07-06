@@ -519,6 +519,7 @@ def add_event_route():
         rounds = int(request.form["rounds"])
         location = request.form.get("location")
         category = request.form["category"]
+        sex = request.form["sex"]
         age_group = request.form["age_group"]
         date_str = request.form.get("date")
         event_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else None
@@ -570,6 +571,7 @@ def add_event_route():
             name=name,
             rounds=rounds,
             location=location,
+            sex=sex,
             category=category,
             age_group=age_group,
             date=event_date,
@@ -1471,14 +1473,5 @@ if __name__ == '__main__':
     # ตรวจสอบและสร้างโฟลเดอร์ uploads หากไม่มี
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
-
-    # เรียกฟังก์ชัน setup เพื่อสร้างตารางและผู้ใช้เริ่มต้น (สำคัญมาก)
-    # ตรวจสอบว่า setup() รันเสร็จสมบูรณ์โดยไม่มีข้อผิดพลาด
-    setup() 
-
-    print("\n--- Starting Flask-SocketIO Server ---\n")
-    print("Server will be available at http://127.0.0.1:5001/")
-    print("Press Ctrl+C to exit.")
-
-    # รัน Flask app ด้วย Eventlet เพื่อรองรับ SocketIO
-    eventlet.wsgi.server(eventlet.listen(('', 5001)), app)
+    setup()
+    app.run(debug=True)
