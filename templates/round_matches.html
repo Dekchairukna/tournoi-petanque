@@ -168,19 +168,19 @@
                 <td>{{ teams[match.team2_id] if match.team2_id else '-' }}</td>
                 <td class="text-start">
                   {% if match.team1_id and (not match.team2_id or match.team2_id == 'BYE') %}
-                  <input type="number" name="score_{{ match.id }}_1" min="0" value="13" disabled
+                  <input type="number" name="score_{{ match.id }}_1" min="0" max="13" value="13" disabled
                     class="form-control d-inline-block text-center" style="width: 60px" />
                   -
-                  <input type="number" name="score_{{ match.id }}_2" min="0" value="7" disabled
+                  <input type="number" name="score_{{ match.id }}_2" min="0" max="13" value="7" disabled
                     class="form-control d-inline-block text-center" style="width: 60px" />
                   {% else %}
                   <input type="number" name="score_{{ match.id }}_1"
-                    class="form-control d-inline-block text-center score-input score-a" data-match-id="{{ match.id }}"
+                    class="form-control d-inline-block text-center score-input score-a" data-match-id="{{ match.id }}" min="0" max="13"
                     style="width: 60px"
                     value="{{ match.team1_score | int if match.team1_score is not none else '' }}" />
 
                   <input type="number" name="score_{{ match.id }}_2"
-                    class="form-control d-inline-block text-center score-input score-b" data-match-id="{{ match.id }}"
+                    class="form-control d-inline-block text-center score-input score-b" data-match-id="{{ match.id }}" min="0" max="13"
                     style="width: 60px"
                     value="{{ match.team2_score | int if match.team2_score is not none else '' }}" />
 
@@ -279,6 +279,12 @@
 
 
   <form method="post" action="{{ url_for('pair_next_round', event_id=event.id) }}">
+    <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name">
+          <label class="form-check-label" for="separate_same_name">
+            แยกทีมที่ชื่อเหมือนกันออกจากกัน
+          </label>
+        </div>
     <button type="submit" class="btn btn-info mb-4">จับคู่รอบถัดไป</button>
   </form>
 
