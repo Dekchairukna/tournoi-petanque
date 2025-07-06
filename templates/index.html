@@ -13,7 +13,10 @@
     margin: 0;
   }
 
-  h2, h3, h4, .modal-title {
+  h2,
+  h3,
+  h4,
+  .modal-title {
     font-weight: 700;
     color: #212529;
     font-size: clamp(1.25rem, 2vw, 2rem);
@@ -42,7 +45,7 @@
     border-spacing: 0 0.5rem;
     width: 100%;
     background-color: #fff;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     border-radius: 0.5rem;
     overflow: hidden;
   }
@@ -93,6 +96,7 @@
     background: #fff3bf;
     color: #664d03;
   }
+
   .btn-yellow:hover {
     background: #ffe066;
     color: #000;
@@ -102,6 +106,7 @@
     background: #d0ebff;
     color: #084298;
   }
+
   .btn-blue:hover {
     background: #74c0fc;
     color: #fff;
@@ -111,6 +116,7 @@
     background: #ffc9c9;
     color: #842029;
   }
+
   .btn-red:hover {
     background: #ff6b6b;
     color: #fff;
@@ -120,6 +126,7 @@
     background: #d3f9d8;
     color: #2b8a3e;
   }
+
   .btn-green:hover {
     background: #69db7c;
     color: #fff;
@@ -130,6 +137,7 @@
     color: #212529;
     border: 1px solid #212529;
   }
+
   .btn-dark-outline:hover {
     background: #212529;
     color: #fff;
@@ -137,7 +145,7 @@
 
   .modal-content {
     border-radius: 1rem;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
   }
 
   .modal-header.bg-info {
@@ -164,7 +172,7 @@
       margin-bottom: 1rem;
       border-radius: 0.5rem;
       padding: 1rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
 
     .table-custom tbody td {
@@ -189,7 +197,7 @@
       padding-right: 0.5rem;
     }
 
-    .table-custom tbody td > * {
+    .table-custom tbody td>* {
       flex: 1 1 60%;
       min-width: 0;
     }
@@ -209,17 +217,18 @@
   <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
     <table class="table table-borderless table-custom">
       <thead>
-        <tr >
+        <tr>
           <th>ชื่อรายการ</th>
           <th>จำนวนรอบ</th>
           <th>วันที่</th>
           <th>สถานที่</th>
           <th>ประเภท</th>
+          <th>เพศ</th>
           <th>รุ่น</th>
           <th>จัดการ</th>
         </tr>
       </thead>
-      <tbody >
+      <tbody>
         {% for event in upcoming_events %}
         <tr>
           <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
@@ -227,6 +236,7 @@
           <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
           <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
           <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
+          <td data-label="เพศ" class="text-center">{{ event.sex or '-' }}</td>
           <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
           <td data-label="จัดการ" class="text-center">
             <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
@@ -251,49 +261,51 @@
 
   <h5 class="mb-3">รายการแข่งขันที่จบแล้ว</h5>
   {% if finished_events_by_year %}
-    {% for year, events_in_year in finished_events_by_year.items() %}
-      <h6 class="mt-4">{{ year }}</h6>
-      <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
-        <table class="table table-borderless table-custom">
-          <thead>
-            <tr>
-              <th>ชื่อรายการ</th>
-              <th>จำนวนรอบ</th>
-              <th>วันที่</th>
-              <th>สถานที่</th>
-              <th>ประเภท</th>
-              <th>รุ่น</th>
-              <th>จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for event in events_in_year %}
-            <tr>
-              <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
-              <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
-              <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-              <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
-              <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
-              <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
-              <td data-label="จัดการ" class="text-center">
-                <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
-                  <i class="bi bi-box-arrow-in-right"></i> ดูผล
-                </a>
-                {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
-                <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
-                  onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
-                  <i class="bi bi-trash"></i> ลบ
-                </a>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% endfor %}
+  {% for year, events_in_year in finished_events_by_year.items() %}
+  <h6 class="mt-4">{{ year }}</h6>
+  <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
+    <table class="table table-borderless table-custom">
+      <thead>
+        <tr>
+          <th>ชื่อรายการ</th>
+          <th>จำนวนรอบ</th>
+          <th>วันที่</th>
+          <th>สถานที่</th>
+          <th>ประเภท</th>
+          <th>เพศ</th>
+          <th>รุ่น</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events_in_year %}
+        <tr>
+          <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
+          <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
+          <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+          <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
+          <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
+          <td data-label="เพศ" class="text-center">{{ event.sex or '-' }}</td>
+          <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
+          <td data-label="จัดการ" class="text-center">
+            <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
+              <i class="bi bi-box-arrow-in-right"></i> ดูผล
+            </a>
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+            <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
+              onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
+              <i class="bi bi-trash"></i> ลบ
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
   {% else %}
-    <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
+  <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
   {% endif %}
 
   <!-- Modal เพิ่มรายการใหม่ -->
@@ -330,16 +342,21 @@
                 <label for="location" class="form-label fw-semibold">สถานที่แข่งขัน</label>
                 <input type="text" class="form-control" id="location" name="location" placeholder="ระบุสถานที่ถ้ามี">
               </div>
+              
               <div class="col-md-6">
                 <label for="category" class="form-label fw-semibold">ประเภท</label>
                 <select id="category" name="category" class="form-select" required>
-                  <option value="เดี่ยวชาย">เดี่ยวชาย</option>
-                  <option value="เดี่ยวหญิง">เดี่ยวหญิง</option>
-                  <option value="คู่ชาย">คู่ชาย</option>
-                  <option value="คู่หญิง">คู่หญิง</option>
-                  <option value="ทีมชาย">ทีมชาย</option>
-                  <option value="ทีมหญิง">ทีมหญิง</option>
-                  <option value="คู่ผสม">คู่ผสม</option>
+                  <option value="เดี่ยว">เดี่ยว</option>
+                  <option value="คู่">คู่</option>
+                  <option value="ทีม">ทีม</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="sex" class="form-label fw-semibold">เพศ</label>
+                <select id="sex" name="sex" class="form-select" required>
+                  <option value="ชาย">ชาย</option>
+                  <option value="หญิง">หญิง</option>
+                  <option value="ผสม">ผสม</option>
                 </select>
               </div>
               <div class="col-md-6">
@@ -348,6 +365,7 @@
                   <option value="ประชาชน">ประชาชน</option>
                   <option value="เยาวชน">เยาวชน</option>
                   <option value="อาวุโส">อาวุโส</option>
+                  <option value="นักศึกษา">นักศึกษา</option>
                 </select>
               </div>
             </div>
