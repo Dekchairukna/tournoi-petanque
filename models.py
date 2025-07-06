@@ -48,6 +48,7 @@ class Event(db.Model):
     name = db.Column(db.String(100), nullable=False)
     location = db.Column(db.String(100))
     category = db.Column(db.String(50))
+    sex = db.Column(db.String(50))
     age_group = db.Column(db.String(50))
     rounds = db.Column(db.Integer)
     current_round = db.Column(db.Integer, default=1)
