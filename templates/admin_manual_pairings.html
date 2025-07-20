@@ -212,6 +212,50 @@
     }
   });
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const teamSelects = document.querySelectorAll(".team1, .team2");
+
+  function getSelectedTeamIds() {
+    // ดึง ID ของทีมที่ถูกเลือกทั้งหมด (ยกเว้นค่า "", "0" (BYE))
+    const selected = [];
+    teamSelects.forEach(select => {
+      const val = select.value;
+      if (val !== "" && val !== "0") {
+        selected.push(val);
+      }
+    });
+    return selected;
+  }
+
+  function updateAllDropdowns() {
+    const selectedTeamIds = getSelectedTeamIds();
+
+    teamSelects.forEach(select => {
+      const currentValue = select.value;
+      const options = select.querySelectorAll("option");
+
+      options.forEach(option => {
+        if (option.value === "" || option.value === "0") {
+          option.hidden = false; // BYE และ --เลือก-- แสดงได้เสมอ
+        } else if (option.value === currentValue) {
+          option.hidden = false; // แสดงตัวเองเสมอ
+        } else {
+          option.hidden = selectedTeamIds.includes(option.value); // ซ่อนถ้าเลือกที่อื่นแล้ว
+        }
+      });
+    });
+  }
+
+  // เพิ่ม event listener ทุก dropdown
+  teamSelects.forEach(select => {
+    select.addEventListener("change", updateAllDropdowns);
+  });
+
+  // เรียกครั้งแรกเมื่อโหลดหน้า
+  updateAllDropdowns();
+});
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}
