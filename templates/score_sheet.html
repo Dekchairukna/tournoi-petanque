@@ -144,6 +144,7 @@
         <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">{{ event.name }}</div>
         <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">
           ประเภท: {{ event.category }} &nbsp;&nbsp;
+          เพศ: {{ event.sex }} &nbsp;&nbsp
           รุ่น: {{ event.age_group }} &nbsp;&nbsp;
           ครั้งที่: {{ match.round }} &nbsp;&nbsp;
           สนาม: {{ match.field if match.field is not none else '__________' }}
