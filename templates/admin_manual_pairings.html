@@ -14,6 +14,8 @@
   {% endfor %}
   {% endif %}
   <h2 class="mb-3">จับคู่แมนนวลสำหรับ {{ event.name }}</h2>
+  <h2 class="mb-3">{{ event.name }}</h2>
+  <h4 class="mb-4">ณ {{ event.location }} | ประเภท {{ event.category }} | เพศ {{ event.sex }} | รุ่น {{ event.age_group }} 
 
   <!-- Toast แจ้งเตือน -->
   {% with messages = get_flashed_messages(with_categories=true) %}
