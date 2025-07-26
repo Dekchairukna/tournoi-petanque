@@ -704,9 +704,7 @@ def delete_team_route(event_id, team_id):
         (Match.event_id == event_id)
     ).count()
 
-    if existing_matches > 0:
-        flash('ไม่สามารถลบทีมได้เนื่องจากมีการจับคู่แล้ว', 'danger')
-        return redirect(url_for('index'))
+    
 
     # ถ้ายังไม่มีแมตช์ที่ประกบคู่ทีมนี้ ลบได้เลย
     Match.query.filter(
