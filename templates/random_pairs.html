@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8" />
+    <title>จับคู่สุ่มและกรอกคะแนน - {{ event.name }}</title>
+    <style>
+        /* Reset และตั้งค่าเบื้องต้น */
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #f4f7fa;
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background-color: #2a9df4;
+            padding: 20px 40px;
+            color: white;
+            text-align: center;
+            font-size: 28px;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        main {
+            flex-grow: 1;
+            padding: 30px 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        form {
+            background: white;
+            padding: 25px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+            overflow-x: auto;
+        }
+        table {
+            border-collapse: separate;
+            border-spacing: 0 10px;
+            width: 100%;
+            min-width: 700px;
+        }
+        th, td {
+            padding: 15px 20px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        thead th {
+            background-color: #2a9df4;
+            color: white;
+            font-weight: 600;
+            border-radius: 8px;
+        }
+        tbody tr {
+            background-color: #f9fbfd;
+            box-shadow: 0 2px 6px rgb(0 0 0 / 0.05);
+            transition: background-color 0.3s ease;
+        }
+        tbody tr:hover {
+            background-color: #e3f2fd;
+        }
+        input[type=number] {
+            width: 80px;
+            padding: 8px 12px;
+            border: 1.5px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.25s ease;
+            text-align: center;
+        }
+        input[type=number]:focus {
+            border-color: #2a9df4;
+            outline: none;
+            box-shadow: 0 0 8px #7fbfff;
+        }
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1.5px solid #ccc;
+            font-size: 16px;
+            transition: border-color 0.25s ease;
+        }
+        select:focus {
+            border-color: #2a9df4;
+            outline: none;
+            box-shadow: 0 0 8px #7fbfff;
+        }
+        .btn-submit {
+            margin-top: 25px;
+            background-color: #2a9df4;
+            border: none;
+            padding: 14px 28px;
+            font-size: 18px;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgb(42 157 244 / 0.6);
+            transition: background-color 0.3s ease;
+        }
+        .btn-submit:hover {
+            background-color: #2071d6;
+        }
+        @media (max-width: 768px) {
+            main {
+                padding: 20px 20px;
+            }
+            table {
+                min-width: 100%;
+            }
+            input[type=number], select {
+                width: 60px;
+                font-size: 14px;
+            }
+            .btn-submit {
+                width: 100%;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        จับคู่สุ่มและกรอกคะแนน - {{ event.name }}
+    </header>
+    <main>
+        <form method="post" novalidate>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ลำดับ</th>
+                        <th>ทีม A</th>
+                        <th>คะแนนทีม A</th>
+                        <th>ทีม B</th>
+                        <th>คะแนนทีม B</th>
+                        <th>สนามแข่งขัน</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pair in pairs %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ pair.team1 }}</td>
+                        <td><input type="number" name="score_{{ loop.index }}_team1" min="0" step="1" required></td>
+                        <td>{{ pair.team2 }}</td>
+                        <td><input type="number" name="score_{{ loop.index }}_team2" min="0" step="1" required></td>
+                        <td>
+                            <select name="field_{{ loop.index }}" required>
+                                {% for field_name in ['สนาม1', 'สนาม2', 'สนาม3'] %}
+                                <option value="{{ field_name }}">{{ field_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <button type="submit" class="btn-submit">บันทึกคะแนน</button>
+        </form>
+    </main>
+</body>
+</html>

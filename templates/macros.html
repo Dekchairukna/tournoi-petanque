@@ -1,0 +1,17 @@
+{% macro score_class(score) %}
+  {% if score >= 6 %}
+    {{ 'score-level-6' }}
+  {% elif score == 5 %}
+    {{ 'score-level-5' }}
+  {% elif score == 4 %}
+    {{ 'score-level-4' }}
+  {% elif score == 3 %}
+    {{ 'score-level-3' }}
+  {% elif score == 2 %}
+    {{ 'score-level-2' }}
+  {% elif score == 1 %}
+    {{ 'score-level-1' }}
+  {% else %}
+    {{ 'score-level-0' }}
+  {% endif %}
+{% endmacro %}
