@@ -32,20 +32,7 @@ from openpyxl.utils import get_column_letter
 load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your_secret_key")
-# ใช้ DATABASE_URL เฉพาะตอน deploy/ตั้งค่าไว้จริง; ถ้ารันในเครื่องให้ใช้ SQLite อัตโนมัติ
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
-os.makedirs(INSTANCE_DIR, exist_ok=True)
-LOCAL_DB_PATH = os.path.join(INSTANCE_DIR, 'tournoi.db')
-database_url = os.environ.get('DATABASE_URL')
-
-if database_url:
-    # Railway/Heroku บางที่ส่ง postgres:// ให้ SQLAlchemy รุ่นใหม่ต้องใช้ postgresql://
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{LOCAL_DB_PATH}"
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vpIukBThkAUpgSjNcTAaQTssfCOAYjSW@trolley.proxy.rlwy.net:46680/railway'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
