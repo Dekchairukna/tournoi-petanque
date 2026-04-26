@@ -32,12 +32,34 @@ from openpyxl.utils import get_column_letter
 load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your_secret_key")
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vpIukBThkAUpgSjNcTAaQTssfCOAYjSW@trolley.proxy.rlwy.net:46680/railway'
+# ใช้ DATABASE_URL เฉพาะตอน deploy/ตั้งค่าไว้จริง; ถ้ารันในเครื่องให้ใช้ SQLite อัตโนมัติ
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
+os.makedirs(INSTANCE_DIR, exist_ok=True)
+LOCAL_DB_PATH = os.path.join(INSTANCE_DIR, 'tournoi.db')
+database_url = os.environ.get('DATABASE_URL')
+
+if database_url:
+    # Railway/Heroku บางที่ส่ง postgres:// ให้ SQLAlchemy รุ่นใหม่ต้องใช้ postgresql://
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{LOCAL_DB_PATH}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
 
-socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    async_mode="threading",
+    cors_allowed_origins="*",
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=10_000_000,
+    logger=False,
+    engineio_logger=False
+)
 
 db.init_app(app)  # ✅ ตรงนี้สำคัญ
 migrate = Migrate(app, db)
@@ -399,7 +421,7 @@ def event_detail(event_id):
     standings = calculate_standings(event_id)
     matches = Match.query.filter_by(event_id=event_id).all()
 
-    print("DEBUG standings:", standings)
+   
 
     # 🔧 แก้ตรงนี้: คำนวณ current_round
     current_round = (
@@ -456,14 +478,35 @@ def upload_teams(event_id):
             flash("ไฟล์ต้องมีคอลัมน์ชื่อ 'team_name'", "danger")
             return redirect(url_for("event_detail", event_id=event_id))
 
+        latest_round = get_latest_round_for_event(event_id)
         new_teams = 0
-        for name in df["team_name"]:
+        late_matches = 0
+
+        for raw_name in df["team_name"]:
+            name = str(raw_name).strip() if raw_name is not None else ""
+            if not name or name.lower() == "nan":
+                continue
+
             if not Team.query.filter_by(name=name, event_id=event_id).first():
-                db.session.add(Team(name=name, event_id=event_id))
+                team = Team(name=name, event_id=event_id)
+                db.session.add(team)
+                db.session.flush()
                 new_teams += 1
+
+                if latest_round:
+                    created = create_late_entry_match(event_id, team, latest_round)
+                    if created:
+                        late_matches += 1
+
         db.session.commit()
 
-        flash(f"เพิ่มทีมสำเร็จ {new_teams} ทีม", "success")
+        if latest_round:
+            flash(
+                f"เพิ่มทีม/นักกีฬาสำเร็จ {new_teams} รายการ และสร้างแถวคีย์คะแนนเฉพาะรายชื่อใหม่ในรอบที่ {latest_round} จำนวน {late_matches} แถว โดยไม่กระทบผลจับสลากเดิม",
+                "success"
+            )
+        else:
+            flash(f"เพิ่มทีมสำเร็จ {new_teams} ทีม", "success")
     except Exception as e:
         flash(f"เกิดข้อผิดพลาดในการอัปโหลด: {str(e)}", "danger")
 
@@ -482,31 +525,77 @@ def generate_field_numbers(event):
     return fields
 
 
+def get_latest_round_for_event(event_id):
+    """คืนค่ารอบล่าสุดที่มีการจับคู่แล้ว ถ้ายังไม่จับคู่คืน None"""
+    return db.session.query(db.func.max(Match.round)).filter_by(event_id=event_id).scalar()
+
+
+def create_late_entry_match(event_id, team, target_round=None):
+    """
+    สร้างแถวคะแนนเฉพาะทีม/นักกีฬาที่เพิ่มภายหลัง โดยไม่ลบหรือสุ่มคู่เดิม
+    ใช้ is_manual=False เพื่อให้ template แยกสี/ป้ายว่าเป็นรายการเพิ่มภายหลังได้
+    """
+    if target_round is None:
+        target_round = get_latest_round_for_event(event_id)
+
+    if not target_round:
+        return None
+
+    existing = Match.query.filter(
+        Match.event_id == event_id,
+        Match.round == target_round,
+        ((Match.team1_id == team.id) | (Match.team2_id == team.id))
+    ).first()
+    if existing:
+        return existing
+
+    late_match = Match(
+        event_id=event_id,
+        round=target_round,
+        team1_id=team.id,
+        team2_id=None,
+        team1_score=None,
+        team2_score=None,
+        is_locked=False,
+        is_manual=False
+    )
+    db.session.add(late_match)
+    return late_match
+
+
 @app.route('/event/<int:event_id>/add_team', methods=['POST'])
-@roles_required('admin')  # เพิ่มบรรทัดนี้
+@login_required
+@roles_required('admin', 'superadmin')
 def add_team_route(event_id):
+    Event.query.get_or_404(event_id)
 
-    
-    # เช็คสถานะล็อกแมตช์
-    locked_match = Match.query.filter_by(event_id=event_id, is_locked=True).first()
-    if locked_match:
-        flash('ไม่สามารถเพิ่มทีมหลังจากเริ่มจับคู่แล้ว', 'danger')
+    team_name = (request.form.get('team_name') or '').strip()
+    if not team_name:
+        flash('กรุณากรอกชื่อทีม/ชื่อนักกีฬา', 'danger')
         return redirect(url_for('event_detail', event_id=event_id))
 
-    team_name = request.form.get('team_name')
-    if not team_name or team_name.strip() == '':
-        flash('กรุณากรอกชื่อทีม', 'danger')
-        return redirect(url_for('event_detail', event_id=event_id))
-
-    existing_team = Team.query.filter_by(name=team_name.strip(), event_id=event_id).first()
+    existing_team = Team.query.filter_by(name=team_name, event_id=event_id).first()
     if existing_team:
-        flash('ชื่อทีมนี้มีอยู่แล้ว', 'warning')
+        flash('ชื่อทีม/ชื่อนักกีฬานี้มีอยู่แล้ว', 'warning')
         return redirect(url_for('event_detail', event_id=event_id))
 
-    new_team = Team(name=team_name.strip(), event_id=event_id)
+    latest_round = get_latest_round_for_event(event_id)
+
+    new_team = Team(name=team_name, event_id=event_id)
     db.session.add(new_team)
+    db.session.flush()  # ให้ได้ id ก่อนสร้างแถวคะแนน
+
+    if latest_round:
+        create_late_entry_match(event_id, new_team, latest_round)
+        db.session.commit()
+        flash(
+            f'เพิ่ม {team_name} เรียบร้อยแล้ว และสร้างแถวคีย์คะแนนเฉพาะชื่อนี้ในรอบที่ {latest_round} โดยไม่กระทบผลจับสลากเดิม',
+            'success'
+        )
+        return redirect(url_for('round_matches', event_id=event_id, round=latest_round))
+
     db.session.commit()
-    flash('เพิ่มทีมเรียบร้อย', 'success')
+    flash('เพิ่มทีม/นักกีฬาเรียบร้อยแล้ว', 'success')
     return redirect(url_for('event_detail', event_id=event_id))
 
 
@@ -998,7 +1087,13 @@ def round_matches(event_id, round):
                         flash(f"คะแนนทีม {teams.get(match.team1_id, '')} ต้องเป็นตัวเลข", "danger")
                         return redirect(url_for("round_matches", event_id=event_id, round=round))
 
-                if match.team2_id is not None and score2 is not None:
+                # รายชื่อที่เพิ่มภายหลังจะไม่มีคู่แข่ง ให้คีย์เฉพาะคะแนนฝั่งนี้ และเก็บฝั่งคู่แข่งเป็น 0
+                if match.team2_id is None and match.is_manual == False:
+                    if score1 is None or str(score1).strip() == "":
+                        flash(f"กรุณากรอกคะแนนของ {teams.get(match.team1_id, '')}", "danger")
+                        return redirect(url_for("round_matches", event_id=event_id, round=round))
+                    match.team2_score = 0
+                elif match.team2_id is not None and score2 is not None:
                     try:
                         match.team2_score = int(score2)
                     except ValueError:
