@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_socketio import SocketIO, emit
 
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
@@ -17,7 +17,7 @@ from swiss_logic import generate_pairings, generate_manual_pairings
 from standings import calculate_standings
 from flask import Blueprint
 from dotenv import load_dotenv
-from sqlalchemy import func
+from sqlalchemy import func, text
 from functools import wraps
 from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
@@ -58,8 +58,41 @@ login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
 
+def ensure_runtime_columns():
+    """เพิ่มคอลัมน์ใหม่ให้ฐานข้อมูลเดิมโดยไม่ลบข้อมูลเก่า"""
+    dialect = db.engine.dialect.name
+    if dialect == 'postgresql':
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS pending_team1_score INTEGER"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS pending_team2_score INTEGER"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS pending_is_submitted BOOLEAN DEFAULT FALSE NOT NULL"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS pending_submitted_by_id INTEGER"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS pending_submitted_at TIMESTAMP"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS team1_signature TEXT"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS team2_signature TEXT"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorer_signature TEXT"))
+    else:
+        existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
+        if 'pending_team1_score' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_team1_score INTEGER"))
+        if 'pending_team2_score' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_team2_score INTEGER"))
+        if 'pending_is_submitted' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_is_submitted BOOLEAN DEFAULT 0 NOT NULL"))
+        if 'pending_submitted_by_id' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_submitted_by_id INTEGER"))
+        if 'pending_submitted_at' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_submitted_at DATETIME"))
+        if 'team1_signature' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN team1_signature TEXT"))
+        if 'team2_signature' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN team2_signature TEXT"))
+        if 'scorer_signature' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN scorer_signature TEXT"))
+    db.session.commit()
+
 with app.app_context():
     db.create_all()  # สร้างตารางตามโมเดล
+    ensure_runtime_columns()  # อัปเกรดฐานข้อมูลเดิมแบบไม่ลบข้อมูล
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -71,56 +104,44 @@ def load_user(user_id):
 @socketio.on('update_score')
 @login_required
 def handle_update_score(data):
-    """
-    Handles score updates via SocketIO.
-    Requires user to be logged in.
-    Updates the database and broadcasts the new score to all connected clients.
-    """
+    """อัปเดตคะแนนจริงจากหน้า round สำหรับ admin/superadmin เท่านั้น"""
+    if current_user.role not in ['admin', 'superadmin']:
+        emit('error_message', {'message': 'เฉพาะ admin เท่านั้นที่แก้คะแนนจริงจากหน้า round ได้'}, room=request.sid)
+        return
+
     match_id = data.get('match_id')
     team_a_score = data.get('team_a_score')
     team_b_score = data.get('team_b_score')
-
-    # Get user information from the current_user Flask-Login object
-    user_id = current_user.id
     username = current_user.username
 
     with app.app_context():
-        # Find the match in the database
-        match = Match.query.get(match_id) # Assuming Match model is imported from models.py
-        
+        match = Match.query.get(match_id)
         if match:
             try:
-                # Update scores (convert to int to ensure correct data type)
                 match.team1_score = int(team_a_score)
                 match.team2_score = int(team_b_score)
-                db.session.commit() # Save changes to the database
-                
-                print(f"Score updated for Match {match_id} by {username}: {team_a_score}-{team_b_score}")
+                db.session.commit()
 
-                # Emit the updated score to all connected clients
-                # Including username and timestamp for potential future use/debugging
                 emit('score_updated', {
-                    'match_id': match.id, # Use match.id to ensure it's the correct integer ID
+                    'match_id': match.id,
                     'team_a_score': match.team1_score,
                     'team_b_score': match.team2_score,
+                    'pending_team_a_score': match.pending_team1_score,
+                    'pending_team_b_score': match.pending_team2_score,
+                    'has_pending': match.pending_team1_score is not None or match.pending_team2_score is not None,
+                    'pending_is_submitted': bool(match.pending_is_submitted),
                     'updated_by_username': username,
                     'timestamp': datetime.utcnow().isoformat()
                 }, broadcast=True)
 
             except ValueError:
-                # Handle cases where score might not be a valid integer
-                print(f"Invalid score value received for Match {match_id}: team_a_score={team_a_score}, team_b_score={team_b_score}")
                 emit('error_message', {'message': 'Invalid score format'}, room=request.sid)
             except Exception as e:
-                # Catch any other unexpected database errors
-                db.session.rollback() # Rollback changes in case of error
+                db.session.rollback()
                 print(f"Database error updating score for Match {match_id}: {e}")
                 emit('error_message', {'message': 'Server error updating score'}, room=request.sid)
         else:
-            print(f"Match with ID {match_id} not found.")
             emit('error_message', {'message': 'Match not found'}, room=request.sid)
-
-
 
 
 
@@ -945,6 +966,192 @@ def clear_teams_route(event_id):
 
 
 
+@app.route('/event/<int:event_id>/match/<int:match_id>/scorecard', methods=['GET'])
+@login_required
+@roles_required('user', 'admin', 'superadmin')
+def online_scorecard(event_id, match_id):
+    event = Event.query.get_or_404(event_id)
+    match = Match.query.get_or_404(match_id)
+    if match.event_id != event.id:
+        flash("คู่แข่งขันไม่ตรงกับรายการนี้", "danger")
+        return redirect(url_for("event_detail", event_id=event.id))
+
+    teams = {team.id: team.name for team in Team.query.filter_by(event_id=event.id).all()}
+    return render_template('online_scorecard.html', event=event, match=match, teams=teams)
+
+
+@app.route('/event/<int:event_id>/match/<int:match_id>/scorecard/autosave', methods=['POST'])
+@login_required
+@roles_required('user', 'admin', 'superadmin')
+def autosave_online_scorecard(event_id, match_id):
+    match = Match.query.get_or_404(match_id)
+    if match.event_id != event_id:
+        return jsonify({'ok': False, 'message': 'คู่แข่งขันไม่ตรงกับรายการนี้'}), 400
+    if match.is_locked:
+        return jsonify({'ok': False, 'message': 'คู่นี้ล็อกผลแล้ว'}), 400
+
+    data = request.get_json(silent=True) or {}
+    try:
+        score1 = int(data.get('team1_score'))
+        score2 = int(data.get('team2_score')) if match.team2_id else 0
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'กรุณากรอกคะแนนเป็นตัวเลข'}), 400
+
+    if score1 < 0 or score2 < 0:
+        return jsonify({'ok': False, 'message': 'คะแนนต้องไม่น้อยกว่า 0'}), 400
+
+    # ถ้าเคยกดสิ้นสุดแล้ว ไม่ให้ autosave กลับมาแก้คะแนนรอยืนยัน ต้องให้ admin ยกเลิกก่อน
+    if match.pending_is_submitted:
+        return jsonify({'ok': False, 'message': 'คู่นี้สิ้นสุดการแข่งขันแล้ว หากต้องแก้ไขให้ admin ยกเลิกคะแนนรอยืนยันก่อน'}), 400
+
+    match.pending_team1_score = score1
+    match.pending_team2_score = score2
+    match.pending_submitted_by_id = current_user.id
+    match.pending_submitted_at = None
+    db.session.commit()
+
+    payload = {
+        'match_id': match.id,
+        'pending_team_a_score': match.pending_team1_score,
+        'pending_team_b_score': match.pending_team2_score,
+        'submitted_by': current_user.username,
+        'submitted_at': None,
+        'pending_is_submitted': False,
+        'has_pending': True,
+    }
+    socketio.emit('pending_score_updated', payload)
+    return jsonify({'ok': True, **payload})
+
+
+@app.route('/event/<int:event_id>/match/<int:match_id>/scorecard/finish', methods=['POST'])
+@login_required
+@roles_required('user', 'admin', 'superadmin')
+def finish_online_scorecard(event_id, match_id):
+    match = Match.query.get_or_404(match_id)
+    if match.event_id != event_id:
+        flash("คู่แข่งขันไม่ตรงกับรายการนี้", "danger")
+        return redirect(url_for("event_detail", event_id=event_id))
+    if match.is_locked:
+        flash("คู่นี้ล็อกผลแล้ว", "warning")
+        return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+    try:
+        score1 = int(request.form.get('team1_score', ''))
+        score2 = int(request.form.get('team2_score', '')) if match.team2_id else 0
+    except ValueError:
+        flash("กรุณากรอกคะแนนเป็นตัวเลข", "danger")
+        return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+    sig1 = (request.form.get('team1_signature') or '').strip()
+    sig2 = (request.form.get('team2_signature') or '').strip()
+    sig3 = (request.form.get('scorer_signature') or '').strip()
+
+    if score1 < 0 or score2 < 0:
+        flash("คะแนนต้องไม่น้อยกว่า 0", "danger")
+        return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+    if not sig1 or not sig2 or not sig3:
+        flash("ต้องมีลายเซ็นนักกีฬาทั้งสองทีม และลายเซ็นผู้กรอก ก่อนสิ้นสุดการแข่งขัน", "danger")
+        return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+    match.pending_team1_score = score1
+    match.pending_team2_score = score2
+    match.team1_signature = sig1
+    match.team2_signature = sig2
+    match.scorer_signature = sig3
+    match.pending_is_submitted = True
+    match.pending_submitted_by_id = current_user.id
+    match.pending_submitted_at = datetime.utcnow()
+    db.session.commit()
+
+    socketio.emit('pending_score_updated', {
+        'match_id': match.id,
+        'pending_team_a_score': match.pending_team1_score,
+        'pending_team_b_score': match.pending_team2_score,
+        'submitted_by': current_user.username,
+        'submitted_at': match.pending_submitted_at.isoformat(),
+        'pending_is_submitted': True,
+        'has_pending': True,
+    })
+
+    flash("สิ้นสุดการแข่งขันแล้ว คะแนนจะขึ้นให้ admin/superadmin ยืนยันก่อนนำไปใช้งานจริง", "success")
+    return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+
+@app.route('/event/<int:event_id>/match/<int:match_id>/approve-pending-score', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def approve_pending_score(event_id, match_id):
+    match = Match.query.get_or_404(match_id)
+    if match.event_id != event_id:
+        flash("คู่แข่งขันไม่ตรงกับรายการนี้", "danger")
+        return redirect(url_for("event_detail", event_id=event_id))
+
+    if (not match.pending_is_submitted) or match.pending_team1_score is None or (match.team2_id is not None and match.pending_team2_score is None):
+        flash("ยังไม่มีคะแนนที่สิ้นสุดการแข่งขันและรอยืนยัน", "warning")
+        return redirect(url_for("round_matches", event_id=event_id, round=match.round))
+
+    match.team1_score = match.pending_team1_score
+    match.team2_score = match.pending_team2_score if match.team2_id is not None else 0
+    match.pending_team1_score = None
+    match.pending_team2_score = None
+    match.pending_is_submitted = False
+    match.pending_submitted_by_id = None
+    match.pending_submitted_at = None
+    match.team1_signature = None
+    match.team2_signature = None
+    match.scorer_signature = None
+    match.is_locked = True
+    db.session.commit()
+
+    socketio.emit('score_updated', {
+        'match_id': match.id,
+        'team_a_score': match.team1_score,
+        'team_b_score': match.team2_score,
+        'pending_team_a_score': None,
+        'pending_team_b_score': None,
+        'has_pending': False,
+        'pending_is_submitted': False,
+        'locked': True,
+        'timestamp': datetime.utcnow().isoformat()
+    })
+
+    flash("ยืนยันคะแนนออนไลน์และล็อกผลเรียบร้อยแล้ว", "success")
+    return redirect(url_for("round_matches", event_id=event_id, round=match.round))
+
+
+@app.route('/event/<int:event_id>/match/<int:match_id>/reject-pending-score', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def reject_pending_score(event_id, match_id):
+    match = Match.query.get_or_404(match_id)
+    if match.event_id != event_id:
+        flash("คู่แข่งขันไม่ตรงกับรายการนี้", "danger")
+        return redirect(url_for("event_detail", event_id=event_id))
+
+    match.pending_team1_score = None
+    match.pending_team2_score = None
+    match.pending_is_submitted = False
+    match.pending_submitted_by_id = None
+    match.pending_submitted_at = None
+    match.team1_signature = None
+    match.team2_signature = None
+    match.scorer_signature = None
+    db.session.commit()
+
+    socketio.emit('pending_score_updated', {
+        'match_id': match.id,
+        'pending_team_a_score': None,
+        'pending_team_b_score': None,
+        'submitted_by': None,
+        'submitted_at': None,
+        'pending_is_submitted': False
+    })
+
+    flash("ยกเลิกคะแนนที่รอยืนยันแล้ว", "success")
+    return redirect(url_for("round_matches", event_id=event_id, round=match.round))
+
+
 @app.route('/event/<int:event_id>/round/<int:round>', methods=['GET', 'POST'])
 def round_matches(event_id, round):
     event = Event.query.get(event_id)
@@ -1207,16 +1414,33 @@ def admin_users():
 @roles_required('admin', 'superadmin')
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
-    
+
+    if user.id == current_user.id:
+        flash("ไม่สามารถลบบัญชีที่กำลังใช้งานอยู่ได้", "danger")
+        return redirect(url_for('admin_users'))
+
     # ห้าม admin ลบ superadmin
     if current_user.role == 'admin' and user.role == 'superadmin':
         flash("คุณไม่มีสิทธิ์ลบ superadmin", "danger")
         return redirect(url_for('admin_users'))
 
+    # ไม่ลบอีเว้นท์ของ user คนนั้น: โอน owner ของอีเว้นท์มาให้ผู้ที่กดลบแทน
+    Event.query.filter_by(creator_id=user.id).update({Event.creator_id: current_user.id})
+
+    # เคลียร์ผู้ส่งคะแนน pending เพื่อไม่ให้ FK ค้างกับ user ที่ถูกลบ
+    Match.query.filter_by(pending_submitted_by_id=user.id).update({
+        Match.pending_submitted_by_id: None,
+        Match.pending_is_submitted: False,
+        Match.team1_signature: None,
+        Match.team2_signature: None,
+        Match.scorer_signature: None,
+    })
+
     db.session.delete(user)
     db.session.commit()
-    flash("ลบผู้ใช้เรียบร้อยแล้ว", "success")
+    flash("ลบผู้ใช้เรียบร้อยแล้ว และเก็บอีเว้นท์เดิมไว้โดยโอนเจ้าของให้บัญชีของคุณ", "success")
     return redirect(url_for('admin_users'))
+
 
 @app.route('/admin/users/edit/<int:user_id>', methods=['GET', 'POST'])
 @login_required

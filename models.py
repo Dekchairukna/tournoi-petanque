@@ -90,9 +90,23 @@ class Match(db.Model):
 
     team1_score = db.Column(db.Integer, default=0)
     team2_score = db.Column(db.Integer, default=0)
+
+    # คะแนนจากหน้าสกอร์การ์ดออนไลน์
+    # autosave: แสดงสดในหน้า round แต่ยังไม่ให้ admin ยืนยัน
+    # finish: เมื่อกดสิ้นสุดการแข่งขันและมีลายเซ็นครบ จึงเป็นคะแนนรอยืนยัน
+    pending_team1_score = db.Column(db.Integer, nullable=True)
+    pending_team2_score = db.Column(db.Integer, nullable=True)
+    pending_is_submitted = db.Column(db.Boolean, default=False, nullable=False)
+    pending_submitted_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    pending_submitted_at = db.Column(db.DateTime, nullable=True)
+    team1_signature = db.Column(db.Text, nullable=True)
+    team2_signature = db.Column(db.Text, nullable=True)
+    scorer_signature = db.Column(db.Text, nullable=True)
+
     is_locked = db.Column(db.Boolean, default=False)
     field = db.Column(db.Integer, nullable=True)
 
     team1 = db.relationship("Team", foreign_keys=[team1_id], backref="matches_as_team1")
     team2 = db.relationship("Team", foreign_keys=[team2_id], backref="matches_as_team2")
+    pending_submitted_by = db.relationship("User", foreign_keys=[pending_submitted_by_id])
     is_manual = db.Column(db.Boolean, default=True)  # เพื่อแยกจากการจับอัตโนมัติ

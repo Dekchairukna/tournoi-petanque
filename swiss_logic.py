@@ -1,6 +1,7 @@
 import random
+import re
 from standings import calculate_standings
-from models import Match
+from models import Match, Team
 from sqlalchemy import or_
 
 
@@ -16,6 +17,23 @@ def have_played(event_id, team1_id, team2_id):
             (Match.team1_id == team2_id) & (Match.team2_id == team1_id)
         )
     ).first() is not None
+
+
+def extract_base_name(name):
+    """ตัดเลข/รหัสท้ายชื่อทีมออก เพื่อแยกทีมชื่อฐานเดียวกันไม่ให้เจอกัน"""
+    if not name:
+        return ''
+    base = name.strip().lower()
+    base = re.sub(r'\s+', ' ', base)
+    # ตัวอย่าง: ทีม A 1, ทีม A-2, ทีม A_3, ทีม A(4)
+    base = re.sub(r'\s*[\-_]*\s*[\(\[]?\d+[\)\]]?\s*$', '', base)
+    return base.strip()
+
+
+def same_base_name(team_names, team1_id, team2_id):
+    if team1_id is None or team2_id is None:
+        return False
+    return extract_base_name(team_names.get(team1_id, '')) == extract_base_name(team_names.get(team2_id, ''))
 
 
 def generate_manual_pairings(event_id, team_ids=None):
@@ -90,8 +108,9 @@ def get_available_fields(event, used_fields=None):
     return available_fields
 
 #-------------logic--------------------------------------
-def generate_pairings(event_id, round_no, max_retries=10):
+def generate_pairings(event_id, round_no, max_retries=200):
     standings = calculate_standings(event_id)
+    team_names = {team.id: team.name for team in Team.query.filter_by(event_id=event_id).all()}
     previous_matches = Match.query.filter_by(event_id=event_id).all()
 
     past_opponents = {}
@@ -124,7 +143,7 @@ def generate_pairings(event_id, round_no, max_retries=10):
             if carry_over:
                 found = False
                 for idx, t in enumerate(group):
-                    if t not in past_opponents.get(carry_over, set()):
+                    if t not in past_opponents.get(carry_over, set()) and not same_base_name(team_names, carry_over, t):
                         pairings.append((carry_over, t))
                         used_teams.update({carry_over, t})
                         group.pop(idx)
@@ -138,7 +157,7 @@ def generate_pairings(event_id, round_no, max_retries=10):
             while group:
                 t1 = group.pop(0)
                 for idx, t2 in enumerate(group):
-                    if t2 not in past_opponents.get(t1, set()):
+                    if t2 not in past_opponents.get(t1, set()) and not same_base_name(team_names, t1, t2):
                         pairings.append((t1, t2))
                         used_teams.update({t1, t2})
                         group.pop(idx)
@@ -189,8 +208,8 @@ def generate_pairings(event_id, round_no, max_retries=10):
     # ฟังก์ชันช่วยจับคู่ทีมหาคู่ที่ยังไม่เคยเจอ และทีมที่ได้ BYE แล้วจะไม่จับ BYE ซ้ำ
     def find_partner(team):
         for candidate in teams_ordered:
-            if candidate != team and candidate not in used and candidate not in past_opponents.get(team, set()):
-                # หลีกเลี่ยงจับ BYE ซ้ำกับทีมที่เคยได้ BYE แล้ว
+            if candidate != team and candidate not in used and candidate not in past_opponents.get(team, set()) and not same_base_name(team_names, team, candidate):
+                # หลีกเลี่ยงจับ BYE ซ้ำกับทีมที่เคยได้ BYE แล้ว และหลีกเลี่ยงทีมชื่อฐานเดียวกัน
                 if candidate in bye_teams and team in bye_teams:
                     continue
                 return candidate

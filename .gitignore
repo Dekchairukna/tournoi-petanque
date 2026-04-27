@@ -1,0 +1,21 @@
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# local database / uploads
+instance/*.db
+uploads/*.xlsx
+
+# duplicated extracted files
+* 2.py
+* 2.html
+* 2.xlsx
+* 2.png
+* 2.ini
+* 2.mako
