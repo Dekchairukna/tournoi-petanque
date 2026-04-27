@@ -102,6 +102,8 @@ class Match(db.Model):
     team1_signature = db.Column(db.Text, nullable=True)
     team2_signature = db.Column(db.Text, nullable=True)
     scorer_signature = db.Column(db.Text, nullable=True)
+    # รายละเอียดการลงคะแนนแบบ end-by-end จากหน้าสกอร์การ์ดออนไลน์
+    score_ends = db.Column(db.Text, nullable=True)
 
     is_locked = db.Column(db.Boolean, default=False)
     field = db.Column(db.Integer, nullable=True)

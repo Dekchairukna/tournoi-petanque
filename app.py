@@ -70,6 +70,7 @@ def ensure_runtime_columns():
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS team1_signature TEXT"))
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS team2_signature TEXT"))
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorer_signature TEXT"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS score_ends TEXT"))
     else:
         existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
         if 'pending_team1_score' not in existing:
@@ -88,6 +89,8 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN team2_signature TEXT"))
         if 'scorer_signature' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorer_signature TEXT"))
+        if 'score_ends' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
     db.session.commit()
 
 with app.app_context():
@@ -966,6 +969,48 @@ def clear_teams_route(event_id):
 
 
 
+def normalize_score_ends(raw_ends):
+    """ตรวจและคำนวณคะแนนแบบ end-by-end
+    raw_ends: list ของ {team: 1/2, points: 1-6}
+    return (clean_ends, team1_total, team2_total)
+    """
+    if raw_ends in (None, ''):
+        raw_ends = []
+    if isinstance(raw_ends, str):
+        raw_ends = json.loads(raw_ends or '[]')
+    if not isinstance(raw_ends, list):
+        raise ValueError('รูปแบบรายการ ends ไม่ถูกต้อง')
+
+    clean = []
+    team1_total = 0
+    team2_total = 0
+    for idx, item in enumerate(raw_ends, start=1):
+        if not isinstance(item, dict):
+            raise ValueError('รูปแบบ end ไม่ถูกต้อง')
+        team = int(item.get('team'))
+        points = int(item.get('points'))
+        if team not in (1, 2):
+            raise ValueError('ต้องเลือกทีมที่ได้คะแนน')
+        if points < 1 or points > 6:
+            raise ValueError('คะแนนต่อ end ต้องอยู่ระหว่าง 1-6')
+        if team == 1:
+            if team1_total + points > 13:
+                raise ValueError(f'End ที่ {idx} ทำให้คะแนนทีม 1 เกิน 13')
+            team1_total += points
+        else:
+            if team2_total + points > 13:
+                raise ValueError(f'End ที่ {idx} ทำให้คะแนนทีม 2 เกิน 13')
+            team2_total += points
+        clean.append({
+            'end': idx,
+            'team': team,
+            'points': points,
+            'team1_total': team1_total,
+            'team2_total': team2_total,
+        })
+    return clean, team1_total, team2_total
+
+
 @app.route('/event/<int:event_id>/match/<int:match_id>/scorecard', methods=['GET'])
 @login_required
 @roles_required('user', 'admin', 'superadmin')
@@ -977,7 +1022,11 @@ def online_scorecard(event_id, match_id):
         return redirect(url_for("event_detail", event_id=event.id))
 
     teams = {team.id: team.name for team in Team.query.filter_by(event_id=event.id).all()}
-    return render_template('online_scorecard.html', event=event, match=match, teams=teams)
+    try:
+        score_ends, _, _ = normalize_score_ends(match.score_ends or '[]')
+    except Exception:
+        score_ends = []
+    return render_template('online_scorecard.html', event=event, match=match, teams=teams, score_ends=score_ends)
 
 
 @app.route('/event/<int:event_id>/match/<int:match_id>/scorecard/autosave', methods=['POST'])
@@ -991,21 +1040,30 @@ def autosave_online_scorecard(event_id, match_id):
         return jsonify({'ok': False, 'message': 'คู่นี้ล็อกผลแล้ว'}), 400
 
     data = request.get_json(silent=True) or {}
-    try:
-        score1 = int(data.get('team1_score'))
-        score2 = int(data.get('team2_score')) if match.team2_id else 0
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'message': 'กรุณากรอกคะแนนเป็นตัวเลข'}), 400
-
-    if score1 < 0 or score2 < 0:
-        return jsonify({'ok': False, 'message': 'คะแนนต้องไม่น้อยกว่า 0'}), 400
 
     # ถ้าเคยกดสิ้นสุดแล้ว ไม่ให้ autosave กลับมาแก้คะแนนรอยืนยัน ต้องให้ admin ยกเลิกก่อน
     if match.pending_is_submitted:
         return jsonify({'ok': False, 'message': 'คู่นี้สิ้นสุดการแข่งขันแล้ว หากต้องแก้ไขให้ admin ยกเลิกคะแนนรอยืนยันก่อน'}), 400
 
+    try:
+        raw_ends = data.get('score_ends')
+        if raw_ends is not None:
+            score_ends, score1, score2 = normalize_score_ends(raw_ends)
+        else:
+            score1 = int(data.get('team1_score'))
+            score2 = int(data.get('team2_score')) if match.team2_id else 0
+            score_ends = []
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return jsonify({'ok': False, 'message': str(exc) or 'กรุณากรอกคะแนนให้ถูกต้อง'}), 400
+
+    if not match.team2_id:
+        score2 = 0
+    if score1 < 0 or score2 < 0:
+        return jsonify({'ok': False, 'message': 'คะแนนต้องไม่น้อยกว่า 0'}), 400
+
     match.pending_team1_score = score1
     match.pending_team2_score = score2
+    match.score_ends = json.dumps(score_ends, ensure_ascii=False)
     match.pending_submitted_by_id = current_user.id
     match.pending_submitted_at = None
     db.session.commit()
@@ -1018,6 +1076,7 @@ def autosave_online_scorecard(event_id, match_id):
         'submitted_at': None,
         'pending_is_submitted': False,
         'has_pending': True,
+        'score_ends': json.loads(match.score_ends or '[]'),
     }
     socketio.emit('pending_score_updated', payload)
     return jsonify({'ok': True, **payload})
@@ -1036,10 +1095,14 @@ def finish_online_scorecard(event_id, match_id):
         return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
 
     try:
-        score1 = int(request.form.get('team1_score', ''))
-        score2 = int(request.form.get('team2_score', '')) if match.team2_id else 0
-    except ValueError:
-        flash("กรุณากรอกคะแนนเป็นตัวเลข", "danger")
+        raw_ends = request.form.get('score_ends') or '[]'
+        score_ends, score1, score2 = normalize_score_ends(raw_ends)
+        # เผื่อกรอกคะแนนแบบรวมโดยไม่ใช้ ends ยังให้ระบบเดิมทำงานได้
+        if not score_ends:
+            score1 = int(request.form.get('team1_score', ''))
+            score2 = int(request.form.get('team2_score', '')) if match.team2_id else 0
+    except (ValueError, json.JSONDecodeError) as exc:
+        flash(str(exc) or "กรุณากรอกคะแนนให้ถูกต้อง", "danger")
         return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
 
     sig1 = (request.form.get('team1_signature') or '').strip()
@@ -1056,6 +1119,7 @@ def finish_online_scorecard(event_id, match_id):
 
     match.pending_team1_score = score1
     match.pending_team2_score = score2
+    match.score_ends = json.dumps(score_ends, ensure_ascii=False)
     match.team1_signature = sig1
     match.team2_signature = sig2
     match.scorer_signature = sig3
@@ -1135,6 +1199,7 @@ def reject_pending_score(event_id, match_id):
     match.team1_signature = None
     match.team2_signature = None
     match.scorer_signature = None
+    match.score_ends = None
     db.session.commit()
 
     socketio.emit('pending_score_updated', {
