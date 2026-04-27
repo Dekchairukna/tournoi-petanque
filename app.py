@@ -1063,6 +1063,8 @@ def round_matches(event_id, round):
 
         # 🔴 บันทึกคะแนน + ล็อกผล
         elif action == "lock_scores":
+            draw_matches = []
+
             for match in matches:
                 score1 = request.form.get(f"score_{match.id}_1")
                 score2 = request.form.get(f"score_{match.id}_2")
@@ -1087,10 +1089,26 @@ def round_matches(event_id, round):
                         flash(f"คะแนนทีม {teams.get(match.team2_id, '')} ต้องเป็นตัวเลข", "danger")
                         return redirect(url_for("round_matches", event_id=event_id, round=round))
 
+                if match.team1_score is None:
+                    flash(f"กรุณากรอกคะแนนของ {teams.get(match.team1_id, '')}", "danger")
+                    return redirect(url_for("round_matches", event_id=event_id, round=round))
+                if match.team2_id is not None and match.team2_score is None:
+                    flash(f"กรุณากรอกคะแนนของ {teams.get(match.team2_id, '')}", "danger")
+                    return redirect(url_for("round_matches", event_id=event_id, round=round))
+
+                if match.team2_id is not None and match.team1_score == match.team2_score:
+                    field_label = match.field if match.field else '-'
+                    team1_name = teams.get(match.team1_id, '-')
+                    team2_name = teams.get(match.team2_id, '-')
+                    draw_matches.append(f"สนาม {field_label}: {team1_name} {match.team1_score}-{match.team2_score} {team2_name}")
+
                 match.is_locked = True
 
             db.session.commit()
-            flash("บันทึกคะแนนและล็อกผลเรียบร้อยแล้ว", "success")
+            if draw_matches:
+                flash("บันทึกและล็อกผลเรียบร้อยแล้ว แต่มีผลเสมอ {} คู่ — {}".format(len(draw_matches), " | ".join(draw_matches)), "warning")
+            else:
+                flash("บันทึกคะแนนและล็อกผลเรียบร้อยแล้ว", "success")
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
         # กรณี POST ที่ไม่ได้กด save_fields หรือ lock_scores (เช่น แค่ติ๊ก checkbox)

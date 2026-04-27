@@ -150,7 +150,7 @@
     <div class="card-body p-3">
 
       <div class="alert alert-info py-2 mb-3">
-        สีเขียว = ลงคะแนน/ล็อกผลแล้ว, สีเหลือง = รอคีย์, สีฟ้า = รายชื่อที่เพิ่มภายหลังและคีย์เฉพาะคนนั้น
+        สีเขียว = กรอกคะแนนครบแล้ว, สีเหลือง = รอคีย์/ยังเป็น 0:0, สีฟ้า = รายชื่อที่เพิ่มภายหลังและคีย์เฉพาะคนนั้น
       </div>
 
       {% if error_message %}
@@ -193,15 +193,24 @@
             <tbody>
               {% for match in matches %}
               {% set is_late_entry = (not match.team2_id and match.is_manual == False) %}
-              <tr class="{% if match.is_locked %}match-scored{% elif is_late_entry %}match-late-entry{% else %}match-pending{% endif %}">
+              {% set score_a = match.team1_score if match.team1_score is not none else '' %}
+              {% set score_b = match.team2_score if match.team2_score is not none else '' %}
+              {% set scores_ready = (match.team1_score is not none and ((match.team2_id is not none and match.team2_score is not none) or is_late_entry)) %}
+              {% set is_waiting = (not scores_ready) or ((match.team1_score | default(0) | int) == 0 and (match.team2_score | default(0) | int) == 0) %}
+              <tr class="{% if is_late_entry %}match-late-entry{% elif is_waiting %}match-pending{% else %}match-scored{% endif %}"
+                  data-match-row="{{ match.id }}"
+                  data-late-entry="{{ '1' if is_late_entry else '0' }}"
+                  data-locked="{{ '1' if match.is_locked else '0' }}">
                 <td>
                   {{ teams[match.team1_id] if match.team1_id else '-' }}
-                  {% if match.is_locked %}
-                  <span class="match-status-badge badge-scored">ลงคะแนนแล้ว</span>
-                  {% elif is_late_entry %}
-                  <span class="match-status-badge badge-late">เพิ่มภายหลัง</span>
+                  {% if is_late_entry %}
+                  <span class="match-status-badge badge-late" data-status-badge="{{ match.id }}">เพิ่มภายหลัง</span>
+                  {% elif match.is_locked %}
+                  <span class="match-status-badge badge-scored" data-status-badge="{{ match.id }}">ล็อกผลแล้ว</span>
+                  {% elif is_waiting %}
+                  <span class="match-status-badge badge-pending" data-status-badge="{{ match.id }}">รอคีย์</span>
                   {% else %}
-                  <span class="match-status-badge badge-pending">รอคีย์</span>
+                  <span class="match-status-badge badge-scored" data-status-badge="{{ match.id }}">กรอกแล้ว</span>
                   {% endif %}
                 </td>
                 <td>{{ teams[match.team2_id] if match.team2_id else '-' }}</td>
@@ -360,6 +369,53 @@
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
   const socket = io(); // ปล่อยให้ auto เลือก transport เอง
 
+  function updateMatchRowStatus(matchId) {
+    const row = document.querySelector(`[data-match-row="${matchId}"]`);
+    if (!row) return;
+
+    const badge = row.querySelector(`[data-status-badge="${matchId}"]`);
+    const isLateEntry = row.dataset.lateEntry === '1';
+    const isLocked = row.dataset.locked === '1';
+    const scoreAInput = row.querySelector('.score-a');
+    const scoreBInput = row.querySelector('.score-b');
+
+    if (isLateEntry) {
+      row.classList.remove('match-scored', 'match-pending');
+      row.classList.add('match-late-entry');
+      if (badge) {
+        badge.className = 'match-status-badge badge-late';
+        badge.textContent = 'เพิ่มภายหลัง';
+      }
+      return;
+    }
+
+    const scoreAValue = scoreAInput ? scoreAInput.value.trim() : '';
+    const scoreBValue = scoreBInput ? scoreBInput.value.trim() : '';
+    const hasBothScores = scoreAValue !== '' && scoreBValue !== '';
+    const isZeroWaiting = hasBothScores && Number(scoreAValue) === 0 && Number(scoreBValue) === 0;
+    const isReady = hasBothScores && !isZeroWaiting;
+
+    row.classList.remove('match-scored', 'match-pending', 'match-late-entry');
+    if (isReady) {
+      row.classList.add('match-scored');
+      if (badge) {
+        badge.className = 'match-status-badge badge-scored';
+        badge.textContent = isLocked ? 'ล็อกผลแล้ว' : 'กรอกแล้ว';
+      }
+    } else {
+      row.classList.add('match-pending');
+      if (badge) {
+        badge.className = 'match-status-badge badge-pending';
+        badge.textContent = 'รอคีย์';
+      }
+    }
+  }
+
+  function refreshAllMatchStatuses() {
+    document.querySelectorAll('[data-match-row]').forEach(row => updateMatchRowStatus(row.dataset.matchRow));
+  }
+
+  refreshAllMatchStatuses();
 
   socket.on('connect', () => {
     console.log("✅ Socket.IO connected successfully");
@@ -386,6 +442,7 @@
 
       // ตั้ง timeout ใหม่เพื่อส่งข้อมูลหลังจากหยุดพิมพ์ 500ms
       input._typingTimeout = setTimeout(() => {
+        updateMatchRowStatus(matchId);
         console.log(`[CLIENT] Emitting update_score: Match ID: ${matchId}, Score A: ${scoreA}, Score B: ${scoreB}`); // เพิ่ม log
         socket.emit('update_score', {
           match_id: matchId,
@@ -443,6 +500,8 @@
         }
       }
     });
+
+    updateMatchRowStatus(matchIdToUpdate);
   });
 </script>
 <script>
