@@ -14,6 +14,8 @@
   .signature-tools { display:flex; gap:.5rem; justify-content:space-between; align-items:center; margin-top:.5rem; }
   .saved-dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:#adb5bd; margin-right:.35rem; }
   .saved-dot.ok { background:#198754; }
+  .saved-signature-img { width:100%; min-height:120px; max-height:190px; object-fit:contain; border:1px solid #e5e7eb; border-radius:.75rem; background:#fff; padding:.5rem; }
+  .saved-signature-card { border:1px solid #e5e7eb; border-radius:.85rem; padding:.75rem; background:#f8fafc; }
 </style>
 
 <div class="scorecard-wrap">
@@ -40,6 +42,35 @@
   <div class="draft-panel mb-3">
     <div class="fw-bold text-primary">กำลังกรอกคะแนนออนไลน์ คะแนนโชว์สดในหน้า Round แล้ว แต่ยังไม่ขึ้นให้ admin ยืนยัน</div>
     <div class="fs-4 fw-bold">{{ match.pending_team1_score if match.pending_team1_score is not none else '-' }} - {{ match.pending_team2_score if match.pending_team2_score is not none else '-' }}</div>
+  </div>
+  {% endif %}
+
+  {% set has_saved_signatures = match.team1_signature or match.team2_signature or match.scorer_signature %}
+  {% if has_saved_signatures %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h5 class="fw-bold mb-3">ลายเซ็นที่บันทึกไว้สำหรับตรวจสอบ</h5>
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <div class="saved-signature-card h-100">
+            <div class="fw-bold mb-2">ทีม 1</div>
+            {% if match.team1_signature %}<img src="{{ match.team1_signature }}" class="saved-signature-img" alt="ลายเซ็นทีม 1">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="saved-signature-card h-100">
+            <div class="fw-bold mb-2">ทีม 2</div>
+            {% if match.team2_signature %}<img src="{{ match.team2_signature }}" class="saved-signature-img" alt="ลายเซ็นทีม 2">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="saved-signature-card h-100">
+            <div class="fw-bold mb-2">ผู้กรอกคะแนน</div>
+            {% if match.scorer_signature %}<img src="{{ match.scorer_signature }}" class="saved-signature-img" alt="ลายเซ็นผู้กรอกคะแนน">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   {% endif %}
 
@@ -73,19 +104,19 @@
         <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 1</label>
         <canvas class="signature-box" data-sig-canvas="team1_signature"></canvas>
         <input type="hidden" name="team1_signature" id="team1_signature" value="{{ match.team1_signature or '' }}">
-        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team1_signature">ล้าง</button></div>
+        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team1_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
       </div>
       <div class="col-12 col-md-6">
         <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 2</label>
         <canvas class="signature-box" data-sig-canvas="team2_signature"></canvas>
         <input type="hidden" name="team2_signature" id="team2_signature" value="{{ match.team2_signature or '' }}">
-        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature">ล้าง</button></div>
+        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
       </div>
       <div class="col-12">
         <label class="form-label fw-bold">ลายเซ็นผู้กรอกคะแนน</label>
         <canvas class="signature-box" data-sig-canvas="scorer_signature"></canvas>
         <input type="hidden" name="scorer_signature" id="scorer_signature" value="{{ match.scorer_signature or '' }}">
-        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="scorer_signature">ล้าง</button></div>
+        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="scorer_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
       </div>
     </div>
 

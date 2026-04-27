@@ -1098,9 +1098,7 @@ def approve_pending_score(event_id, match_id):
     match.pending_is_submitted = False
     match.pending_submitted_by_id = None
     match.pending_submitted_at = None
-    match.team1_signature = None
-    match.team2_signature = None
-    match.scorer_signature = None
+    # เก็บลายเซ็นไว้หลัง admin ยืนยัน เพื่อให้เปิดหน้าสกอร์การ์ดย้อนกลับมาตรวจสอบได้
     match.is_locked = True
     db.session.commit()
 
