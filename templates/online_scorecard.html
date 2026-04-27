@@ -78,14 +78,14 @@
     <div class="row g-3 align-items-end">
       <div class="col-12 col-md-5">
         <label class="form-label fw-bold fs-5">{{ teams[match.team1_id] if match.team1_id else '-' }}</label>
-        <input type="number" name="team1_score" id="team1_score" min="0" max="99" class="form-control score-input-mobile"
+        <input type="number" name="team1_score" id="team1_score" min="0" max="13" class="form-control score-input-mobile"
                value="{{ match.pending_team1_score if match.pending_team1_score is not none else (match.team1_score if match.team1_score is not none else '') }}"
                {% if match.is_locked or match.pending_is_submitted %}readonly{% endif %} required>
       </div>
       <div class="col-12 col-md-2 text-center vs-text pb-md-4">VS</div>
       <div class="col-12 col-md-5">
         <label class="form-label fw-bold fs-5">{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</label>
-        <input type="number" name="team2_score" id="team2_score" min="0" max="99" class="form-control score-input-mobile"
+        <input type="number" name="team2_score" id="team2_score" min="0" max="13" class="form-control score-input-mobile"
                value="{{ match.pending_team2_score if match.pending_team2_score is not none else (match.team2_score if match.team2_score is not none else '') }}"
                {% if not match.team2_id or match.is_locked or match.pending_is_submitted %}readonly{% endif %} required>
       </div>
