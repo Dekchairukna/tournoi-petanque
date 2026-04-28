@@ -51,6 +51,11 @@
   .btn-team-choice[data-team-choice="2"] { color:#1d4ed8; border-color:#90caf9; background:#f4f9ff; }
   .btn-team-choice.active[data-team-choice="1"] { background:#ef4444; border-color:#dc2626; color:#fff; box-shadow:0 0 0 .2rem rgba(239,68,68,.22); }
   .btn-team-choice.active[data-team-choice="2"] { background:#2563eb; border-color:#1d4ed8; color:#fff; box-shadow:0 0 0 .2rem rgba(37,99,235,.22); }
+  .score-mode-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-bottom:1rem; }
+  .score-mode-btn { border:2px solid #d1d5db; border-radius:1rem; padding:.85rem; background:#fff; font-weight:900; }
+  .score-mode-btn.active { border-color:#198754; background:#ecfdf5; color:#047857; }
+  .manual-score-panel { border:1px solid #d1d5db; border-radius:1rem; padding:1rem; background:#fbfbfb; }
+  .manual-score-input { font-size:2rem; text-align:center; font-weight:900; min-height:64px; }
   @media (max-width: 767px) {
     .live-score-number { font-size:2.4rem; }
     .score-grid { min-width:700px; grid-template-columns: 160px repeat(13, 38px) 58px; }
@@ -59,8 +64,13 @@
 </style>
 
 <div class="scorecard-wrap">
-  <div class="mb-3">
-    <a href="{{ url_for('round_matches', event_id=event.id, round=match.round) }}" class="btn btn-outline-secondary">← กลับหน้า Round</a>
+  <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    {% if not is_public_scorecard %}
+      <a href="{{ url_for('round_matches', event_id=event.id, round=match.round) }}" class="btn btn-outline-secondary">← กลับหน้า Round</a>
+      <a href="{{ scorecard_public_url }}" class="btn btn-outline-primary" target="_blank">เปิดลิงก์ QR</a>
+    {% else %}
+      <span class="badge bg-primary fs-6">เข้าโดย QR สกอร์การ์ด</span>
+    {% endif %}
   </div>
 
   <div class="card shadow-sm mb-3">
@@ -98,7 +108,7 @@
   </div>
   {% endif %}
 
-  <form method="POST" action="{{ url_for('finish_online_scorecard', event_id=event.id, match_id=match.id) }}" class="team-card" id="finishForm">
+  <form method="POST" action="{% if is_public_scorecard %}{{ url_for('public_finish_online_scorecard', token=match.scorecard_token) }}{% else %}{{ url_for('finish_online_scorecard', event_id=event.id, match_id=match.id) }}{% endif %}" class="team-card" id="finishForm">
     <input type="hidden" name="team1_score" id="team1_score" value="{{ match.pending_team1_score if match.pending_team1_score is not none else (match.team1_score if match.team1_score is not none else 0) }}">
     <input type="hidden" name="team2_score" id="team2_score" value="{{ match.pending_team2_score if match.pending_team2_score is not none else (match.team2_score if match.team2_score is not none else 0) }}">
     <input type="hidden" name="score_ends" id="score_ends" value='{{ score_ends|tojson }}'>
@@ -113,6 +123,30 @@
       เพิ่มคะแนนทีละ end: เลือกฝั่งทีมที่ได้แต้ม แล้วเลือกแต้ม 1-6 จากนั้นกด “เพิ่ม End” ระบบจะติ๊กช่องคะแนนสะสมทันที หากได้หลายแต้มใน end เดียว เช่น 5 แต้ม ระบบจะติ๊กครบทั้ง 5 ช่อง และใส่เลข end ไว้ที่ช่องสุดท้ายของชุดนั้น เพื่อให้เช็กย้อนหลังง่ายขึ้น
     </div>
 
+    <div class="score-mode-tabs" role="group" aria-label="เลือกรูปแบบการกรอกคะแนน">
+      <button type="button" class="score-mode-btn" id="modeManualBtn" data-score-mode="manual">กรอกคะแนนเลย</button>
+      <button type="button" class="score-mode-btn" id="modeEndsBtn" data-score-mode="ends">กรอกแบบมีประวัติ End</button>
+    </div>
+
+    <div class="manual-score-panel mb-3" id="manualScorePanel">
+      <div class="alert alert-warning small mb-3">
+        โหมดนี้ใช้กรอกคะแนนรวมทันที เหมาะกับกรอกผลหลังแข่งจบแล้ว โดยจะไม่มีประวัติ End แยกทีละรอบ
+      </div>
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-5">
+          <label class="form-label fw-bold"><span class="team-chip team1-chip">ฝั่งทีม 1</span></label>
+          <input type="number" min="0" max="13" class="form-control manual-score-input" id="manualTeam1Score" value="0" {% if match.is_locked or match.pending_is_submitted %}readonly{% endif %}>
+        </div>
+        <div class="col-12 col-md-2 text-center vs-text pb-md-3">VS</div>
+        <div class="col-12 col-md-5">
+          <label class="form-label fw-bold"><span class="team-chip team2-chip">ฝั่งทีม 2</span></label>
+          <input type="number" min="0" max="13" class="form-control manual-score-input" id="manualTeam2Score" value="0" {% if not match.team2_id or match.is_locked or match.pending_is_submitted %}readonly{% endif %}>
+        </div>
+      </div>
+      <button type="button" class="btn btn-success w-100 mt-3" id="saveManualBtn" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>บันทึกคะแนนรวมทันที</button>
+    </div>
+
+    <div id="endsScorePanel">
     <div class="score-sheet-mobile mb-3">
       <div class="score-grid" id="scoreGrid">
         <div class="score-cell header-cell team-cell">ทีม / คะแนนสะสม</div>
@@ -158,6 +192,8 @@
       </div>
     </div>
 
+    </div>
+
     <div class="mb-3"><span class="saved-dot" id="saveDot"></span><span id="saveText">ยังไม่มีการบันทึกอัตโนมัติ</span></div>
 
     <hr>
@@ -175,7 +211,7 @@
         <input type="hidden" name="team2_signature" id="team2_signature" value="{{ match.team2_signature or '' }}">
         <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
       </div>
-      
+    </div>
 
     <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>สิ้นสุดการแข่งขัน / ส่งให้ admin ยืนยัน</button>
   </form>
@@ -185,11 +221,9 @@
 {% block scripts %}
 {{ super() }}
 <script>
-
 (function(){
   const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
-
-  const saveUrl = "{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}";
+  const saveUrl = "{% if is_public_scorecard %}{{ url_for('public_autosave_online_scorecard', token=match.scorecard_token) }}{% else %}{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}{% endif %}";
   const teamNames = {1: {{ (teams[match.team1_id] if match.team1_id else '-')|tojson }}, 2: {{ (teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง')|tojson }}};
   const saveDot = document.getElementById('saveDot');
   const saveText = document.getElementById('saveText');
@@ -200,8 +234,31 @@
   let selectedTeam = 1;
   const initialManualT1 = Number(s1.value || 0);
   const initialManualT2 = Number(s2.value || 0);
+  let scoreMode = 'ends';
 
   try { scoreEnds = JSON.parse(scoreEndsInput.value || '[]') || []; } catch(e) { scoreEnds = []; }
+  if (!scoreEnds.length && (initialManualT1 > 0 || initialManualT2 > 0)) scoreMode = 'manual';
+
+  function setScoreMode(mode) {
+    scoreMode = mode;
+    document.getElementById('modeManualBtn').classList.toggle('active', mode === 'manual');
+    document.getElementById('modeEndsBtn').classList.toggle('active', mode === 'ends');
+    document.getElementById('manualScorePanel').style.display = mode === 'manual' ? '' : 'none';
+    document.getElementById('endsScorePanel').style.display = mode === 'ends' ? '' : 'none';
+    if (mode === 'manual') {
+      const [t1, t2] = totals();
+      document.getElementById('manualTeam1Score').value = scoreEnds.length ? t1 : Number(s1.value || 0);
+      document.getElementById('manualTeam2Score').value = scoreEnds.length ? t2 : Number(s2.value || 0);
+    }
+    render();
+  }
+
+  function manualTotals() {
+    const t1 = Math.max(0, Math.min(13, Number(document.getElementById('manualTeam1Score').value || 0)));
+    const t2 = Math.max(0, Math.min(13, Number(document.getElementById('manualTeam2Score').value || 0)));
+    return [t1, t2];
+  }
+
 
   function setSaved(ok, text) { saveDot.classList.toggle('ok', !!ok); saveText.textContent = text; }
   function totals() {
@@ -238,8 +295,8 @@
         }
       }
     });
-    let [t1, t2] = totals();
-    if (!scoreEnds.length && isLockedOrSubmitted) { t1 = initialManualT1; t2 = initialManualT2; }
+    let [t1, t2] = scoreMode === 'manual' ? manualTotals() : totals();
+    if (!scoreEnds.length && (isLockedOrSubmitted || scoreMode === 'manual')) { t1 = Number(s1.value || t1 || 0); t2 = Number(s2.value || t2 || 0); }
     document.getElementById('team1Total').textContent = t1;
     document.getElementById('team2Total').textContent = t2;
     document.getElementById('team1TotalCell').textContent = t1;
@@ -265,6 +322,30 @@
       setSaved(true, 'บันทึกอัตโนมัติแล้ว ' + new Date().toLocaleTimeString('th-TH'));
     } catch (err) { setSaved(false, err.message || 'บันทึกไม่สำเร็จ'); }
   }
+  document.querySelectorAll('[data-score-mode]').forEach(btn => btn.addEventListener('click', () => {
+    if (isLockedOrSubmitted) return;
+    setScoreMode(btn.dataset.scoreMode);
+  }));
+
+  document.getElementById('saveManualBtn').addEventListener('click', () => {
+    if (isLockedOrSubmitted) return;
+    setScoreMode('manual');
+    scoreEnds = [];
+    const [t1, t2] = manualTotals();
+    if (t1 < 0 || t2 < 0 || t1 > 13 || t2 > 13) { alert('คะแนนต้องอยู่ระหว่าง 0-13'); return; }
+    s1.value = t1; s2.value = t2;
+    render();
+    setSaved(false, 'กำลังบันทึก...');
+    fetch(saveUrl, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({team1_score: t1, team2_score: t2})
+    }).then(r => r.json().then(data => ({ok:r.ok, data}))).then(({ok, data}) => {
+      if (!ok || !data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+      setSaved(true, 'บันทึกคะแนนรวมแล้ว ' + new Date().toLocaleTimeString('th-TH'));
+    }).catch(err => setSaved(false, err.message || 'บันทึกไม่สำเร็จ'));
+  });
+
   document.querySelectorAll('[data-team-choice]').forEach(btn => btn.addEventListener('click', () => {
     if (isLockedOrSubmitted || btn.disabled) return;
     selectedTeam = Number(btn.dataset.teamChoice);
@@ -319,12 +400,14 @@
   document.querySelectorAll('[data-clear-sig]').forEach(btn => btn.addEventListener('click', () => { const key = btn.dataset.clearSig; if (pads[key]) pads[key].clear(); }));
   document.getElementById('finishForm').addEventListener('submit', (e) => {
     if (isLockedOrSubmitted) return;
-    const [t1, t2] = totals();
-    if (!scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน'); return; }
+    const [t1, t2] = scoreMode === 'manual' ? manualTotals() : totals();
+    if (scoreMode === 'manual') { s1.value = t1; s2.value = t2; scoreEnds = []; scoreEndsInput.value = '[]'; }
+    if (scoreMode === 'ends' && !scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน หรือเลือกโหมดกรอกคะแนนเลย'); return; }
     if (t1 < 13 && t2 < 13) { e.preventDefault(); alert('ยังไม่มีทีมใดถึง 13 คะแนน กรุณากรอกต่อหรือเช็คคะแนนก่อนสิ้นสุดการแข่งขัน'); return; }
     const missing = ['team1_signature','team2_signature'].filter(id => !document.getElementById(id).value);
     if (missing.length) { e.preventDefault(); alert('ต้องมีลายเซ็นนักกีฬาทั้งสองทีมก่อนสิ้นสุดการแข่งขัน'); }
   });
+  setScoreMode(scoreMode);
   render();
 })();
 </script>

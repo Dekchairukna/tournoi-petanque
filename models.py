@@ -104,6 +104,8 @@ class Match(db.Model):
     scorer_signature = db.Column(db.Text, nullable=True)
     # รายละเอียดการลงคะแนนแบบ end-by-end จากหน้าสกอร์การ์ดออนไลน์
     score_ends = db.Column(db.Text, nullable=True)
+    # token ลับสำหรับเปิดหน้าสกอร์การ์ดผ่าน QR โดยไม่ต้อง login
+    scorecard_token = db.Column(db.String(80), unique=True, nullable=True, index=True)
 
     is_locked = db.Column(db.Boolean, default=False)
     field = db.Column(db.Integer, nullable=True)

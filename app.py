@@ -23,6 +23,8 @@ from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
 from flask_wtf.file import FileField, FileAllowed
 import json
+import secrets
+import qrcode
 # สำหรับ Excel
 import io
 from openpyxl import Workbook
@@ -71,6 +73,8 @@ def ensure_runtime_columns():
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS team2_signature TEXT"))
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorer_signature TEXT"))
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS score_ends TEXT"))
+        db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorecard_token VARCHAR(80)"))
+        db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_matches_scorecard_token ON matches (scorecard_token)"))
     else:
         existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
         if 'pending_team1_score' not in existing:
@@ -91,15 +95,45 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorer_signature TEXT"))
         if 'score_ends' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
+        if 'scorecard_token' not in existing:
+            db.session.execute(text("ALTER TABLE matches ADD COLUMN scorecard_token VARCHAR(80)"))
     db.session.commit()
+
+
+def ensure_match_scorecard_token(match):
+    """สร้าง token ลับสำหรับ QR สกอร์การ์ดของแมตช์ ถ้ายังไม่มี"""
+    if getattr(match, "scorecard_token", None):
+        return match.scorecard_token
+
+    match.scorecard_token = secrets.token_urlsafe(24)
+    return match.scorecard_token
+
+
+def ensure_match_tokens(matches):
+    changed = False
+    for match in matches:
+        if not getattr(match, "scorecard_token", None):
+            ensure_match_scorecard_token(match)
+            changed = True
+    if changed:
+        db.session.commit()
+    return matches
+
 
 with app.app_context():
     db.create_all()  # สร้างตารางตามโมเดล
-    ensure_runtime_columns()  # อัปเกรดฐานข้อมูลเดิมแบบไม่ลบข้อมูล
+    ensure_runtime_columns()  # อัปเกรดฐานข
+    #ensure_match_tokens(Match.query.all())  # สร้าง token QR ให้แมตช์เก่า้อมูลเดิมแบบไม่ลบข้อมูล
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    """ถ้ายังไม่ล็อกอินแล้วเปิดหน้าที่ต้องใช้สิทธิ์ ให้พาไปหน้า login แทน 403"""
+    flash("กรุณาเข้าสู่ระบบก่อน", "warning")
+    return redirect(url_for("login", next=request.path))
 
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
 
@@ -387,7 +421,7 @@ def logout():
 
 @app.route('/event/<int:event_id>/score-sheet')
 @login_required
-@roles_required('admin')  # เพิ่มบรรทัดนี้
+@roles_required('admin', 'superadmin')  # admin/superadmin พิมพ์สกอร์ชีทได้
 def score_sheet_all(event_id):
   
     event = Event.query.get_or_404(event_id)
@@ -404,6 +438,7 @@ def score_sheet_all(event_id):
         query = query.filter_by(round=selected_round)
 
     matches = query.order_by(Match.round, Match.id).all()
+    ensure_match_tokens(matches)
     teams = Team.query.filter_by(event_id=event_id).all()
     num_teams = len(teams)
 
@@ -1021,29 +1056,63 @@ def online_scorecard(event_id, match_id):
         flash("คู่แข่งขันไม่ตรงกับรายการนี้", "danger")
         return redirect(url_for("event_detail", event_id=event.id))
 
+    ensure_match_scorecard_token(match)
+    db.session.commit()
+
     teams = {team.id: team.name for team in Team.query.filter_by(event_id=event.id).all()}
     try:
         score_ends, _, _ = normalize_score_ends(match.score_ends or '[]')
     except Exception:
         score_ends = []
-    return render_template('online_scorecard.html', event=event, match=match, teams=teams, score_ends=score_ends)
+    return render_template(
+        'online_scorecard.html',
+        event=event,
+        match=match,
+        teams=teams,
+        score_ends=score_ends,
+        is_public_scorecard=False,
+        scorecard_public_url=url_for('public_online_scorecard', token=match.scorecard_token, _external=True),
+    )
 
 
-@app.route('/event/<int:event_id>/match/<int:match_id>/scorecard/autosave', methods=['POST'])
-@login_required
-@roles_required('user', 'admin', 'superadmin')
-def autosave_online_scorecard(event_id, match_id):
-    match = Match.query.get_or_404(match_id)
-    if match.event_id != event_id:
-        return jsonify({'ok': False, 'message': 'คู่แข่งขันไม่ตรงกับรายการนี้'}), 400
+@app.route('/scorecard/<token>', methods=['GET'])
+def public_online_scorecard(token):
+    match = Match.query.filter_by(scorecard_token=token).first_or_404()
+    event = Event.query.get_or_404(match.event_id)
+    teams = {team.id: team.name for team in Team.query.filter_by(event_id=event.id).all()}
+    try:
+        score_ends, _, _ = normalize_score_ends(match.score_ends or '[]')
+    except Exception:
+        score_ends = []
+    return render_template(
+        'online_scorecard.html',
+        event=event,
+        match=match,
+        teams=teams,
+        score_ends=score_ends,
+        is_public_scorecard=True,
+        scorecard_public_url=url_for('public_online_scorecard', token=match.scorecard_token, _external=True),
+    )
+
+
+@app.route('/scorecard/<token>/qr.png')
+def public_scorecard_qr(token):
+    match = Match.query.filter_by(scorecard_token=token).first_or_404()
+    url = url_for('public_online_scorecard', token=match.scorecard_token, _external=True)
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png', max_age=0)
+
+
+def save_online_scorecard_payload(match, data, submitted_user=None):
     if match.is_locked:
-        return jsonify({'ok': False, 'message': 'คู่นี้ล็อกผลแล้ว'}), 400
-
-    data = request.get_json(silent=True) or {}
+        return {'ok': False, 'message': 'คู่นี้ล็อกผลแล้ว'}, 400
 
     # ถ้าเคยกดสิ้นสุดแล้ว ไม่ให้ autosave กลับมาแก้คะแนนรอยืนยัน ต้องให้ admin ยกเลิกก่อน
     if match.pending_is_submitted:
-        return jsonify({'ok': False, 'message': 'คู่นี้สิ้นสุดการแข่งขันแล้ว หากต้องแก้ไขให้ admin ยกเลิกคะแนนรอยืนยันก่อน'}), 400
+        return {'ok': False, 'message': 'คู่นี้สิ้นสุดการแข่งขันแล้ว หากต้องแก้ไขให้ admin ยกเลิกคะแนนรอยืนยันก่อน'}, 400
 
     try:
         raw_ends = data.get('score_ends')
@@ -1054,17 +1123,19 @@ def autosave_online_scorecard(event_id, match_id):
             score2 = int(data.get('team2_score')) if match.team2_id else 0
             score_ends = []
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        return jsonify({'ok': False, 'message': str(exc) or 'กรุณากรอกคะแนนให้ถูกต้อง'}), 400
+        return {'ok': False, 'message': str(exc) or 'กรุณากรอกคะแนนให้ถูกต้อง'}, 400
 
     if not match.team2_id:
         score2 = 0
     if score1 < 0 or score2 < 0:
-        return jsonify({'ok': False, 'message': 'คะแนนต้องไม่น้อยกว่า 0'}), 400
+        return {'ok': False, 'message': 'คะแนนต้องไม่น้อยกว่า 0'}, 400
+    if score1 > 13 or score2 > 13:
+        return {'ok': False, 'message': 'คะแนนต้องไม่เกิน 13'}, 400
 
     match.pending_team1_score = score1
     match.pending_team2_score = score2
     match.score_ends = json.dumps(score_ends, ensure_ascii=False)
-    match.pending_submitted_by_id = current_user.id
+    match.pending_submitted_by_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
     match.pending_submitted_at = None
     db.session.commit()
 
@@ -1072,14 +1143,84 @@ def autosave_online_scorecard(event_id, match_id):
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
-        'submitted_by': current_user.username,
+        'submitted_by': submitted_user.username if submitted_user and submitted_user.is_authenticated else 'QR Scorecard',
         'submitted_at': None,
         'pending_is_submitted': False,
         'has_pending': True,
         'score_ends': json.loads(match.score_ends or '[]'),
     }
     socketio.emit('pending_score_updated', payload)
-    return jsonify({'ok': True, **payload})
+    return {'ok': True, **payload}, 200
+
+
+@app.route('/event/<int:event_id>/match/<int:match_id>/scorecard/autosave', methods=['POST'])
+@login_required
+@roles_required('user', 'admin', 'superadmin')
+def autosave_online_scorecard(event_id, match_id):
+    match = Match.query.get_or_404(match_id)
+    if match.event_id != event_id:
+        return jsonify({'ok': False, 'message': 'คู่แข่งขันไม่ตรงกับรายการนี้'}), 400
+    payload, status = save_online_scorecard_payload(match, request.get_json(silent=True) or {}, current_user)
+    return jsonify(payload), status
+
+
+@app.route('/scorecard/<token>/autosave', methods=['POST'])
+def public_autosave_online_scorecard(token):
+    match = Match.query.filter_by(scorecard_token=token).first_or_404()
+    payload, status = save_online_scorecard_payload(match, request.get_json(silent=True) or {}, None)
+    return jsonify(payload), status
+
+
+
+def finish_online_scorecard_payload(match, form_data, submitted_user=None):
+    if match.is_locked:
+        return "คู่นี้ล็อกผลแล้ว", "warning", False
+
+    try:
+        raw_ends = form_data.get('score_ends') or '[]'
+        score_ends, score1, score2 = normalize_score_ends(raw_ends)
+        # ถ้าเลือกโหมดกรอกคะแนนรวมเลย จะไม่มีประวัติ End
+        if not score_ends:
+            score1 = int(form_data.get('team1_score', ''))
+            score2 = int(form_data.get('team2_score', '')) if match.team2_id else 0
+    except (ValueError, json.JSONDecodeError) as exc:
+        return str(exc) or "กรุณากรอกคะแนนให้ถูกต้อง", "danger", False
+
+    sig1 = (form_data.get('team1_signature') or '').strip()
+    sig2 = (form_data.get('team2_signature') or '').strip()
+
+    if score1 < 0 or score2 < 0:
+        return "คะแนนต้องไม่น้อยกว่า 0", "danger", False
+    if score1 > 13 or score2 > 13:
+        return "คะแนนต้องไม่เกิน 13", "danger", False
+    if score1 < 13 and score2 < 13:
+        return "ยังไม่มีทีมใดถึง 13 คะแนน กรุณากรอกต่อหรือเช็คคะแนนก่อนสิ้นสุดการแข่งขัน", "danger", False
+
+    if not sig1 or not sig2:
+        return "ต้องมีลายเซ็นนักกีฬาทั้งสองทีมก่อนสิ้นสุดการแข่งขัน", "danger", False
+
+    match.pending_team1_score = score1
+    match.pending_team2_score = score2
+    match.score_ends = json.dumps(score_ends, ensure_ascii=False)
+    match.team1_signature = sig1
+    match.team2_signature = sig2
+    match.scorer_signature = None
+    match.pending_is_submitted = True
+    match.pending_submitted_by_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
+    match.pending_submitted_at = datetime.utcnow()
+    db.session.commit()
+
+    socketio.emit('pending_score_updated', {
+        'match_id': match.id,
+        'pending_team_a_score': match.pending_team1_score,
+        'pending_team_b_score': match.pending_team2_score,
+        'submitted_by': submitted_user.username if submitted_user and submitted_user.is_authenticated else 'QR Scorecard',
+        'submitted_at': match.pending_submitted_at.isoformat(),
+        'pending_is_submitted': True,
+        'has_pending': True,
+    })
+
+    return "สิ้นสุดการแข่งขันแล้ว คะแนนจะขึ้นให้ admin/superadmin ยืนยันก่อนนำไปใช้งานจริง", "success", True
 
 
 @app.route('/event/<int:event_id>/match/<int:match_id>/scorecard/finish', methods=['POST'])
@@ -1090,9 +1231,19 @@ def finish_online_scorecard(event_id, match_id):
     if match.event_id != event_id:
         flash("คู่แข่งขันไม่ตรงกับรายการนี้", "danger")
         return redirect(url_for("event_detail", event_id=event_id))
-    if match.is_locked:
-        flash("คู่นี้ล็อกผลแล้ว", "warning")
-        return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+    message, category, ok = finish_online_scorecard_payload(match, request.form, current_user)
+    flash(message, category)
+    return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
+
+
+@app.route('/scorecard/<token>/finish', methods=['POST'])
+def public_finish_online_scorecard(token):
+    match = Match.query.filter_by(scorecard_token=token).first_or_404()
+    message, category, ok = finish_online_scorecard_payload(match, request.form, None)
+    flash(message, category)
+    return redirect(url_for('public_online_scorecard', token=token))
+
 
     try:
         raw_ends = request.form.get('score_ends') or '[]'
@@ -1107,14 +1258,14 @@ def finish_online_scorecard(event_id, match_id):
 
     sig1 = (request.form.get('team1_signature') or '').strip()
     sig2 = (request.form.get('team2_signature') or '').strip()
-    
+    sig3 = (request.form.get('scorer_signature') or '').strip()
 
     if score1 < 0 or score2 < 0:
         flash("คะแนนต้องไม่น้อยกว่า 0", "danger")
         return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
 
-    if not sig1 or not sig2 :
-        flash("ต้องมีลายเซ็นนักกีฬาทั้งสองทีม  ก่อนสิ้นสุดการแข่งขัน", "danger")
+    if not sig1 or not sig2 or not sig3:
+        flash("ต้องมีลายเซ็นนักกีฬาทั้งสองทีม และลายเซ็นผู้กรอก ก่อนสิ้นสุดการแข่งขัน", "danger")
         return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
 
     match.pending_team1_score = score1
@@ -1122,7 +1273,7 @@ def finish_online_scorecard(event_id, match_id):
     match.score_ends = json.dumps(score_ends, ensure_ascii=False)
     match.team1_signature = sig1
     match.team2_signature = sig2
-    
+    match.scorer_signature = sig3
     match.pending_is_submitted = True
     match.pending_submitted_by_id = current_user.id
     match.pending_submitted_at = datetime.utcnow()
