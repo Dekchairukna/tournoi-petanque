@@ -246,9 +246,16 @@
     document.getElementById('manualScorePanel').style.display = mode === 'manual' ? '' : 'none';
     document.getElementById('endsScorePanel').style.display = mode === 'ends' ? '' : 'none';
     if (mode === 'manual') {
-      const [t1, t2] = totals();
-      document.getElementById('manualTeam1Score').value = scoreEnds.length ? t1 : Number(s1.value || 0);
-      document.getElementById('manualTeam2Score').value = scoreEnds.length ? t2 : Number(s2.value || 0);
+      // เติมค่าจาก end เฉพาะตอนแปลงจากโหมดประวัติ End
+      // ถ้าไม่มี end ให้คงค่าที่ผู้ใช้กรอกไว้ ไม่รีเซ็ตกลับเป็น 0:0
+      if (scoreEnds.length) {
+        const [t1, t2] = totals();
+        document.getElementById('manualTeam1Score').value = t1;
+        document.getElementById('manualTeam2Score').value = t2;
+      } else if (!document.getElementById('manualTeam1Score').value && !document.getElementById('manualTeam2Score').value) {
+        document.getElementById('manualTeam1Score').value = Number(s1.value || 0);
+        document.getElementById('manualTeam2Score').value = Number(s2.value || 0);
+      }
     }
     render();
   }
@@ -329,12 +336,32 @@
 
   document.getElementById('saveManualBtn').addEventListener('click', () => {
     if (isLockedOrSubmitted) return;
-    setScoreMode('manual');
-    scoreEnds = [];
+
+    // สำคัญ: ต้องอ่านค่าจากช่องกรอกก่อน setScoreMode()
+    // เพราะ setScoreMode('manual') จะเติมค่าจาก hidden input เดิม ซึ่งอาจยังเป็น 0:0
     const [t1, t2] = manualTotals();
-    if (t1 < 0 || t2 < 0 || t1 > 13 || t2 > 13) { alert('คะแนนต้องอยู่ระหว่าง 0-13'); return; }
-    s1.value = t1; s2.value = t2;
-    render();
+
+    if (t1 < 0 || t2 < 0 || t1 > 13 || t2 > 13) {
+      alert('คะแนนต้องอยู่ระหว่าง 0-13');
+      return;
+    }
+
+    scoreMode = 'manual';
+    scoreEnds = [];
+    scoreEndsInput.value = '[]';
+    s1.value = t1;
+    s2.value = t2;
+
+    document.getElementById('modeManualBtn').classList.add('active');
+    document.getElementById('modeEndsBtn').classList.remove('active');
+    document.getElementById('manualScorePanel').style.display = '';
+    document.getElementById('endsScorePanel').style.display = 'none';
+
+    document.getElementById('team1Total').textContent = t1;
+    document.getElementById('team2Total').textContent = t2;
+    document.getElementById('team1TotalCell').textContent = t1;
+    document.getElementById('team2TotalCell').textContent = t2;
+
     setSaved(false, 'กำลังบันทึก...');
     fetch(saveUrl, {
       method: 'POST',
