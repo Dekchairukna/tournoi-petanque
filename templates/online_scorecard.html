@@ -4,336 +4,63 @@
 
 {% block content %}
 <style>
-  .scorecard-wrap {
-    max-width: 960px;
-    margin: 0 auto 2rem;
-  }
-
-  .team-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 1rem;
-    padding: 1rem;
-    background: #fff;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, .06);
-  }
-
-  .vs-text {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: #6b7280;
-  }
-
-  .pending-panel {
-    border: 1px dashed #fd7e14;
-    background: #fff8ef;
-    border-radius: 1rem;
-    padding: .85rem 1rem;
-  }
-
-  .draft-panel {
-    border: 1px dashed #0d6efd;
-    background: #eef6ff;
-    border-radius: 1rem;
-    padding: .85rem 1rem;
-  }
-
-  .signature-box {
-    width: 100%;
-    height: 170px;
-    border: 2px dashed #cbd5e1;
-    border-radius: 1rem;
-    background: #fff;
-    touch-action: none;
-    display: block;
-  }
-
-  .signature-tools {
-    display: flex;
-    gap: .5rem;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: .5rem;
-  }
-
-  .saved-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    display: inline-block;
-    background: #adb5bd;
-    margin-right: .35rem;
-  }
-
-  .saved-dot.ok {
-    background: #198754;
-  }
-
-  .saved-signature-img {
-    width: 100%;
-    min-height: 120px;
-    max-height: 190px;
-    object-fit: contain;
-    border: 1px solid #e5e7eb;
-    border-radius: .75rem;
-    background: #fff;
-    padding: .5rem;
-  }
-
-  .saved-signature-card {
-    border: 1px solid #e5e7eb;
-    border-radius: .85rem;
-    padding: .75rem;
-    background: #f8fafc;
-  }
-
-  .live-score-box {
-    border: 2px solid #e5e7eb;
-    border-radius: 1rem;
-    padding: 1rem;
-    background: #f8fafc;
-    text-align: center;
-  }
-
-  .live-score-number {
-    font-size: 3rem;
-    line-height: 1;
-    font-weight: 900;
-  }
-
-  .live-score-box.team1-box {
-    background: #fff4f4;
-    border-color: #ef9a9a;
-  }
-
-  .live-score-box.team2-box {
-    background: #f2f8ff;
-    border-color: #90caf9;
-  }
-
-  .team-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: .45rem;
-    padding: .35rem .7rem;
-    border-radius: 999px;
-    font-weight: 800;
-    font-size: .95rem;
-  }
-
-  .team-chip::before {
-    content: '';
-    width: .8rem;
-    height: .8rem;
-    border-radius: 50%;
-    display: inline-block;
-  }
-
-  .team1-chip {
-    background: #fff1f2;
-    color: #b42318;
-  }
-
-  .team1-chip::before {
-    background: #ef4444;
-  }
-
-  .team2-chip {
-    background: #eff6ff;
-    color: #1d4ed8;
-  }
-
-  .team2-chip::before {
-    background: #2563eb;
-  }
-
-  .end-control {
-    border: 1px solid #e5e7eb;
-    border-radius: 1rem;
-    padding: 1rem;
-    background: #ffffff;
-  }
-
-  .score-sheet-mobile {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .score-grid {
-    min-width: 760px;
-    display: grid;
-    grid-template-columns: 190px repeat(13, 40px) 64px;
-    gap: 3px;
-    align-items: stretch;
-  }
-
-  .score-cell {
-    min-height: 42px;
-    border: 1px solid #111827;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #fff;
-    position: relative;
-    font-weight: 800;
-  }
-
-  .team-cell {
-    justify-content: flex-start;
-    padding: 0 .5rem;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .team-cell.team1-row {
-    background: #fff5f5;
-  }
-
-  .team-cell.team2-row {
-    background: #f3f8ff;
-  }
-
-  .header-cell {
-    background: #f3f4f6;
-    font-size: .9rem;
-  }
-
-  .score-mark {
-    width: 34px;
-    height: 34px;
-    border-radius: .45rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.15rem;
-    line-height: 1;
-    position: relative;
-  }
-
-  .score-mark.team1-mark {
-    background: #fee2e2;
-    color: #b42318;
-  }
-
-  .score-mark.team2-mark {
-    background: #dbeafe;
-    color: #1d4ed8;
-  }
-
-  .score-mark .end-no {
-    position: absolute;
-    right: 3px;
-    bottom: 1px;
-    font-size: .7rem;
-    font-weight: 900;
-    background: #111827;
-    color: #fff;
-    border-radius: 999px;
-    min-width: 17px;
-    height: 17px;
-    line-height: 17px;
-    text-align: center;
-  }
-
-  .score-mark .end-points {
-    position: absolute;
-    left: 3px;
-    bottom: 1px;
-    font-size: .65rem;
-    font-weight: 900;
-  }
-
-  .score-mark.team1-mark .end-points {
-    color: #dc2626;
-  }
-
-  .score-mark.team2-mark .end-points {
-    color: #2563eb;
-  }
-
-  .score-mark.compact {
-    font-size: 1rem;
-  }
-
-  .score-mark.compact .end-no {
-    display: none;
-  }
-
-  .score-mark.compact .end-points {
-    display: none;
-  }
-
-  .end-list-item {
-    display: flex;
-    justify-content: space-between;
-    gap: .5rem;
-    align-items: center;
-    border-bottom: 1px solid #e5e7eb;
-    padding: .45rem .2rem;
-    border-left: 5px solid transparent;
-  }
-
-  .end-list-item.team1-item {
-    border-left-color: #ef4444;
-    background: #fff8f8;
-  }
-
-  .end-list-item.team2-item {
-    border-left-color: #2563eb;
-    background: #f8fbff;
-  }
-
-  .btn-team-choice {
-    border-width: 2px;
-    font-weight: 800;
-  }
-
-  .btn-team-choice[data-team-choice="1"] {
-    color: #b42318;
-    border-color: #ef9a9a;
-    background: #fff5f5;
-  }
-
-  .btn-team-choice[data-team-choice="2"] {
-    color: #1d4ed8;
-    border-color: #90caf9;
-    background: #f4f9ff;
-  }
-
-  .btn-team-choice.active[data-team-choice="1"] {
-    background: #ef4444;
-    border-color: #dc2626;
-    color: #fff;
-    box-shadow: 0 0 0 .2rem rgba(239, 68, 68, .22);
-  }
-
-  .btn-team-choice.active[data-team-choice="2"] {
-    background: #2563eb;
-    border-color: #1d4ed8;
-    color: #fff;
-    box-shadow: 0 0 0 .2rem rgba(37, 99, 235, .22);
-  }
-
+  .scorecard-wrap { max-width: 960px; margin: 0 auto 2rem; }
+  .team-card { border: 1px solid #e5e7eb; border-radius: 1rem; padding: 1rem; background: #fff; box-shadow: 0 8px 18px rgba(0,0,0,.06); }
+  .vs-text { font-size: 1.2rem; font-weight: 800; color: #6b7280; }
+  .pending-panel { border: 1px dashed #fd7e14; background: #fff8ef; border-radius: 1rem; padding: .85rem 1rem; }
+  .draft-panel { border: 1px dashed #0d6efd; background: #eef6ff; border-radius: 1rem; padding: .85rem 1rem; }
+  .signature-box { width: 100%; height: 170px; border: 2px dashed #cbd5e1; border-radius: 1rem; background: #fff; touch-action: none; display:block; }
+  .signature-tools { display:flex; gap:.5rem; justify-content:space-between; align-items:center; margin-top:.5rem; }
+  .saved-dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:#adb5bd; margin-right:.35rem; }
+  .saved-dot.ok { background:#198754; }
+  .saved-signature-img { width:100%; min-height:120px; max-height:190px; object-fit:contain; border:1px solid #e5e7eb; border-radius:.75rem; background:#fff; padding:.5rem; }
+  .saved-signature-card { border:1px solid #e5e7eb; border-radius:.85rem; padding:.75rem; background:#f8fafc; }
+  .live-score-box { border:2px solid #e5e7eb; border-radius:1rem; padding:1rem; background:#f8fafc; text-align:center; }
+  .live-score-number { font-size:3rem; line-height:1; font-weight:900; }
+  .live-score-box.team1-box { background:#fff4f4; border-color:#ef9a9a; }
+  .live-score-box.team2-box { background:#f2f8ff; border-color:#90caf9; }
+  .team-chip { display:inline-flex; align-items:center; gap:.45rem; padding:.35rem .7rem; border-radius:999px; font-weight:800; font-size:.95rem; }
+  .team-chip::before { content:''; width:.8rem; height:.8rem; border-radius:50%; display:inline-block; }
+  .team1-chip { background:#fff1f2; color:#b42318; }
+  .team1-chip::before { background:#ef4444; }
+  .team2-chip { background:#eff6ff; color:#1d4ed8; }
+  .team2-chip::before { background:#2563eb; }
+  .end-control { border:1px solid #e5e7eb; border-radius:1rem; padding:1rem; background:#ffffff; }
+  .score-sheet-mobile { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .score-grid { min-width:760px; display:grid; grid-template-columns: 190px repeat(13, 40px) 64px; gap:3px; align-items:stretch; }
+  .score-cell { min-height:42px; border:1px solid #111827; display:flex; align-items:center; justify-content:center; background:#fff; position:relative; font-weight:800; }
+  .team-cell { justify-content:flex-start; padding:0 .5rem; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .team-cell.team1-row { background:#fff5f5; }
+  .team-cell.team2-row { background:#f3f8ff; }
+  .header-cell { background:#f3f4f6; font-size:.9rem; }
+  .score-mark { width:34px; height:34px; border-radius:.45rem; display:flex; align-items:center; justify-content:center; font-size:1.15rem; line-height:1; position:relative; }
+  .score-mark.team1-mark { background:#fee2e2; color:#b42318; }
+  .score-mark.team2-mark { background:#dbeafe; color:#1d4ed8; }
+  .score-mark .end-no { position:absolute; right:3px; bottom:1px; font-size:.7rem; font-weight:900; background:#111827; color:#fff; border-radius:999px; min-width:17px; height:17px; line-height:17px; text-align:center; }
+  .score-mark .end-points { position:absolute; left:3px; bottom:1px; font-size:.65rem; font-weight:900; }
+  .score-mark.team1-mark .end-points { color:#dc2626; }
+  .score-mark.team2-mark .end-points { color:#2563eb; }
+  .score-mark.compact { font-size:1rem; }
+  .score-mark.compact .end-no { display:none; }
+  .score-mark.compact .end-points { display:none; }
+  .end-list-item { display:flex; justify-content:space-between; gap:.5rem; align-items:center; border-bottom:1px solid #e5e7eb; padding:.45rem .2rem; border-left:5px solid transparent; }
+  .end-list-item.team1-item { border-left-color:#ef4444; background:#fff8f8; }
+  .end-list-item.team2-item { border-left-color:#2563eb; background:#f8fbff; }
+  .btn-team-choice { border-width:2px; font-weight:800; }
+  .btn-team-choice[data-team-choice="1"] { color:#b42318; border-color:#ef9a9a; background:#fff5f5; }
+  .btn-team-choice[data-team-choice="2"] { color:#1d4ed8; border-color:#90caf9; background:#f4f9ff; }
+  .btn-team-choice.active[data-team-choice="1"] { background:#ef4444; border-color:#dc2626; color:#fff; box-shadow:0 0 0 .2rem rgba(239,68,68,.22); }
+  .btn-team-choice.active[data-team-choice="2"] { background:#2563eb; border-color:#1d4ed8; color:#fff; box-shadow:0 0 0 .2rem rgba(37,99,235,.22); }
   @media (max-width: 767px) {
-    .live-score-number {
-      font-size: 2.4rem;
-    }
-
-    .score-grid {
-      min-width: 700px;
-      grid-template-columns: 160px repeat(13, 38px) 58px;
-    }
-
-    .score-cell {
-      min-height: 40px;
-    }
+    .live-score-number { font-size:2.4rem; }
+    .score-grid { min-width:700px; grid-template-columns: 160px repeat(13, 38px) 58px; }
+    .score-cell { min-height:40px; }
   }
 </style>
 
 <div class="scorecard-wrap">
   <div class="mb-3">
-    <a href="{{ url_for('round_matches', event_id=event.id, round=match.round) }}" class="btn btn-outline-secondary">←
-      กลับหน้า Round</a>
+    <a href="{{ url_for('round_matches', event_id=event.id, round=match.round) }}" class="btn btn-outline-secondary">← กลับหน้า Round</a>
   </div>
 
   <div class="card shadow-sm mb-3">
@@ -344,22 +71,17 @@
   </div>
 
   {% if match.is_locked %}
-  <div class="alert alert-success">คู่นี้ admin ยืนยันและล็อกผลแล้ว คะแนนจริงคือ <strong>{{ match.team1_score }} - {{
-      match.team2_score }}</strong></div>
+  <div class="alert alert-success">คู่นี้ admin ยืนยันและล็อกผลแล้ว คะแนนจริงคือ <strong>{{ match.team1_score }} - {{ match.team2_score }}</strong></div>
   {% elif match.pending_is_submitted %}
   <div class="pending-panel mb-3">
     <div class="fw-bold text-warning-emphasis">สิ้นสุดการแข่งขันแล้ว รอ admin/superadmin ยืนยัน</div>
-    <div class="fs-4 fw-bold">{{ match.pending_team1_score if match.pending_team1_score is not none else '-' }} - {{
-      match.pending_team2_score if match.pending_team2_score is not none else '-' }}</div>
-    <div class="small text-muted">{% if match.pending_submitted_by %}ส่งโดย {{ match.pending_submitted_by.username }}{%
-      endif %}</div>
+    <div class="fs-4 fw-bold">{{ match.pending_team1_score if match.pending_team1_score is not none else '-' }} - {{ match.pending_team2_score if match.pending_team2_score is not none else '-' }}</div>
+    <div class="small text-muted">{% if match.pending_submitted_by %}ส่งโดย {{ match.pending_submitted_by.username }}{% endif %}</div>
   </div>
   {% elif match.pending_team1_score is not none or match.pending_team2_score is not none %}
   <div class="draft-panel mb-3">
-    <div class="fw-bold text-primary">กำลังกรอกคะแนนออนไลน์ คะแนนโชว์สดในหน้า Round แล้ว แต่ยังไม่ขึ้นให้ admin ยืนยัน
-    </div>
-    <div class="fs-4 fw-bold">{{ match.pending_team1_score if match.pending_team1_score is not none else '-' }} - {{
-      match.pending_team2_score if match.pending_team2_score is not none else '-' }}</div>
+    <div class="fw-bold text-primary">กำลังกรอกคะแนนออนไลน์ คะแนนโชว์สดในหน้า Round แล้ว แต่ยังไม่ขึ้นให้ admin ยืนยัน</div>
+    <div class="fs-4 fw-bold">{{ match.pending_team1_score if match.pending_team1_score is not none else '-' }} - {{ match.pending_team2_score if match.pending_team2_score is not none else '-' }}</div>
   </div>
   {% endif %}
 
@@ -369,64 +91,27 @@
     <div class="card-body">
       <h5 class="fw-bold mb-3">ลายเซ็นที่บันทึกไว้สำหรับตรวจสอบ</h5>
       <div class="row g-3">
-        <div class="col-12 col-md-4">
-          <div class="saved-signature-card h-100">
-            <div class="fw-bold mb-2">ทีม 1</div>{% if match.team1_signature %}<img src="{{ match.team1_signature }}"
-              class="saved-signature-img" alt="ลายเซ็นทีม 1">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น
-            </div>{% endif %}
-          </div>
-        </div>
-        <div class="col-12 col-md-4">
-          <div class="saved-signature-card h-100">
-            <div class="fw-bold mb-2">ทีม 2</div>{% if match.team2_signature %}<img src="{{ match.team2_signature }}"
-              class="saved-signature-img" alt="ลายเซ็นทีม 2">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น
-            </div>{% endif %}
-          </div>
-        </div>
-        <div class="col-12 col-md-4">
-          <div class="saved-signature-card h-100">
-            <div class="fw-bold mb-2">ผู้กรอกคะแนน</div>{% if match.scorer_signature %}<img
-              src="{{ match.scorer_signature }}" class="saved-signature-img" alt="ลายเซ็นผู้กรอกคะแนน">{% else %}<div
-              class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}
-          </div>
-        </div>
+        <div class="col-12 col-md-4"><div class="saved-signature-card h-100"><div class="fw-bold mb-2">ทีม 1</div>{% if match.team1_signature %}<img src="{{ match.team1_signature }}" class="saved-signature-img" alt="ลายเซ็นทีม 1">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}</div></div>
+        <div class="col-12 col-md-4"><div class="saved-signature-card h-100"><div class="fw-bold mb-2">ทีม 2</div>{% if match.team2_signature %}<img src="{{ match.team2_signature }}" class="saved-signature-img" alt="ลายเซ็นทีม 2">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}</div></div>
+        <div class="col-12 col-md-4"><div class="saved-signature-card h-100"><div class="fw-bold mb-2">ผู้กรอกคะแนน</div>{% if match.scorer_signature %}<img src="{{ match.scorer_signature }}" class="saved-signature-img" alt="ลายเซ็นผู้กรอกคะแนน">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}</div></div>
       </div>
     </div>
   </div>
   {% endif %}
 
-  <form method="POST" action="{{ url_for('finish_online_scorecard', event_id=event.id, match_id=match.id) }}"
-    class="team-card" id="finishForm">
-
-    <input type="hidden" name="team1_score" id="team1_score"
-      value="{{ match.pending_team1_score if match.pending_team1_score is not none else (match.team1_score if match.team1_score is not none else 0) }}">
-    <input type="hidden" name="team2_score" id="team2_score"
-      value="{{ match.pending_team2_score if match.pending_team2_score is not none else (match.team2_score if match.team2_score is not none else 0) }}">
+  <form method="POST" action="{{ url_for('finish_online_scorecard', event_id=event.id, match_id=match.id) }}" class="team-card" id="finishForm">
+    <input type="hidden" name="team1_score" id="team1_score" value="{{ match.pending_team1_score if match.pending_team1_score is not none else (match.team1_score if match.team1_score is not none else 0) }}">
+    <input type="hidden" name="team2_score" id="team2_score" value="{{ match.pending_team2_score if match.pending_team2_score is not none else (match.team2_score if match.team2_score is not none else 0) }}">
     <input type="hidden" name="score_ends" id="score_ends" value='{{ score_ends|tojson }}'>
 
     <div class="row g-3 mb-3">
-      <div class="col-5">
-        <div class="live-score-box team1-box">
-          <div class="mb-2"><span class="team-chip team1-chip">ฝั่งทีม 1</span></div>
-          <div class="fw-bold text-truncate">{{ teams[match.team1_id] if match.team1_id else '-' }}</div>
-          <div class="live-score-number" id="team1Total">0</div>
-        </div>
-      </div>
+      <div class="col-5"><div class="live-score-box team1-box"><div class="mb-2"><span class="team-chip team1-chip">ฝั่งทีม 1</span></div><div class="fw-bold text-truncate">{{ teams[match.team1_id] if match.team1_id else '-' }}</div><div class="live-score-number" id="team1Total">0</div></div></div>
       <div class="col-2 d-flex align-items-center justify-content-center vs-text">VS</div>
-      <div class="col-5">
-        <div class="live-score-box team2-box">
-          <div class="mb-2"><span class="team-chip team2-chip">ฝั่งทีม 2</span></div>
-          <div class="fw-bold text-truncate">{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}
-          </div>
-          <div class="live-score-number" id="team2Total">0</div>
-        </div>
-      </div>
+      <div class="col-5"><div class="live-score-box team2-box"><div class="mb-2"><span class="team-chip team2-chip">ฝั่งทีม 2</span></div><div class="fw-bold text-truncate">{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</div><div class="live-score-number" id="team2Total">0</div></div></div>
     </div>
 
     <div class="alert alert-info mb-3">
-      เพิ่มคะแนนทีละ end: เลือกฝั่งทีมที่ได้แต้ม แล้วเลือกแต้ม 1-6 จากนั้นกด “เพิ่ม End” ระบบจะติ๊กช่องคะแนนสะสมทันที
-      หากได้หลายแต้มใน end เดียว เช่น 5 แต้ม ระบบจะติ๊กครบทั้ง 5 ช่อง และใส่เลข end ไว้ที่ช่องสุดท้ายของชุดนั้น
-      เพื่อให้เช็กย้อนหลังง่ายขึ้น
+      เพิ่มคะแนนทีละ end: เลือกฝั่งทีมที่ได้แต้ม แล้วเลือกแต้ม 1-6 จากนั้นกด “เพิ่ม End” ระบบจะติ๊กช่องคะแนนสะสมทันที หากได้หลายแต้มใน end เดียว เช่น 5 แต้ม ระบบจะติ๊กครบทั้ง 5 ช่อง และใส่เลข end ไว้ที่ช่องสุดท้ายของชุดนั้น เพื่อให้เช็กย้อนหลังง่ายขึ้น
     </div>
 
     <div class="score-sheet-mobile mb-3">
@@ -434,86 +119,72 @@
         <div class="score-cell header-cell team-cell">ทีม / คะแนนสะสม</div>
         {% for i in range(1, 14) %}<div class="score-cell header-cell">{{ i }}</div>{% endfor %}
         <div class="score-cell header-cell">รวม</div>
-        <div class="score-cell team-cell team1-row" title="{{ teams[match.team1_id] if match.team1_id else '-' }}">{{
-          teams[match.team1_id] if match.team1_id else '-' }}</div>
+        <div class="score-cell team-cell team1-row" title="{{ teams[match.team1_id] if match.team1_id else '-' }}">{{ teams[match.team1_id] if match.team1_id else '-' }}</div>
         {% for i in range(1, 14) %}<div class="score-cell" data-team="1" data-total="{{ i }}"></div>{% endfor %}
         <div class="score-cell fs-4" id="team1TotalCell">0</div>
-        <div class="score-cell team-cell team2-row"
-          title="{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}">{{ teams[match.team2_id] if
-          match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</div>
+        <div class="score-cell team-cell team2-row" title="{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}">{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</div>
         {% for i in range(1, 14) %}<div class="score-cell" data-team="2" data-total="{{ i }}"></div>{% endfor %}
         <div class="score-cell fs-4" id="team2TotalCell">0</div>
-
       </div>
+    </div>
 
-      <div class="end-control mb-3">
-        <h5 class="fw-bold mb-3">เพิ่ม End</h5>
-        <div class="row g-2 align-items-end">
-          <div class="col-12 col-md-5">
-            <label class="form-label fw-bold">ฝั่งที่ได้แต้ม</label>
-            <div class="d-grid gap-2">
-              <button type="button" class="btn btn-outline-primary btn-team-choice active" data-team-choice="1">{{
-                teams[match.team1_id] if match.team1_id else '-' }}</button>
-              <button type="button" class="btn btn-outline-primary btn-team-choice" data-team-choice="2" {% if not
-                match.team2_id %}disabled{% endif %}>{{ teams[match.team2_id] if match.team2_id else 'BYE /
-                ไม่มีคู่แข่ง' }}</button>
-            </div>
-          </div>
-          <div class="col-12 col-md-3">
-            <label class="form-label fw-bold">แต้มใน End นี้</label>
-            <select class="form-select form-select-lg" id="endPoints">
-              {% for i in range(1, 7) %}<option value="{{ i }}">{{ i }} แต้ม</option>{% endfor %}
-            </select>
-          </div>
-          <div class="col-12 col-md-4">
-            <button type="button" class="btn btn-success btn-lg w-100" id="addEndBtn">+ เพิ่ม End</button>
-            <button type="button" class="btn btn-outline-danger w-100 mt-2" id="undoEndBtn">ลบ End ล่าสุด</button>
+    <div class="end-control mb-3">
+      <h5 class="fw-bold mb-3">เพิ่ม End</h5>
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-5">
+          <label class="form-label fw-bold">ฝั่งที่ได้แต้ม</label>
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-outline-primary btn-team-choice active" data-team-choice="1">{{ teams[match.team1_id] if match.team1_id else '-' }}</button>
+            <button type="button" class="btn btn-outline-primary btn-team-choice" data-team-choice="2" {% if not match.team2_id %}disabled{% endif %}>{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</button>
           </div>
         </div>
-        <div class="small text-muted mt-2">ถ้าฝั่งใดถึง 13 คะแนน ระบบจะหยุดเพิ่ม End ใหม่ เพื่อป้องกันคะแนนเกิน</div>
-      </div>
-
-      <div class="card mb-3">
-        <div class="card-body">
-          <h5 class="fw-bold mb-2">รายการ End ที่กรอก</h5>
-          <div id="endList" class="small text-muted">ยังไม่มีการเพิ่ม End</div>
+        <div class="col-12 col-md-3">
+          <label class="form-label fw-bold">แต้มใน End นี้</label>
+          <select class="form-select form-select-lg" id="endPoints">
+            {% for i in range(1, 7) %}<option value="{{ i }}">{{ i }} แต้ม</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-4">
+          <button type="button" class="btn btn-success btn-lg w-100" id="addEndBtn">+ เพิ่ม End</button>
+          <button type="button" class="btn btn-outline-danger w-100 mt-2" id="undoEndBtn">ลบ End ล่าสุด</button>
         </div>
       </div>
+      <div class="small text-muted mt-2">ถ้าฝั่งใดถึง 13 คะแนน ระบบจะหยุดเพิ่ม End ใหม่ เพื่อป้องกันคะแนนเกิน</div>
+    </div>
 
-      <div class="mb-3"><span class="saved-dot" id="saveDot"></span><span
-          id="saveText">ยังไม่มีการบันทึกอัตโนมัติ</span></div>
-
-      <hr>
-      <h5 class="fw-bold mb-3">ลายเซ็นยืนยันผล</h5>
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
-          <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 1</label>
-          <canvas class="signature-box" data-sig-canvas="team1_signature"></canvas>
-          <input type="hidden" name="team1_signature" id="team1_signature" value="{{ match.team1_signature or '' }}">
-          <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button"
-              class="btn btn-sm btn-outline-secondary" data-clear-sig="team1_signature" {% if match.is_locked or
-              match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
-        </div>
-        <div class="col-12 col-md-6">
-          <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 2</label>
-          <canvas class="signature-box" data-sig-canvas="team2_signature"></canvas>
-          <input type="hidden" name="team2_signature" id="team2_signature" value="{{ match.team2_signature or '' }}">
-          <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button"
-              class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or
-              match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
-        </div>
-        <div class="col-12">
-          <label class="form-label fw-bold">ลายเซ็นผู้กรอกคะแนน</label>
-          <canvas class="signature-box" data-sig-canvas="scorer_signature"></canvas>
-          <input type="hidden" name="scorer_signature" id="scorer_signature" value="{{ match.scorer_signature or '' }}">
-          <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button"
-              class="btn btn-sm btn-outline-secondary" data-clear-sig="scorer_signature" {% if match.is_locked or
-              match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
-        </div>
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="fw-bold mb-2">รายการ End ที่กรอก</h5>
+        <div id="endList" class="small text-muted">ยังไม่มีการเพิ่ม End</div>
       </div>
+    </div>
 
-      <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or
-        match.pending_is_submitted %}disabled{% endif %}>สิ้นสุดการแข่งขัน / ส่งให้ admin ยืนยัน</button>
+    <div class="mb-3"><span class="saved-dot" id="saveDot"></span><span id="saveText">ยังไม่มีการบันทึกอัตโนมัติ</span></div>
+
+    <hr>
+    <h5 class="fw-bold mb-3">ลายเซ็นยืนยันผล</h5>
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 1</label>
+        <canvas class="signature-box" data-sig-canvas="team1_signature"></canvas>
+        <input type="hidden" name="team1_signature" id="team1_signature" value="{{ match.team1_signature or '' }}">
+        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team1_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 2</label>
+        <canvas class="signature-box" data-sig-canvas="team2_signature"></canvas>
+        <input type="hidden" name="team2_signature" id="team2_signature" value="{{ match.team2_signature or '' }}">
+        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
+      </div>
+      <div class="col-12">
+        <label class="form-label fw-bold">ลายเซ็นผู้กรอกคะแนน</label>
+        <canvas class="signature-box" data-sig-canvas="scorer_signature"></canvas>
+        <input type="hidden" name="scorer_signature" id="scorer_signature" value="{{ match.scorer_signature or '' }}">
+        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="scorer_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>สิ้นสุดการแข่งขัน / ส่งให้ admin ยืนยัน</button>
   </form>
 </div>
 {% endblock %}
@@ -521,11 +192,16 @@
 {% block scripts %}
 {{ super() }}
 <script>
+<<<<<<< HEAD
   (function () {
     const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
   };
+=======
+(function(){
+  const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
+>>>>>>> 443df74 (prepare railway deploy)
   const saveUrl = "{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}";
-  const teamNames = { 1: {{ (teams[match.team1_id] if match.team1_id else '-')| tojson }}, 2: { { (teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง')| tojson } }};
+  const teamNames = {1: {{ (teams[match.team1_id] if match.team1_id else '-')|tojson }}, 2: {{ (teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง')|tojson }}};
   const saveDot = document.getElementById('saveDot');
   const saveText = document.getElementById('saveText');
   const scoreEndsInput = document.getElementById('score_ends');
@@ -536,7 +212,7 @@
   const initialManualT1 = Number(s1.value || 0);
   const initialManualT2 = Number(s2.value || 0);
 
-  try { scoreEnds = JSON.parse(scoreEndsInput.value || '[]') || []; } catch (e) { scoreEnds = []; }
+  try { scoreEnds = JSON.parse(scoreEndsInput.value || '[]') || []; } catch(e) { scoreEnds = []; }
 
   function setSaved(ok, text) { saveDot.classList.toggle('ok', !!ok); saveText.textContent = text; }
   function totals() {
@@ -552,7 +228,7 @@
     scoreEnds = scoreEnds.map((item, idx) => {
       const team = Number(item.team); const points = Number(item.points);
       if (team === 1) t1 += points; else t2 += points;
-      return { end: idx + 1, team, points, team1_total: t1, team2_total: t2 };
+      return {end: idx + 1, team, points, team1_total: t1, team2_total: t2};
     });
   }
   function render() {
@@ -594,7 +270,7 @@
   async function autosave() {
     if (isLockedOrSubmitted) return;
     try {
-      const res = await fetch(saveUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score_ends: scoreEnds }) });
+      const res = await fetch(saveUrl, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({score_ends: scoreEnds}) });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
       setSaved(true, 'บันทึกอัตโนมัติแล้ว ' + new Date().toLocaleTimeString('th-TH'));
@@ -613,7 +289,7 @@
     if (points < 1 || points > 6) { alert('คะแนนต่อ End ต้องอยู่ระหว่าง 1-6'); return; }
     if (selectedTeam === 1 && t1 + points > 13) { alert('คะแนนทีม 1 จะเกิน 13 กรุณาเลือกแต้มให้น้อยลง'); return; }
     if (selectedTeam === 2 && t2 + points > 13) { alert('คะแนนทีม 2 จะเกิน 13 กรุณาเลือกแต้มให้น้อยลง'); return; }
-    scoreEnds.push({ team: selectedTeam, points });
+    scoreEnds.push({team: selectedTeam, points});
     render();
     setSaved(false, 'กำลังบันทึก...');
     autosave();
@@ -641,13 +317,13 @@
       ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#111827';
       if (old) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, canvas.width / ratio, 170); img.src = old; }
     }
-    function pos(e) { const rect = canvas.getBoundingClientRect(); const t = e.touches && e.touches[0] ? e.touches[0] : e; return { x: t.clientX - rect.left, y: t.clientY - rect.top }; }
+    function pos(e) { const rect = canvas.getBoundingClientRect(); const t = e.touches && e.touches[0] ? e.touches[0] : e; return {x: t.clientX - rect.left, y: t.clientY - rect.top}; }
     function start(e) { if (isLockedOrSubmitted) return; drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
     function move(e) { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hidden.value = canvas.toDataURL('image/png'); e.preventDefault(); }
     function end() { if (!drawing) return; drawing = false; hidden.value = canvas.toDataURL('image/png'); }
     canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
-    canvas.addEventListener('touchstart', start, { passive: false }); canvas.addEventListener('touchmove', move, { passive: false }); canvas.addEventListener('touchend', end);
-    resize(); return { clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hidden.value = ''; } };
+    canvas.addEventListener('touchstart', start, {passive:false}); canvas.addEventListener('touchmove', move, {passive:false}); canvas.addEventListener('touchend', end);
+    resize(); return { clear: () => { ctx.clearRect(0,0,canvas.width,canvas.height); hidden.value=''; } };
   }
   const pads = {};
   document.querySelectorAll('[data-sig-canvas]').forEach(c => { pads[c.dataset.sigCanvas] = setupCanvas(c); });
@@ -657,10 +333,10 @@
     const [t1, t2] = totals();
     if (!scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน'); return; }
     if (t1 < 13 && t2 < 13) { e.preventDefault(); alert('ยังไม่มีทีมใดถึง 13 คะแนน กรุณากรอกต่อหรือเช็คคะแนนก่อนสิ้นสุดการแข่งขัน'); return; }
-    const missing = ['team1_signature', 'team2_signature', 'scorer_signature'].filter(id => !document.getElementById(id).value);
+    const missing = ['team1_signature','team2_signature','scorer_signature'].filter(id => !document.getElementById(id).value);
     if (missing.length) { e.preventDefault(); alert('ต้องมีลายเซ็นนักกีฬาทั้งสองทีม และผู้กรอกคะแนนก่อนสิ้นสุดการแข่งขัน'); }
   });
   render();
-}) ();
+})();
 </script>
 {% endblock %}
