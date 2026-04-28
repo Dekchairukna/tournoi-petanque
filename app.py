@@ -1193,9 +1193,8 @@ def finish_online_scorecard_payload(match, form_data, submitted_user=None):
         return "คะแนนต้องไม่น้อยกว่า 0", "danger", False
     if score1 > 13 or score2 > 13:
         return "คะแนนต้องไม่เกิน 13", "danger", False
-    if score1 < 13 and score2 < 13:
-        return "ยังไม่มีทีมใดถึง 13 คะแนน กรุณากรอกต่อหรือเช็คคะแนนก่อนสิ้นสุดการแข่งขัน", "danger", False
-
+    # อนุญาตให้ส่งผลได้แม้คะแนนยังไม่ถึง 13
+    # ใช้สำหรับกรณีจบเกมก่อน, แข่งตามเวลา, ผู้จัดตัดสินให้จบ, หรือกรอกผลย้อนหลัง
     if not sig1 or not sig2:
         return "ต้องมีลายเซ็นนักกีฬาทั้งสองทีมก่อนสิ้นสุดการแข่งขัน", "danger", False
 

@@ -182,7 +182,7 @@
           <button type="button" class="btn btn-outline-danger w-100 mt-2" id="undoEndBtn">ลบ End ล่าสุด</button>
         </div>
       </div>
-      <div class="small text-muted mt-2">ถ้าฝั่งใดถึง 13 คะแนน ระบบจะหยุดเพิ่ม End ใหม่ เพื่อป้องกันคะแนนเกิน</div>
+      <div class="small text-muted mt-2">สามารถกดสิ้นสุดการแข่งขันได้แม้คะแนนยังไม่ถึง 13</div>
     </div>
 
     <div class="card mb-3">
@@ -430,7 +430,7 @@
     const [t1, t2] = scoreMode === 'manual' ? manualTotals() : totals();
     if (scoreMode === 'manual') { s1.value = t1; s2.value = t2; scoreEnds = []; scoreEndsInput.value = '[]'; }
     if (scoreMode === 'ends' && !scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน หรือเลือกโหมดกรอกคะแนนเลย'); return; }
-    if (t1 < 13 && t2 < 13) { e.preventDefault(); alert('ยังไม่มีทีมใดถึง 13 คะแนน กรุณากรอกต่อหรือเช็คคะแนนก่อนสิ้นสุดการแข่งขัน'); return; }
+    // อนุญาตให้ส่งผลได้แม้คะแนนยังไม่ถึง 13
     const missing = ['team1_signature','team2_signature'].filter(id => !document.getElementById(id).value);
     if (missing.length) { e.preventDefault(); alert('ต้องมีลายเซ็นนักกีฬาทั้งสองทีมก่อนสิ้นสุดการแข่งขัน'); }
   });
