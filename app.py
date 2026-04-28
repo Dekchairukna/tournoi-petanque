@@ -1107,14 +1107,14 @@ def finish_online_scorecard(event_id, match_id):
 
     sig1 = (request.form.get('team1_signature') or '').strip()
     sig2 = (request.form.get('team2_signature') or '').strip()
-    sig3 = (request.form.get('scorer_signature') or '').strip()
+    
 
     if score1 < 0 or score2 < 0:
         flash("คะแนนต้องไม่น้อยกว่า 0", "danger")
         return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
 
-    if not sig1 or not sig2 or not sig3:
-        flash("ต้องมีลายเซ็นนักกีฬาทั้งสองทีม และลายเซ็นผู้กรอก ก่อนสิ้นสุดการแข่งขัน", "danger")
+    if not sig1 or not sig2 :
+        flash("ต้องมีลายเซ็นนักกีฬาทั้งสองทีม  ก่อนสิ้นสุดการแข่งขัน", "danger")
         return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
 
     match.pending_team1_score = score1
@@ -1122,7 +1122,7 @@ def finish_online_scorecard(event_id, match_id):
     match.score_ends = json.dumps(score_ends, ensure_ascii=False)
     match.team1_signature = sig1
     match.team2_signature = sig2
-    match.scorer_signature = sig3
+    
     match.pending_is_submitted = True
     match.pending_submitted_by_id = current_user.id
     match.pending_submitted_at = datetime.utcnow()

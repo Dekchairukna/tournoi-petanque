@@ -85,7 +85,7 @@
   </div>
   {% endif %}
 
-  {% set has_saved_signatures = match.team1_signature or match.team2_signature or match.scorer_signature %}
+  {% set has_saved_signatures = match.team1_signature or match.team2_signature %}
   {% if has_saved_signatures %}
   <div class="card shadow-sm mb-3">
     <div class="card-body">
@@ -93,7 +93,6 @@
       <div class="row g-3">
         <div class="col-12 col-md-4"><div class="saved-signature-card h-100"><div class="fw-bold mb-2">ทีม 1</div>{% if match.team1_signature %}<img src="{{ match.team1_signature }}" class="saved-signature-img" alt="ลายเซ็นทีม 1">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}</div></div>
         <div class="col-12 col-md-4"><div class="saved-signature-card h-100"><div class="fw-bold mb-2">ทีม 2</div>{% if match.team2_signature %}<img src="{{ match.team2_signature }}" class="saved-signature-img" alt="ลายเซ็นทีม 2">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}</div></div>
-        <div class="col-12 col-md-4"><div class="saved-signature-card h-100"><div class="fw-bold mb-2">ผู้กรอกคะแนน</div>{% if match.scorer_signature %}<img src="{{ match.scorer_signature }}" class="saved-signature-img" alt="ลายเซ็นผู้กรอกคะแนน">{% else %}<div class="text-muted small">ยังไม่มีลายเซ็น</div>{% endif %}</div></div>
       </div>
     </div>
   </div>
@@ -162,7 +161,7 @@
     <div class="mb-3"><span class="saved-dot" id="saveDot"></span><span id="saveText">ยังไม่มีการบันทึกอัตโนมัติ</span></div>
 
     <hr>
-    <h5 class="fw-bold mb-3">ลายเซ็นยืนยันผล</h5>
+    <h5 class="fw-bold mb-3">ลายเซ็นยืนยันผลจากนักกีฬาทั้งสองทีม</h5>
     <div class="row g-3">
       <div class="col-12 col-md-6">
         <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 1</label>
@@ -176,13 +175,7 @@
         <input type="hidden" name="team2_signature" id="team2_signature" value="{{ match.team2_signature or '' }}">
         <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
       </div>
-      <div class="col-12">
-        <label class="form-label fw-bold">ลายเซ็นผู้กรอกคะแนน</label>
-        <canvas class="signature-box" data-sig-canvas="scorer_signature"></canvas>
-        <input type="hidden" name="scorer_signature" id="scorer_signature" value="{{ match.scorer_signature or '' }}">
-        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="scorer_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
-      </div>
-    </div>
+      
 
     <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>สิ้นสุดการแข่งขัน / ส่งให้ admin ยืนยัน</button>
   </form>
@@ -192,14 +185,10 @@
 {% block scripts %}
 {{ super() }}
 <script>
-<<<<<<< HEAD
-  (function () {
-    const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
-  };
-=======
+
 (function(){
   const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
->>>>>>> 443df74 (prepare railway deploy)
+
   const saveUrl = "{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}";
   const teamNames = {1: {{ (teams[match.team1_id] if match.team1_id else '-')|tojson }}, 2: {{ (teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง')|tojson }}};
   const saveDot = document.getElementById('saveDot');
@@ -333,8 +322,8 @@
     const [t1, t2] = totals();
     if (!scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน'); return; }
     if (t1 < 13 && t2 < 13) { e.preventDefault(); alert('ยังไม่มีทีมใดถึง 13 คะแนน กรุณากรอกต่อหรือเช็คคะแนนก่อนสิ้นสุดการแข่งขัน'); return; }
-    const missing = ['team1_signature','team2_signature','scorer_signature'].filter(id => !document.getElementById(id).value);
-    if (missing.length) { e.preventDefault(); alert('ต้องมีลายเซ็นนักกีฬาทั้งสองทีม และผู้กรอกคะแนนก่อนสิ้นสุดการแข่งขัน'); }
+    const missing = ['team1_signature','team2_signature'].filter(id => !document.getElementById(id).value);
+    if (missing.length) { e.preventDefault(); alert('ต้องมีลายเซ็นนักกีฬาทั้งสองทีมก่อนสิ้นสุดการแข่งขัน'); }
   });
   render();
 })();
