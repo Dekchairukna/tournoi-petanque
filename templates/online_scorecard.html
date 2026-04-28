@@ -522,7 +522,7 @@
 {{ super() }}
 <script>
   (function () {
-    const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }
+    const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
   };
   const saveUrl = "{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}";
   const teamNames = { 1: {{ (teams[match.team1_id] if match.team1_id else '-')| tojson }}, 2: { { (teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง')| tojson } }};
