@@ -315,7 +315,7 @@
         <div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name">
           <label class="form-check-label" for="separate_same_name">
-            แยกทีมที่ชื่อเหมือนกันออกจากกัน
+            ห้ามทีมชื่อฐานเดียวกันเจอกัน (ถ้าไม่ติ๊ก เจอกันได้)
           </label>
         </div>
 
@@ -325,6 +325,12 @@
       </form>
       {% elif current_round >= 1 %}
       <form method="post" action="{{ url_for('pair_next_round', event_id=event.id) }}" class="d-inline">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name_next">
+          <label class="form-check-label" for="separate_same_name_next">
+            ห้ามทีมชื่อฐานเดียวกันเจอกันในรอบนี้ (ถ้าไม่ติ๊ก เจอกันได้)
+          </label>
+        </div>
         <button type="submit" class="btn btn-primary btn-lg">
           จับคู่รอบถัดไป
         </button>

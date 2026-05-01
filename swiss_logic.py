@@ -108,128 +108,94 @@ def get_available_fields(event, used_fields=None):
     return available_fields
 
 #-------------logic--------------------------------------
-def generate_pairings(event_id, round_no, max_retries=200):
+def generate_pairings(event_id, round_no, max_retries=200, separate_same_name=False):
+    """
+    จับคู่ Swiss รอบถัดไปแบบทนทานขึ้น
+    - ถ้า separate_same_name=True: ห้ามทีมชื่อฐานเดียวกันเจอกันแบบกฎแข็ง ห้ามผ่อนกฎนี้
+    - ถ้า separate_same_name=False: ทีมชื่อฐานเดียวกันเจอกันได้ตามปกติ
+    - ห้ามทีมที่เคยเจอกันแล้วเจอกันซ้ำแบบกฎแข็ง ไม่ผ่อนกฎนี้
+    - พยายามเลี่ยง BYE ซ้ำ แต่ถ้าจำเป็นสามารถให้ BYE ซ้ำได้ เพื่อไม่ให้ระบบตันง่าย
+    """
     standings = calculate_standings(event_id)
+    team_ids = [team["team_id"] for team in standings]
     team_names = {team.id: team.name for team in Team.query.filter_by(event_id=event_id).all()}
     previous_matches = Match.query.filter_by(event_id=event_id).all()
+
+    if len(team_ids) < 2:
+        return []
 
     past_opponents = {}
     bye_teams = set()
 
     for match in previous_matches:
-        if match.team2_id == "BYE" or match.team2_id is None or match.team2_id == 0:
-            bye_teams.add(match.team1_id)
+        if match.team2_id is None or match.team2_id == 0:
+            if match.team1_id:
+                bye_teams.add(match.team1_id)
         else:
             past_opponents.setdefault(match.team1_id, set()).add(match.team2_id)
             past_opponents.setdefault(match.team2_id, set()).add(match.team1_id)
 
-    score_groups = {}
-    for team in standings:
-        score_groups.setdefault(team["score"], []).append(team["team_id"])
+    def can_pair(t1, t2, allow_same_base=False):
+        if t1 == t2:
+            return False
+        # กฎแข็ง: ทีมที่เคยเจอกันแล้ว ห้ามเจอกันซ้ำทุกกรณี
+        if t2 in past_opponents.get(t1, set()):
+            return False
+        if separate_same_name and (not allow_same_base) and same_base_name(team_names, t1, t2):
+            return False
+        return True
 
-    sorted_scores = sorted(score_groups.keys(), reverse=True)
+    def backtrack_pair(remaining, allow_same_base=False):
+        """จับคู่ด้วย backtracking เพื่อแก้กรณี greedy เลือกคู่แรกแล้วตันภายหลัง"""
+        if not remaining:
+            return []
+        first = remaining[0]
 
-    total_teams = sum(len(teams) for teams in score_groups.values())
-    allow_bye = (total_teams % 2 == 1)
-
-    def try_pairing(groups, past_opponents):
-        pairings = []
-        used_teams = set()
-        carry_over = None
-
-        for score in sorted_scores:
-            group = list(groups[score])
-
-            if carry_over:
-                found = False
-                for idx, t in enumerate(group):
-                    if t not in past_opponents.get(carry_over, set()) and not same_base_name(team_names, carry_over, t):
-                        pairings.append((carry_over, t))
-                        used_teams.update({carry_over, t})
-                        group.pop(idx)
-                        carry_over = None
-                        found = True
-                        break
-                if not found:
-                    return None
-
-            temp = []
-            while group:
-                t1 = group.pop(0)
-                for idx, t2 in enumerate(group):
-                    if t2 not in past_opponents.get(t1, set()) and not same_base_name(team_names, t1, t2):
-                        pairings.append((t1, t2))
-                        used_teams.update({t1, t2})
-                        group.pop(idx)
-                        break
-                else:
-                    temp.append(t1)
-
-            if len(temp) == 1:
-                if carry_over is not None:
-                    return None  # ค้าง 2 ทีมไม่ได้
-                carry_over = temp[0]
-            elif len(temp) > 1:
-                return None
-
-        # เงื่อนไข BYE
-        if carry_over:
-            if not allow_bye:
-                return None
-            if carry_over in bye_teams:
-                return None  # ได้ BYE ซ้ำ
-            pairings.append((carry_over, None))
-
-        return pairings
-
-    for attempt in range(max_retries):
-        temp_groups = {score: list(teams) for score, teams in score_groups.items()}
-        for g in temp_groups.values():
-            random.shuffle(g)
-
-        pairings = try_pairing(temp_groups, past_opponents)
-        if pairings is not None:
-            return pairings
-
-    # ล้มเหลว -> manual pairing
-    return pairings
-
-
-    # ถ้าเกิน max_retries ให้ลองจับคู่แบบผ่อนปรน (คะแนนติดกัน)
-
-    # สร้าง list ทีมตามคะแนนเรียงจากมากไปน้อย
-    teams_ordered = []
-    for score in sorted_scores:
-        teams_ordered.extend(score_groups[score])
-
-    used = set()
-    pairings = []
-
-    # ฟังก์ชันช่วยจับคู่ทีมหาคู่ที่ยังไม่เคยเจอ และทีมที่ได้ BYE แล้วจะไม่จับ BYE ซ้ำ
-    def find_partner(team):
-        for candidate in teams_ordered:
-            if candidate != team and candidate not in used and candidate not in past_opponents.get(team, set()) and not same_base_name(team_names, team, candidate):
-                # หลีกเลี่ยงจับ BYE ซ้ำกับทีมที่เคยได้ BYE แล้ว และหลีกเลี่ยงทีมชื่อฐานเดียวกัน
-                if candidate in bye_teams and team in bye_teams:
-                    continue
-                return candidate
+        for idx in range(1, len(remaining)):
+            second = remaining[idx]
+            if not can_pair(first, second, allow_same_base=allow_same_base):
+                continue
+            rest = remaining[1:idx] + remaining[idx + 1:]
+            sub = backtrack_pair(rest, allow_same_base=allow_same_base)
+            if sub is not None:
+                return [(first, second)] + sub
         return None
 
-    for team in teams_ordered:
-        if team in used:
-            continue
-        partner = find_partner(team)
-        if partner:
-            pairings.append((team, partner))
-            used.add(team)
-            used.add(partner)
-        else:
-            # ทีมนี้จับคู่ไม่ได้ ต้องได้ BYE
-            # แต่ถ้าเคยได้ BYE แล้ว อาจต้องแจ้งเตือนหรือจัดการด้วยมือ
-            if team in bye_teams:
-                return None  # หรือโยน exception เฉพาะของคุณ เช่น TooManyByesError
-            else:
-                pairings.append((team, None))
-                used.add(team)
+    def choose_bye_candidates(ids):
+        """
+        เลือกทีม BYE จากอันดับล่างขึ้นบนก่อน
+        - ทีมที่ยังไม่เคย BYE มาก่อนจะถูกลองก่อน
+        - ถ้าจัดคู่ไม่ได้จริง ๆ จะลองทีมที่เคย BYE แล้วด้วย เพื่อให้ BYE ซ้ำได้เมื่อจำเป็น
+        """
+        bottom_up = list(reversed(ids))
+        never_bye = [tid for tid in bottom_up if tid not in bye_teams]
+        already_bye = [tid for tid in bottom_up if tid in bye_teams]
+        return never_bye + already_bye
 
-    return pairings
+    if separate_same_name:
+        # ติ๊ก checkbox: ห้ามชื่อฐานเดียวกันเจอกันแบบกฎแข็ง
+        # คู่เดิมซ้ำก็เป็นกฎแข็ง ห้ามผ่อนทั้งสองเรื่อง
+        rule_levels = [
+            {"allow_same_base": False},
+        ]
+    else:
+        # ไม่ติ๊ก checkbox: ทีมชื่อฐานเดียวกันเจอกันได้เลย แต่คู่เดิมซ้ำยังห้ามเด็ดขาด
+        rule_levels = [
+            {"allow_same_base": True},
+        ]
+
+    if len(team_ids) % 2 == 1:
+        for bye_team in choose_bye_candidates(team_ids):
+            remaining = [tid for tid in team_ids if tid != bye_team]
+            for rule in rule_levels:
+                pairs = backtrack_pair(remaining, **rule)
+                if pairs is not None:
+                    return pairs + [(bye_team, None)]
+        return None
+
+    for rule in rule_levels:
+        pairs = backtrack_pair(team_ids, **rule)
+        if pairs is not None:
+            return pairs
+
+    return None

@@ -228,7 +228,7 @@ def safe_int(value):
         return 0
 
 
-def swiss_pairing(event_id, round_no):
+def swiss_pairing(event_id, round_no, separate_same_name=False):
     # ตรวจสอบว่ารอบก่อนหน้า (round_no - 1) ถูกล็อกผลหมดหรือยัง
     if round_no > 1:
         unlocked_matches = Match.query.filter_by(event_id=event_id, round=round_no - 1, is_locked=False).all()
@@ -240,11 +240,12 @@ def swiss_pairing(event_id, round_no):
     db.session.commit()
 
     # เรียกใช้ฟังก์ชัน generate_pairings เพื่อจับคู่
-    pairing_results = generate_pairings(event_id, round_no)
+    pairing_results = generate_pairings(event_id, round_no, separate_same_name=separate_same_name)
     
-     # >>> ตรวจจับว่า generate_pairings ล้มเหลวเพราะ BYE ซ้ำ
+    # ถ้าจับไม่ได้จริง ๆ มักเกิดจากกฎแข็ง เช่น ติ๊กห้ามทีมชื่อฐานเดียวกันเจอกัน
+    # แต่จำนวนทีม/ชื่อฐานทำให้จัดครบไม่ได้ จึงส่งไปจัดด้วยมือ
     if pairing_results is None:
-        return False, "ทีมใดทีมหนึ่งได้ BYE ซ้ำหลายรอบ ต้องจัดการด้วยมือ"
+        return False, "ระบบไม่สามารถจัดคู่ตามเงื่อนไขที่เลือกได้ ต้องจัดการด้วยมือ"
 
     matches = []
     for p in pairing_results:
@@ -922,14 +923,17 @@ def pair_next_round(event_id):
         flash("ครบจำนวนรอบการแข่งขันแล้ว ไม่สามารถจับคู่รอบใหม่ได้", "info")
         return redirect(url_for("event_detail", event_id=event_id))
 
+    # อ่านค่า checkbox: ถ้าไม่ติ๊ก ทีมชื่อฐานเดียวกันสามารถเจอกันได้ตามปกติ
+    separate_same_name = request.form.get('separate_same_name') == 'on'
+
     # 🔁 เรียก swiss_pairing แล้วตรวจสอบผลลัพธ์
-    success, message = swiss_pairing(event_id, next_round)
+    success, message = swiss_pairing(event_id, next_round, separate_same_name=separate_same_name)
 
     if not success:
         flash(message, "warning")
 
-        # ถ้าเป็นกรณี BYE ซ้ำหลายรอบ → ส่งไป manual pairing
-        if "BYE ซ้ำ" in message or "จับคู่ด้วยมือ" in message:
+        # ถ้าระบบจัดตามเงื่อนไขไม่ได้ → ส่งไป manual pairing
+        if "จัดการด้วยมือ" in message or "จัดคู่ตามเงื่อนไข" in message:
             return redirect(url_for("manual_pairing", event_id=event_id, round_num=next_round))
 
         # กรณีอื่นๆ กลับหน้า event_detail
