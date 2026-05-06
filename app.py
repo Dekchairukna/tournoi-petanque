@@ -538,7 +538,7 @@ def index():
             )
         )
         .order_by(Event.date.asc().nullslast(), Event.id.desc())
-        .limit(30)
+        .limit(20)
         .all()
     )
 
@@ -550,7 +550,7 @@ def index():
             latest_match_status_subq.c.unlocked_count == 0
         )
         .order_by(Event.date.desc().nullslast(), Event.id.desc())
-        .limit(40)
+        .limit(20)
         .all()
     )
 
