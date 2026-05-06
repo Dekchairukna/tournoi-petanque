@@ -37,7 +37,18 @@ from openpyxl.utils import get_column_letter
 load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your_secret_key")
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vpIukBThkAUpgSjNcTAaQTssfCOAYjSW@trolley.proxy.rlwy.net:46680/railway'
+# ใช้ DATABASE_URL จาก Railway Environment Variable เท่านั้น
+# ถ้ารันในเครื่องและยังไม่ได้ตั้งค่า DATABASE_URL จะใช้ SQLite ใน instance/tournoi.db
+database_url = os.environ.get("DATABASE_URL")
+if database_url:
+    # Railway/SQLAlchemy บางครั้งให้ postgres:// ให้แปลงเป็น postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    os.makedirs(os.path.join(os.path.dirname(__file__), "instance"), exist_ok=True)
+    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///instance/tournoi.db"
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = "uploads"
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
@@ -128,6 +139,24 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
         if 'scorecard_token' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorecard_token VARCHAR(80)"))
+    # index เพิ่มความเร็วหน้าแรก/หน้ารอบ/หน้ารายการแข่งขัน
+    if dialect == 'postgresql':
+        index_stmts = [
+            "CREATE INDEX IF NOT EXISTS ix_events_date ON events (date)",
+            "CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)",
+            "CREATE INDEX IF NOT EXISTS ix_matches_event_locked ON matches (event_id, is_locked)",
+            "CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)",
+        ]
+    else:
+        index_stmts = [
+            "CREATE INDEX IF NOT EXISTS ix_events_date ON events (date)",
+            "CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)",
+            "CREATE INDEX IF NOT EXISTS ix_matches_event_locked ON matches (event_id, is_locked)",
+            "CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)",
+        ]
+    for stmt in index_stmts:
+        db.session.execute(text(stmt))
+
     db.session.commit()
 
 
@@ -458,32 +487,81 @@ def manual_pairing(event_id, round_num):
 
 @app.route("/")
 def index():
+    """หน้าแรกแบบเบา: ไม่วน query แมตช์ทีละรายการแข่งขัน
+
+    เดิม: ดึง Event ทั้งหมด แล้วใน loop ไป query Match ซ้ำทุก Event
+    ถ้ามี 100 รายการ = 201+ queries และ render ตารางรายการจบแล้วทั้งหมด
+
+    ใหม่: ดึงเฉพาะรายการที่ต้องโชว์บนหน้าแรก
+    - รายการที่ยังไม่จบ: ถ้าไม่มีแมตช์เลย หรือมีแมตช์ที่ยังไม่ lock
+    - รายการที่จบแล้ว: แสดงล่าสุดจำกัดจำนวน เพื่อไม่ให้หน้าแรกหนัก
+    """
     today = date.today()
 
-    all_events = Event.query.order_by(Event.date.desc()).all()
+    latest_round_subq = (
+        db.session.query(
+            Match.event_id.label("event_id"),
+            func.max(Match.round).label("latest_round")
+        )
+        .group_by(Match.event_id)
+        .subquery()
+    )
 
-    upcoming_events = []
+    latest_match_status_subq = (
+        db.session.query(
+            Match.event_id.label("event_id"),
+            func.count(Match.id).label("match_count"),
+            func.sum(db.case((Match.is_locked == False, 1), else_=0)).label("unlocked_count")
+        )
+        .join(
+            latest_round_subq,
+            (Match.event_id == latest_round_subq.c.event_id) &
+            (Match.round == latest_round_subq.c.latest_round)
+        )
+        .group_by(Match.event_id)
+        .subquery()
+    )
+
+    upcoming_events = (
+        Event.query
+        .outerjoin(latest_match_status_subq, Event.id == latest_match_status_subq.c.event_id)
+        .filter(
+            db.or_(
+                latest_match_status_subq.c.match_count == None,
+                latest_match_status_subq.c.unlocked_count > 0
+            )
+        )
+        .order_by(Event.date.asc().nullslast(), Event.id.desc())
+        .limit(30)
+        .all()
+    )
+
+    finished_events = (
+        Event.query
+        .join(latest_match_status_subq, Event.id == latest_match_status_subq.c.event_id)
+        .filter(
+            latest_match_status_subq.c.match_count > 0,
+            latest_match_status_subq.c.unlocked_count == 0
+        )
+        .order_by(Event.date.desc().nullslast(), Event.id.desc())
+        .limit(40)
+        .all()
+    )
+
     finished_events_by_year = defaultdict(list)
+    for event in finished_events:
+        year = event.date.year if event.date else "ไม่ระบุปี"
+        finished_events_by_year[year].append(event)
 
-    for event in all_events:
-        latest_round = db.session.query(db.func.max(Match.round)).filter(Match.event_id == event.id).scalar()
-        matches = Match.query.filter_by(event_id=event.id, round=latest_round).all()
-
-        is_finished = all(m.is_locked for m in matches) if matches else False
-
-        if not is_finished:
-            upcoming_events.append(event)
-        else:
-            finished_events_by_year[event.date.year].append(event)
-
-    # เรียงปีจากใหม่ -> เก่า
-    finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
+    finished_events_by_year = dict(
+        sorted(finished_events_by_year.items(), key=lambda item: str(item[0]), reverse=True)
+    )
 
     return render_template(
         "index.html",
-        upcoming_events=sorted(upcoming_events, key=lambda e: e.date),
+        upcoming_events=upcoming_events,
         finished_events_by_year=finished_events_by_year,
-        events=upcoming_events + [e for year in finished_events_by_year.values() for e in year]  # รวมรายการทั้งหมด
+        events=upcoming_events + finished_events
     )
 
     
