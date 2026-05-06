@@ -3259,7 +3259,7 @@ def _playoff_pair_sheet(playoff_id, comp, rnd, this_group_no, pair_key, label, s
     b_slot = int((b or {}).get('slot_no') or 0)
     if not a_slot or not b_slot:
         return None
-    token = _make_playoff_scorecard_token(playoff_id, rnd['id'], group_no, stage_no, a_slot, b_slot)
+    token = _make_playoff_scorecard_token(playoff_id, rnd['id'], this_group_no, stage_no, a_slot, b_slot)
     court = (a or b or {}).get('court_name') or ''
     return {
         'playoff_id': playoff_id,
@@ -3267,7 +3267,7 @@ def _playoff_pair_sheet(playoff_id, comp, rnd, this_group_no, pair_key, label, s
         'round_name': rnd['round_name'],
         'round_type': rnd['round_type'],
         'system_label': _playoff_system_label(rnd['round_type']),
-        'group_no': group_no,
+        'group_no': this_group_no,
         'pair_key': pair_key,
         'stage_no': stage_no,
         'stage_label': label,
@@ -3276,8 +3276,8 @@ def _playoff_pair_sheet(playoff_id, comp, rnd, this_group_no, pair_key, label, s
         'team2_name': _slot_name(b),
         'team1_slot_no': a_slot,
         'team2_slot_no': b_slot,
-        'team1_score': score_map.get((group_no, a_slot, stage_no), ''),
-        'team2_score': score_map.get((group_no, b_slot, stage_no), ''),
+        'team1_score': score_map.get((this_group_no, a_slot, stage_no), ''),
+        'team2_score': score_map.get((this_group_no, b_slot, stage_no), ''),
         'token': token,
         'scorecard_url': url_for('public_playoff_scorecard', token=token, _external=True),
     }
