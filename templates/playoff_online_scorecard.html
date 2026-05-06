@@ -218,7 +218,7 @@
   const scoreEndsInput = document.getElementById('score_ends');
   const s1 = document.getElementById('team1_score');
   const s2 = document.getElementById('team2_score');
-  const teamNames = {1: {{ team1_name|tojson }}, 2: {{ team2_name|tojson }}};
+  const teamNames = {1: {{ ('X' if team1.is_bye else team1.team_name)|tojson }}, 2: {{ ('X' if team2.is_bye else team2.team_name)|tojson }}};
   let scoreEnds = [];
   let selectedTeam = 1;
   let scoreMode = (Number(s1.value || 0) > 0 || Number(s2.value || 0) > 0) ? 'manual' : 'ends';
