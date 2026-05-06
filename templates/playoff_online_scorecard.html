@@ -6,7 +6,6 @@
   .scorecard-wrap { max-width: 960px; margin: 0 auto 2rem; }
   .team-card { border: 1px solid #e5e7eb; border-radius: 1rem; padding: 1rem; background: #fff; box-shadow: 0 8px 18px rgba(0,0,0,.06); }
   .vs-text { font-size: 1.2rem; font-weight: 800; color: #6b7280; }
-  .pending-panel { border: 1px dashed #fd7e14; background: #fff8ef; border-radius: 1rem; padding: .85rem 1rem; }
   .draft-panel { border: 1px dashed #0d6efd; background: #eef6ff; border-radius: 1rem; padding: .85rem 1rem; }
   .saved-dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:#adb5bd; margin-right:.35rem; }
   .saved-dot.ok { background:#198754; }
@@ -64,8 +63,8 @@
 
 {% set team1_name = 'X' if team1.is_bye else team1.team_name %}
 {% set team2_name = 'X' if team2.is_bye else team2.team_name %}
-{% set initial_team1_score = team1_score if team1_score is not none else 0 %}
-{% set initial_team2_score = team2_score if team2_score is not none else 0 %}
+{% set initial_team1_score = team1_score|default(0, true) %}
+{% set initial_team2_score = team2_score|default(0, true) %}
 
 <div class="scorecard-wrap">
   <div class="card shadow-sm mb-3">
@@ -76,7 +75,7 @@
         {% if source_event %}รายการ: {{ source_event.name }}<br>{% endif %}
         รอบ: {{ round.round_name }} · สาย {{ group_no }} · {{ stage_label }} · สนาม {{ team1.court_name or team2.court_name or '__________' }}
       </div>
-      <div class="mt-2 small text-muted">คะแนนจะบันทึกอัตโนมัติ และส่งไปอัปเดตตารางเพลย์ออฟแบบเรียลไทม์</div>
+      <div class="mt-2 small text-muted">คะแนนจะบันทึกอัตโนมัติ และอัปเดตตารางเพลย์ออฟแบบไม่ต้องรีเฟรช</div>
     </div>
   </div>
 
@@ -193,11 +192,11 @@
 <div class="confirm-overlay" id="confirmOverlay" aria-hidden="true">
   <div class="confirm-box">
     <h4 class="fw-bold mb-2">ยืนยันคะแนนก่อนสิ้นสุดการแข่งขัน</h4>
-    <div class="text-muted mb-3">กรุณาตรวจสอบคะแนนให้ถูกต้องก่อนส่งผลแบบรอยืนยัน</div>
+    <div class="text-muted mb-3">กรุณาตรวจสอบคะแนนให้ถูกต้องก่อนส่งผล</div>
     <div class="row g-2 align-items-center mb-3">
-      <div class="col-5 text-center fw-bold text-truncate" id="confirmTeam1Name">{{ team1_name }}</div>
+      <div class="col-5 text-center fw-bold text-truncate">{{ team1_name }}</div>
       <div class="col-2 text-center vs-text">VS</div>
-      <div class="col-5 text-center fw-bold text-truncate" id="confirmTeam2Name">{{ team2_name }}</div>
+      <div class="col-5 text-center fw-bold text-truncate">{{ team2_name }}</div>
       <div class="col-12 confirm-score"><span id="confirmTeam1Score">0</span> - <span id="confirmTeam2Score">0</span></div>
     </div>
     <div class="d-flex gap-2">
@@ -220,11 +219,11 @@
   const s1 = document.getElementById('team1_score');
   const s2 = document.getElementById('team2_score');
   const teamNames = {1: {{ team1_name|tojson }}, 2: {{ team2_name|tojson }}};
-  const matchKey = {{ (competition.id|string ~ '-' ~ round.id|string ~ '-' ~ group_no|string ~ '-' ~ stage_label|string)|tojson if competition.id is defined and round.id is defined else (group_no|string ~ '-' ~ stage_label|string)|tojson }};
   let scoreEnds = [];
-  let selectedTeam = {{ 2 if team1.is_bye and not team2.is_bye else 1 }};
+  let selectedTeam = 1;
   let scoreMode = (Number(s1.value || 0) > 0 || Number(s2.value || 0) > 0) ? 'manual' : 'ends';
   let allowSubmit = false;
+  let manualTimer = null;
 
   function setSaved(ok, text) {
     saveDot.classList.toggle('ok', !!ok);
@@ -238,10 +237,12 @@
   }
 
   function manualTotals() {
-    const t1 = clampNumber(document.getElementById('manualTeam1Score').value);
-    const t2 = clampNumber(document.getElementById('manualTeam2Score').value);
-    document.getElementById('manualTeam1Score').value = t1;
-    document.getElementById('manualTeam2Score').value = t2;
+    const input1 = document.getElementById('manualTeam1Score');
+    const input2 = document.getElementById('manualTeam2Score');
+    const t1 = clampNumber(input1.value);
+    const t2 = clampNumber(input2.value);
+    input1.value = t1;
+    input2.value = t2;
     return [t1, t2];
   }
 
@@ -267,37 +268,8 @@
   }
 
   function getCurrentTotals() {
-    return scoreMode === 'manual' ? manualTotals() : totals();
-  }
-
-  function publishLiveScore(t1, t2, submitted=false) {
-    const detail = {
-      match_key: matchKey,
-      group_no: {{ group_no|tojson }},
-      stage_label: {{ stage_label|tojson }},
-      team1_name: teamNames[1],
-      team2_name: teamNames[2],
-      team1_score: t1,
-      team2_score: t2,
-      submitted: submitted,
-      at: Date.now()
-    };
-
-    window.dispatchEvent(new CustomEvent('playoff-score-updated', {detail}));
-
-    try {
-      localStorage.setItem('playoff_score_live_update', JSON.stringify(detail));
-    } catch(e) {}
-
-    if (window.socket && typeof window.socket.emit === 'function') {
-      window.socket.emit('playoff_score_live_update', detail);
-    }
-    if (window.io && !window.socket) {
-      try {
-        const s = window.io();
-        s.emit('playoff_score_live_update', detail);
-      } catch(e) {}
-    }
+    if (scoreMode === 'manual') return manualTotals();
+    return totals();
   }
 
   function render() {
@@ -320,7 +292,9 @@
       }
     });
 
-    const [t1, t2] = getCurrentTotals();
+    const current = getCurrentTotals();
+    const t1 = current[0];
+    const t2 = current[1];
     document.getElementById('team1Total').textContent = t1;
     document.getElementById('team2Total').textContent = t2;
     document.getElementById('team1TotalCell').textContent = t1;
@@ -341,7 +315,6 @@
     const finished = t1 >= 13 || t2 >= 13;
     document.getElementById('addEndBtn').disabled = finished;
     document.getElementById('undoEndBtn').disabled = scoreEnds.length === 0;
-    publishLiveScore(t1, t2, false);
   }
 
   function setScoreMode(mode) {
@@ -352,32 +325,27 @@
     document.getElementById('endsScorePanel').style.display = mode === 'ends' ? '' : 'none';
 
     if (mode === 'manual' && scoreEnds.length) {
-      const [t1, t2] = totals();
-      document.getElementById('manualTeam1Score').value = t1;
-      document.getElementById('manualTeam2Score').value = t2;
+      const current = totals();
+      document.getElementById('manualTeam1Score').value = current[0];
+      document.getElementById('manualTeam2Score').value = current[1];
     }
     render();
   }
 
-  async function autosave(extra={}) {
-    const [t1, t2] = getCurrentTotals();
+  async function autosave() {
+    const current = getCurrentTotals();
+    const t1 = current[0];
+    const t2 = current[1];
     setSaved(false, 'กำลังบันทึก...');
     try {
-      const payload = Object.assign({
-        team1_score: t1,
-        team2_score: t2,
-        score_ends: scoreMode === 'ends' ? scoreEnds : [],
-        score_mode: scoreMode
-      }, extra);
       const res = await fetch(saveUrl, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
+        body: JSON.stringify({team1_score: t1, team2_score: t2})
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
       setSaved(true, 'บันทึกอัตโนมัติแล้ว ' + new Date().toLocaleTimeString('th-TH'));
-      publishLiveScore(t1, t2, !!extra.submitted);
     } catch (err) {
       setSaved(false, err.message || 'บันทึกไม่สำเร็จ');
     }
@@ -398,7 +366,9 @@
 
   document.getElementById('addEndBtn').addEventListener('click', () => {
     const points = Number(document.getElementById('endPoints').value);
-    const [t1, t2] = totals();
+    const current = totals();
+    const t1 = current[0];
+    const t2 = current[1];
     if (points < 1 || points > 6) { alert('คะแนนต่อ End ต้องอยู่ระหว่าง 1-6'); return; }
     if (selectedTeam === 1 && t1 + points > 13) { alert('คะแนนทีม 1 จะเกิน 13 กรุณาเลือกแต้มให้น้อยลง'); return; }
     if (selectedTeam === 2 && t2 + points > 13) { alert('คะแนนทีม 2 จะเกิน 13 กรุณาเลือกแต้มให้น้อยลง'); return; }
@@ -415,7 +385,6 @@
     autosave();
   });
 
-  let manualTimer = null;
   ['manualTeam1Score','manualTeam2Score'].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener('input', () => {
@@ -439,7 +408,9 @@
   finishForm.addEventListener('submit', (e) => {
     if (allowSubmit) return;
     e.preventDefault();
-    const [t1, t2] = getCurrentTotals();
+    const current = getCurrentTotals();
+    const t1 = current[0];
+    const t2 = current[1];
     if (scoreMode === 'ends' && !scoreEnds.length && t1 === 0 && t2 === 0) {
       alert('กรุณากรอกคะแนนก่อนสิ้นสุดการแข่งขัน');
       return;
@@ -455,13 +426,11 @@
     overlay.setAttribute('aria-hidden', 'true');
   });
 
-  document.getElementById('okConfirmBtn').addEventListener('click', async () => {
-    const [t1, t2] = getCurrentTotals();
-    s1.value = t1;
-    s2.value = t2;
+  document.getElementById('okConfirmBtn').addEventListener('click', () => {
+    const current = getCurrentTotals();
+    s1.value = current[0];
+    s2.value = current[1];
     scoreEndsInput.value = JSON.stringify(scoreMode === 'ends' ? scoreEnds : []);
-    publishLiveScore(t1, t2, true);
-    await autosave({submitted: true});
     allowSubmit = true;
     finishForm.submit();
   });
