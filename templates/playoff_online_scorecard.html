@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% block title %}สกอร์การ์ดเพลย์ออฟออนไลน์{% endblock %}
+{% block content %}
+<style>
+  .playoff-scorecard-wrap { max-width: 880px; margin: 0 auto 2rem; }
+  .team-card { border:1px solid #e5e7eb; border-radius:1rem; padding:1rem; background:#fff; box-shadow:0 8px 18px rgba(0,0,0,.06); }
+  .team-name { font-size:1.2rem; font-weight:900; }
+  .score-input { font-size:3rem; font-weight:900; text-align:center; height:86px; }
+  .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:#adb5bd; margin-right:.35rem; }
+  .status-dot.ok { background:#198754; }
+  .score-meta { color:#6b7280; font-weight:700; }
+</style>
+
+<div class="playoff-scorecard-wrap">
+  <div class="card p-3 p-md-4 mb-3">
+    <h1 class="mb-2">สกอร์การ์ดเพลย์ออฟออนไลน์</h1>
+    <div class="score-meta">
+      {{ competition.title }}<br>
+      {% if source_event %}รายการ: {{ source_event.name }}<br>{% endif %}
+      รอบ: {{ round.round_name }} · สาย {{ group_no }} · {{ stage_label }} · สนาม {{ team1.court_name or team2.court_name or '__________' }}
+    </div>
+    <div class="mt-2 small text-muted">คะแนนจะบันทึกเข้าระบบเพลย์ออฟและอัปเดตหน้าเพลย์ออฟแบบออนไลน์</div>
+  </div>
+
+  <form method="post" action="{{ finish_url }}" id="playoffScoreForm">
+    <div class="row g-3 align-items-stretch">
+      <div class="col-md-6">
+        <div class="team-card h-100">
+          <div class="team-name">{{ 'X' if team1.is_bye else team1.team_name }}</div>
+          <label class="form-label mt-3 fw-bold">คะแนน</label>
+          <input type="number" min="0" max="13" inputmode="numeric" name="team1_score" id="team1Score" class="form-control score-input" value="{{ team1_score }}" {% if team1.is_bye %}readonly{% endif %}>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="team-card h-100">
+          <div class="team-name">{{ 'X' if team2.is_bye else team2.team_name }}</div>
+          <label class="form-label mt-3 fw-bold">คะแนน</label>
+          <input type="number" min="0" max="13" inputmode="numeric" name="team2_score" id="team2Score" class="form-control score-input" value="{{ team2_score }}" {% if team2.is_bye %}readonly{% endif %}>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-3 mt-3">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><span class="status-dot" id="saveDot"></span><span id="saveStatus">ยังไม่บันทึก</span></div>
+        <button type="submit" class="btn btn-success btn-lg">สิ้นสุด / ส่งคะแนน</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const autosaveUrl = {{ autosave_url|tojson }};
+  const score1 = document.getElementById('team1Score');
+  const score2 = document.getElementById('team2Score');
+  const dot = document.getElementById('saveDot');
+  const statusEl = document.getElementById('saveStatus');
+  let timer = null;
+
+  function clamp(el) {
+    if (!el || el.readOnly) return;
+    let v = parseInt(el.value || '0', 10);
+    if (isNaN(v)) return;
+    if (v < 0) v = 0;
+    if (v > 13) v = 13;
+    el.value = v;
+  }
+
+  async function saveNow() {
+    clamp(score1); clamp(score2);
+    statusEl.textContent = 'กำลังบันทึก...';
+    dot.classList.remove('ok');
+    try {
+      const res = await fetch(autosaveUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({team1_score: score1.value, team2_score: score2.value})
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+      dot.classList.add('ok');
+      statusEl.textContent = 'บันทึกแล้ว';
+    } catch (err) {
+      statusEl.textContent = err.message || 'บันทึกไม่สำเร็จ';
+    }
+  }
+
+  function scheduleSave() {
+    clearTimeout(timer);
+    timer = setTimeout(saveNow, 350);
+  }
+
+  [score1, score2].forEach(el => {
+    if (!el) return;
+    el.addEventListener('input', scheduleSave);
+    el.addEventListener('change', saveNow);
+  });
+})();
+</script>
+{% endblock %}

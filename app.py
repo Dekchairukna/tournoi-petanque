@@ -33,13 +33,11 @@ import random
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
+from itsdangerous import URLSafeSerializer, BadSignature
 
 load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your_secret_key")
-# ใช้ DATABASE_URL จาก Railway Environment Variable
-# ถ้ารันในเครื่องและยังไม่ได้ตั้งค่า DATABASE_URL จะใช้ SQLite แบบ absolute path
-# สำคัญ: อย่าใช้ sqlite:///instance/tournoi.db เพราะ Flask-SQLAlchemy อาจตีความเป็น instance/instance/tournoi.db
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -48,15 +46,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
-    # Railway/SQLAlchemy บางครั้งให้ postgres:// ให้แปลงเป็น postgresql://
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
-    local_db_path = os.path.join(INSTANCE_DIR, "tournoi.db")
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{local_db_path}"
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(INSTANCE_DIR, 'tournoi.db')}"
 
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 socketio = SocketIO(
@@ -145,24 +141,6 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
         if 'scorecard_token' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorecard_token VARCHAR(80)"))
-    # index เพิ่มความเร็วหน้าแรก/หน้ารอบ/หน้ารายการแข่งขัน
-    if dialect == 'postgresql':
-        index_stmts = [
-            "CREATE INDEX IF NOT EXISTS ix_events_date ON events (date)",
-            "CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)",
-            "CREATE INDEX IF NOT EXISTS ix_matches_event_locked ON matches (event_id, is_locked)",
-            "CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)",
-        ]
-    else:
-        index_stmts = [
-            "CREATE INDEX IF NOT EXISTS ix_events_date ON events (date)",
-            "CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)",
-            "CREATE INDEX IF NOT EXISTS ix_matches_event_locked ON matches (event_id, is_locked)",
-            "CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)",
-        ]
-    for stmt in index_stmts:
-        db.session.execute(text(stmt))
-
     db.session.commit()
 
 
@@ -493,81 +471,32 @@ def manual_pairing(event_id, round_num):
 
 @app.route("/")
 def index():
-    """หน้าแรกแบบเบา: ไม่วน query แมตช์ทีละรายการแข่งขัน
-
-    เดิม: ดึง Event ทั้งหมด แล้วใน loop ไป query Match ซ้ำทุก Event
-    ถ้ามี 100 รายการ = 201+ queries และ render ตารางรายการจบแล้วทั้งหมด
-
-    ใหม่: ดึงเฉพาะรายการที่ต้องโชว์บนหน้าแรก
-    - รายการที่ยังไม่จบ: ถ้าไม่มีแมตช์เลย หรือมีแมตช์ที่ยังไม่ lock
-    - รายการที่จบแล้ว: แสดงล่าสุดจำกัดจำนวน เพื่อไม่ให้หน้าแรกหนัก
-    """
     today = date.today()
 
-    latest_round_subq = (
-        db.session.query(
-            Match.event_id.label("event_id"),
-            func.max(Match.round).label("latest_round")
-        )
-        .group_by(Match.event_id)
-        .subquery()
-    )
+    all_events = Event.query.order_by(Event.date.desc()).all()
 
-    latest_match_status_subq = (
-        db.session.query(
-            Match.event_id.label("event_id"),
-            func.count(Match.id).label("match_count"),
-            func.sum(db.case((Match.is_locked == False, 1), else_=0)).label("unlocked_count")
-        )
-        .join(
-            latest_round_subq,
-            (Match.event_id == latest_round_subq.c.event_id) &
-            (Match.round == latest_round_subq.c.latest_round)
-        )
-        .group_by(Match.event_id)
-        .subquery()
-    )
-
-    upcoming_events = (
-        Event.query
-        .outerjoin(latest_match_status_subq, Event.id == latest_match_status_subq.c.event_id)
-        .filter(
-            db.or_(
-                latest_match_status_subq.c.match_count == None,
-                latest_match_status_subq.c.unlocked_count > 0
-            )
-        )
-        .order_by(Event.date.asc().nullslast(), Event.id.desc())
-        .limit(100)
-        .all()
-    )
-
-    finished_events = (
-        Event.query
-        .join(latest_match_status_subq, Event.id == latest_match_status_subq.c.event_id)
-        .filter(
-            latest_match_status_subq.c.match_count > 0,
-            latest_match_status_subq.c.unlocked_count == 0
-        )
-        .order_by(Event.date.desc().nullslast(), Event.id.desc())
-        .limit(100)
-        .all()
-    )
-
+    upcoming_events = []
     finished_events_by_year = defaultdict(list)
-    for event in finished_events:
-        year = event.date.year if event.date else "ไม่ระบุปี"
-        finished_events_by_year[year].append(event)
 
-    finished_events_by_year = dict(
-        sorted(finished_events_by_year.items(), key=lambda item: str(item[0]), reverse=True)
-    )
+    for event in all_events:
+        latest_round = db.session.query(db.func.max(Match.round)).filter(Match.event_id == event.id).scalar()
+        matches = Match.query.filter_by(event_id=event.id, round=latest_round).all()
+
+        is_finished = all(m.is_locked for m in matches) if matches else False
+
+        if not is_finished:
+            upcoming_events.append(event)
+        else:
+            finished_events_by_year[event.date.year].append(event)
+
+    # เรียงปีจากใหม่ -> เก่า
+    finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
 
     return render_template(
         "index.html",
-        upcoming_events=upcoming_events,
+        upcoming_events=sorted(upcoming_events, key=lambda e: e.date),
         finished_events_by_year=finished_events_by_year,
-        events=upcoming_events + finished_events
+        events=upcoming_events + [e for year in finished_events_by_year.values() for e in year]  # รวมรายการทั้งหมด
     )
 
     
@@ -3259,6 +3188,262 @@ def _playoff_report_rows(view):
                 d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, score_map)
                 add('คู่แข่งขัน', slots.get(1), slots.get(2), 1, (d.get('winner') or {}).get('team_name') if d and d.get('winner') else '')
     return rows
+
+
+
+# ------------------------- Playoff score sheets / online scorecards -------------------------
+def _playoff_scorecard_serializer():
+    return URLSafeSerializer(app.config.get("SECRET_KEY", "your_secret_key"), salt="playoff-scorecard-v1")
+
+
+def _make_playoff_scorecard_token(playoff_id, round_id, group_no, stage_no, a_slot_no, b_slot_no):
+    return _playoff_scorecard_serializer().dumps({
+        'p': int(playoff_id), 'r': int(round_id), 'g': int(group_no),
+        'st': int(stage_no), 'a': int(a_slot_no), 'b': int(b_slot_no),
+    })
+
+
+def _load_playoff_scorecard_token(token):
+    try:
+        data = _playoff_scorecard_serializer().loads(token)
+        return {
+            'playoff_id': _as_int(data.get('p')),
+            'round_id': _as_int(data.get('r')),
+            'group_no': _as_int(data.get('g')),
+            'stage_no': _as_int(data.get('st')),
+            'a_slot_no': _as_int(data.get('a')),
+            'b_slot_no': _as_int(data.get('b')),
+        }
+    except BadSignature:
+        return None
+
+
+def _playoff_system_label(round_type):
+    return 'ดับเบิ้ลน็อคเอาท์' if round_type == 'double_knockout' else 'น็อคเอาท์'
+
+
+def _playoff_stage_label(round_type, stage_no, pair_key=None):
+    if round_type == 'double_knockout':
+        labels = {
+            (1, 'qf1'): 'ครั้งที่ 1: คู่บน',
+            (1, 'qf2'): 'ครั้งที่ 1: คู่ล่าง',
+            (2, 'wf'): 'ครั้งที่ 2: ผู้ชนะพบผู้ชนะ',
+            (2, 'lf'): 'ครั้งที่ 2: ผู้แพ้พบผู้แพ้',
+            (3, 'final2'): 'ครั้งที่ 3: หาอันดับ 2',
+        }
+        return labels.get((stage_no, pair_key), f'ครั้งที่ {stage_no}')
+    return 'ผลการแข่งขัน'
+
+
+def _playoff_slot_dict_by_no(round_id, group_no):
+    slots = db.session.execute(text("""
+        SELECT * FROM playoff_slots
+        WHERE round_id=:rid AND group_no=:g
+        ORDER BY slot_no
+    """), {'rid': round_id, 'g': group_no}).mappings().all()
+    return {int(s['slot_no']): dict(s) for s in slots}
+
+
+def _playoff_score_map_for_round(round_id):
+    rows = db.session.execute(text("SELECT * FROM playoff_scores WHERE round_id=:rid"), {'rid': round_id}).mappings().all()
+    return {(int(s['group_no']), int(s['slot_no']), int(s['stage_no'])): s['score'] for s in rows}
+
+
+def _playoff_pair_sheet(playoff_id, comp, rnd, group_no, pair_key, label, stage_no, a, b, score_map):
+    if not a and not b:
+        return None
+    # ไม่สร้างสกอร์ชีทออนไลน์ให้คู่ X vs X / คู่ว่างทั้งคู่
+    if a and b and a.get('is_bye') and b.get('is_bye'):
+        return None
+    a_slot = int((a or {}).get('slot_no') or 0)
+    b_slot = int((b or {}).get('slot_no') or 0)
+    if not a_slot or not b_slot:
+        return None
+    token = _make_playoff_scorecard_token(playoff_id, rnd['id'], group_no, stage_no, a_slot, b_slot)
+    court = (a or b or {}).get('court_name') or ''
+    return {
+        'playoff_id': playoff_id,
+        'round_id': rnd['id'],
+        'round_name': rnd['round_name'],
+        'round_type': rnd['round_type'],
+        'system_label': _playoff_system_label(rnd['round_type']),
+        'group_no': group_no,
+        'pair_key': pair_key,
+        'stage_no': stage_no,
+        'stage_label': label,
+        'court_name': court,
+        'team1_name': _slot_name(a),
+        'team2_name': _slot_name(b),
+        'team1_slot_no': a_slot,
+        'team2_slot_no': b_slot,
+        'team1_score': score_map.get((group_no, a_slot, stage_no), ''),
+        'team2_score': score_map.get((group_no, b_slot, stage_no), ''),
+        'token': token,
+        'scorecard_url': url_for('public_playoff_scorecard', token=token, _external=True),
+    }
+
+
+def _playoff_score_sheet_rows(playoff_id, round_id=None):
+    view = _fetch_playoff(playoff_id)
+    if not view:
+        return None, []
+    sheets = []
+    for rv in view.get('round_views', []):
+        rnd = rv['round']
+        if round_id and int(rnd['id']) != int(round_id):
+            continue
+        score_map = rv.get('score_map', {})
+        for group in rv.get('group_views', []):
+            group_no = int(group['group_no'])
+            slots = {int(s['slot_no']): s for s in group.get('slots', [])}
+            if rnd['round_type'] == 'double_knockout':
+                dec = _double_group_decisions(list(slots.values()), score_map)
+                pair_defs = [
+                    ('qf1', 1, slots.get(1), slots.get(2)),
+                    ('qf2', 1, slots.get(3), slots.get(4)),
+                    ('wf', 2, (dec.get('wf') or {}).get('a'), (dec.get('wf') or {}).get('b')),
+                    ('lf', 2, (dec.get('lf') or {}).get('a'), (dec.get('lf') or {}).get('b')),
+                    ('final2', 3, (dec.get('final2') or {}).get('a'), (dec.get('final2') or {}).get('b')),
+                ]
+                for pair_key, stage_no, a, b in pair_defs:
+                    if not a or not b:
+                        continue
+                    sheet = _playoff_pair_sheet(playoff_id, view['competition'], rnd, group_no, pair_key, _playoff_stage_label(rnd['round_type'], stage_no, pair_key), stage_no, a, b, score_map)
+                    if sheet:
+                        sheets.append(sheet)
+            else:
+                sheet = _playoff_pair_sheet(playoff_id, view['competition'], rnd, group_no, 'knockout', _playoff_stage_label(rnd['round_type'], 1), 1, slots.get(1), slots.get(2), score_map)
+                if sheet:
+                    sheets.append(sheet)
+    return view, sheets
+
+
+@app.route('/playoff/<int:playoff_id>/score-sheet')
+@login_required
+def playoff_score_sheet(playoff_id):
+    selected_round = request.args.get('round_id', type=int)
+    view, sheets = _playoff_score_sheet_rows(playoff_id, selected_round)
+    if not view:
+        flash('ไม่พบระบบเพลย์ออฟ', 'danger')
+        return redirect(url_for('index'))
+    source_event = Event.query.get(view['competition']['source_event_id']) if view.get('competition') else None
+    return render_template('playoff_score_sheet.html', view=view, source_event=source_event, sheets=sheets, selected_round=selected_round)
+
+
+@app.route('/playoff/<int:playoff_id>/round/<int:round_id>/score-sheet')
+@login_required
+def playoff_round_score_sheet(playoff_id, round_id):
+    return redirect(url_for('playoff_score_sheet', playoff_id=playoff_id, round_id=round_id))
+
+
+@app.route('/playoff-scorecard/<token>', methods=['GET'])
+def public_playoff_scorecard(token):
+    data = _load_playoff_scorecard_token(token)
+    if not data:
+        return 'ลิงก์สกอร์การ์ดไม่ถูกต้อง', 404
+    context = _playoff_online_context(data, token)
+    if not context:
+        return 'ไม่พบคู่แข่งขันเพลย์ออฟ', 404
+    return render_template('playoff_online_scorecard.html', **context)
+
+
+@app.route('/playoff-scorecard/<token>/qr.png')
+def public_playoff_scorecard_qr(token):
+    data = _load_playoff_scorecard_token(token)
+    if not data:
+        return 'invalid token', 404
+    url = url_for('public_playoff_scorecard', token=token, _external=True)
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png', max_age=0)
+
+
+def _playoff_online_context(data, token):
+    comp = db.session.execute(text("SELECT * FROM playoff_competitions WHERE id=:id"), {'id': data['playoff_id']}).mappings().first()
+    rnd = db.session.execute(text("SELECT * FROM playoff_rounds WHERE id=:rid AND playoff_id=:pid"), {'rid': data['round_id'], 'pid': data['playoff_id']}).mappings().first()
+    if not comp or not rnd:
+        return None
+    slots = _playoff_slot_dict_by_no(data['round_id'], data['group_no'])
+    a = slots.get(data['a_slot_no'])
+    b = slots.get(data['b_slot_no'])
+    if not a or not b:
+        return None
+    score_map = _playoff_score_map_for_round(data['round_id'])
+    source_event = Event.query.get(comp['source_event_id'])
+    return {
+        'token': token,
+        'competition': dict(comp),
+        'round': dict(rnd),
+        'source_event': source_event,
+        'group_no': data['group_no'],
+        'stage_no': data['stage_no'],
+        'stage_label': _playoff_stage_label(rnd['round_type'], data['stage_no']),
+        'team1': dict(a),
+        'team2': dict(b),
+        'team1_score': score_map.get((data['group_no'], data['a_slot_no'], data['stage_no']), ''),
+        'team2_score': score_map.get((data['group_no'], data['b_slot_no'], data['stage_no']), ''),
+        'autosave_url': url_for('public_playoff_scorecard_autosave', token=token),
+        'finish_url': url_for('public_playoff_scorecard_finish', token=token),
+        'scorecard_public_url': url_for('public_playoff_scorecard', token=token, _external=True),
+    }
+
+
+def _save_playoff_scorecard_values(data, score1_raw, score2_raw):
+    try:
+        score1 = max(0, min(13, int(score1_raw)))
+        score2 = max(0, min(13, int(score2_raw)))
+    except Exception:
+        return False, 'กรุณากรอกคะแนน 0-13'
+    # ไม่ให้คีย์ผล X ชนะทีมจริงโดยไม่ตั้งใจ
+    slots = _playoff_slot_dict_by_no(data['round_id'], data['group_no'])
+    a = slots.get(data['a_slot_no'])
+    b = slots.get(data['b_slot_no'])
+    if a and a.get('is_bye'):
+        score1 = 0
+    if b and b.get('is_bye'):
+        score2 = 0
+    for slot_no, score in ((data['a_slot_no'], score1), (data['b_slot_no'], score2)):
+        db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {
+            'rid': data['round_id'], 'g': data['group_no'], 's': slot_no, 'st': data['stage_no']
+        })
+        db.session.execute(text("""
+            INSERT INTO playoff_scores (round_id, group_no, slot_no, stage_no, score)
+            VALUES (:rid, :g, :s, :st, :score)
+        """), {'rid': data['round_id'], 'g': data['group_no'], 's': slot_no, 'st': data['stage_no'], 'score': score})
+    db.session.commit()
+    socketio.emit('playoff_score_updated', {
+        'playoff_id': data['playoff_id'], 'round_id': data['round_id'], 'group_no': data['group_no'],
+        'slot_no': data['a_slot_no'], 'stage_no': data['stage_no'], 'score': score1,
+    }, to=f"playoff_{data['playoff_id']}")
+    socketio.emit('playoff_score_updated', {
+        'playoff_id': data['playoff_id'], 'round_id': data['round_id'], 'group_no': data['group_no'],
+        'slot_no': data['b_slot_no'], 'stage_no': data['stage_no'], 'score': score2,
+    }, to=f"playoff_{data['playoff_id']}")
+    socketio.emit('playoff_reload', {'playoff_id': data['playoff_id']}, to=f"playoff_{data['playoff_id']}")
+    return True, 'บันทึกคะแนนออนไลน์แล้ว'
+
+
+@app.route('/playoff-scorecard/<token>/autosave', methods=['POST'])
+def public_playoff_scorecard_autosave(token):
+    data = _load_playoff_scorecard_token(token)
+    if not data:
+        return jsonify({'ok': False, 'message': 'ลิงก์ไม่ถูกต้อง'}), 404
+    payload = request.get_json(silent=True) or request.form
+    ok, msg = _save_playoff_scorecard_values(data, payload.get('team1_score', ''), payload.get('team2_score', ''))
+    return jsonify({'ok': ok, 'message': msg}), 200 if ok else 400
+
+
+@app.route('/playoff-scorecard/<token>/finish', methods=['POST'])
+def public_playoff_scorecard_finish(token):
+    data = _load_playoff_scorecard_token(token)
+    if not data:
+        return 'ลิงก์ไม่ถูกต้อง', 404
+    ok, msg = _save_playoff_scorecard_values(data, request.form.get('team1_score', ''), request.form.get('team2_score', ''))
+    flash(msg, 'success' if ok else 'danger')
+    return redirect(url_for('public_playoff_scorecard', token=token))
+
 
 @app.route('/playoff/<int:playoff_id>')
 @login_required

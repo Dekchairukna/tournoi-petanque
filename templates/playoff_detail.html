@@ -43,6 +43,7 @@
     <a href="#next-round-panel" class="top-pill top-pill-draw"><span class="side-icon">🎲</span><span>จับสลากสร้างรอบต่อไป</span></a>
     <a href="#report" class="top-pill top-pill-report"><span class="side-icon">🧾</span><span>รายงานการแข่ง</span></a>
     <a href="{{ url_for('playoff_print_report', playoff_id=view.competition.id) }}" target="_blank" class="top-pill top-pill-print"><span class="side-icon">🖨️</span><span>พิมพ์รายงาน</span></a>
+    <a href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" target="_blank" class="top-pill top-pill-print"><span class="side-icon">🧾</span><span>สกอร์ชีท/QR เพลย์ออฟ</span></a>
    
     <div class="sidebar-user-box">
       <div class="sidebar-avatar">👤</div>
@@ -75,6 +76,8 @@
         <a href="#report" class="btn action-btn btn-print">รายงานการแข่งขัน</a>
         <a href="{{ url_for('playoff_print_report', playoff_id=view.competition.id) }}" target="_blank"
           class="btn action-btn btn-print">🖨️ หน้าปริ้นรายงาน</a>
+        <a href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" target="_blank"
+          class="btn action-btn btn-print">🧾 สกอร์ชีท/QR เพลย์ออฟ</a>
         <button onclick="window.print()" class="btn btn-primary system-btn">พิมพ์/บันทึก PDF</button>
         <form method="post" action="{{ url_for('delete_playoff_competition', playoff_id=view.competition.id) }}"
           style="display:inline"
@@ -104,6 +107,9 @@
       </div>
 
       <div class="round-court-tools no-print">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
+          <a href="{{ url_for('playoff_round_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทรอบนี้ / QR ออนไลน์</a>
+        </div>
         <form method="post" action="{{ url_for('renumber_playoff_courts', playoff_id=view.competition.id) }}"
           class="round-court-form">
           <input type="hidden" name="round_id" value="{{ rv.round.id }}">
