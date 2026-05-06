@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}น็อคเอาท์ - {{ next_stage_name }}{% endblock %}
+{% block content %}
+<style>
+  .knockout-page{padding:22px;border-radius:24px;background:radial-gradient(circle at top right,rgba(59,130,246,.08),transparent 22%),radial-gradient(circle at bottom left,rgba(168,85,247,.08),transparent 20%),#fff;}
+  .page-top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:16px;}
+  .eyebrow{margin:0;font-size:.82rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6366f1;}
+  .title-wrap h1{margin:4px 0 6px;font-size:2rem;line-height:1.1;color:#0f172a;}
+  .subtitle{margin:0;color:#64748b;font-size:.98rem;}
+  .top-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
+  .bracket-board{display:grid;grid-template-columns:1.7fr 1.15fr 1fr;gap:20px;align-items:start;overflow-x:auto;padding:8px 4px 10px;}
+  .round-col{min-width:330px;}
+  .round-title{margin:0 0 12px;padding:12px 14px;border-radius:16px;font-size:1rem;font-weight:900;letter-spacing:.02em;border:1px solid transparent;box-shadow:0 3px 12px rgba(15,23,42,.04);}
+  .round-col.r1 .round-title{background:linear-gradient(180deg,#eff6ff,#dbeafe);color:#1d4ed8;border-color:#bfdbfe;}
+  .round-col.r2 .round-title{background:linear-gradient(180deg,#faf5ff,#ede9fe);color:#7c3aed;border-color:#ddd6fe;}
+  .round-col.final .round-title{background:linear-gradient(180deg,#fff8e1,#fef3c7);color:#b45309;border-color:#fcd34d;}
+  .match-box{border:1px solid #e2e8f0;border-radius:20px;background:#fff;padding:12px;margin-bottom:24px;box-shadow:0 8px 24px rgba(15,23,42,.06);}
+  .round-col.r1 .match-box{border-color:#bfdbfe;background:linear-gradient(180deg,#fff,#f8fbff);}
+  .round-col.r2 .match-box{border-color:#ddd6fe;background:linear-gradient(180deg,#fff,#fcfaff);}
+  .round-col.final .match-box{border-color:#fcd34d;background:linear-gradient(180deg,#fffef8,#fff7df);}
+  .match-title{display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;padding:7px 10px;border-radius:12px;font-size:.9rem;font-weight:900;letter-spacing:.02em;background:#f8fafc;color:#334155;}
+  .slot-line{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #e5e7eb;border-radius:13px;background:#f8fafc;margin-bottom:8px;font-weight:900;}
+  .seed-badge{display:inline-flex;align-items:center;justify-content:center;min-width:48px;padding:5px 9px;border-radius:999px;background:#0d6efd;color:#fff;font-weight:900;text-align:center;}
+  .bye-line{background:#fff3cd;color:#664d03;}
+  .score-cell{margin-left:auto;width:72px;min-height:38px;text-align:center;border:1px solid #cbd5e1;border-radius:10px;font-weight:900;}
+  .placeholder{color:#94a3b8;background:#f8fafc;border-style:dashed;}
+  .note-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:12px;color:#1e3a8a;}
+  @media print{.no-print{display:none!important}.knockout-page{box-shadow:none!important}.bracket-board{overflow:visible}.match-box{break-inside:avoid}}
+</style>
+<div class="container-fluid my-4">
+  <section class="knockout-page">
+    <div class="page-top no-print">
+      <div class="title-wrap">
+        <p class="eyebrow">Tournament Bracket</p>
+        <h1>{{ next_stage_name }} — น็อคเอาท์ก้างปลา</h1>
+        <p class="subtitle">ใช้ seed จาก Standing: ลำดับ 1 อยู่ไกลกับลำดับ 2 เพื่อให้เจอกันได้ในรอบชิง</p>
+      </div>
+      <div class="top-actions">
+        <a href="{{ url_for('event_standings', event_id=event.id) }}" class="btn btn-outline-secondary">← กลับ Standing</a>
+        <button onclick="window.print()" class="btn btn-primary">พิมพ์/บันทึก PDF</button>
+      </div>
+    </div>
+
+    <div class="note-box mb-3 no-print">จำนวนทีมที่เลือก: <strong>{{ selected_rows|length }}</strong> ทีม · ถ้าจำนวนทีมไม่เต็ม power of 2 ระบบใส่ X/BYE ให้อัตโนมัติ</div>
+
+    {% set r2_count = (pairs|length + 1) // 2 %}
+    {% set final_count = 1 if pairs|length > 1 else 0 %}
+    <div class="bracket-board">
+      <div class="round-col r1">
+        <h3 class="round-title">รอบแรก / First Round</h3>
+        {% for pair in pairs %}
+        <div class="match-box">
+          <div class="match-title">คู่ที่ {{ pair.match_no }}</div>
+          {% if pair.team1 %}
+            <div class="slot-line"><span class="seed-badge">{{ pair.team1.bracket_seed or pair.team1.rank }}</span><span>{{ pair.team1.team_name }}</span><input class="score-cell" type="number" min="0" max="13"></div>
+          {% else %}
+            <div class="slot-line bye-line"><span class="seed-badge bg-warning text-dark">X</span><span>BYE</span><input class="score-cell" type="number" disabled></div>
+          {% endif %}
+          {% if pair.team2 %}
+            <div class="slot-line"><span class="seed-badge">{{ pair.team2.bracket_seed or pair.team2.rank }}</span><span>{{ pair.team2.team_name }}</span><input class="score-cell" type="number" min="0" max="13"></div>
+          {% else %}
+            <div class="slot-line bye-line"><span class="seed-badge bg-warning text-dark">X</span><span>BYE</span><input class="score-cell" type="number" disabled></div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="round-col r2">
+        <h3 class="round-title">รอบถัดไป / Semi Path</h3>
+        {% for i in range(r2_count) %}
+        <div class="match-box" style="margin-top:{{ 20 if loop.index0 % 2 else 0 }}px;">
+          <div class="match-title">คู่รอผู้ชนะ {{ (i*2)+1 }} / {{ (i*2)+2 }}</div>
+          <div class="slot-line placeholder"><span class="seed-badge bg-secondary">W</span><span>ผู้ชนะคู่ที่ {{ (i*2)+1 }}</span><input class="score-cell" type="number" min="0" max="13"></div>
+          <div class="slot-line placeholder"><span class="seed-badge bg-secondary">W</span><span>ผู้ชนะคู่ที่ {{ (i*2)+2 }}</span><input class="score-cell" type="number" min="0" max="13"></div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="round-col final">
+        <h3 class="round-title">Final</h3>
+        <div class="match-box" style="margin-top:40px;">
+          <div class="match-title">รอบชิงชนะเลิศ</div>
+          <div class="slot-line placeholder"><span class="seed-badge bg-secondary">W</span><span>ผู้ชนะสายบน</span><input class="score-cell" type="number" min="0" max="13"></div>
+          <div class="slot-line placeholder"><span class="seed-badge bg-secondary">W</span><span>ผู้ชนะสายล่าง</span><input class="score-cell" type="number" min="0" max="13"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
