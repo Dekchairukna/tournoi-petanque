@@ -37,21 +37,27 @@ from openpyxl.utils import get_column_letter
 load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your_secret_key")
-# ใช้ DATABASE_URL จาก Railway Environment Variable เท่านั้น
-# ถ้ารันในเครื่องและยังไม่ได้ตั้งค่า DATABASE_URL จะใช้ SQLite ใน instance/tournoi.db
+# ใช้ DATABASE_URL จาก Railway Environment Variable
+# ถ้ารันในเครื่องและยังไม่ได้ตั้งค่า DATABASE_URL จะใช้ SQLite แบบ absolute path
+# สำคัญ: อย่าใช้ sqlite:///instance/tournoi.db เพราะ Flask-SQLAlchemy อาจตีความเป็น instance/instance/tournoi.db
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(INSTANCE_DIR, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
     # Railway/SQLAlchemy บางครั้งให้ postgres:// ให้แปลงเป็น postgresql://
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
-    os.makedirs(os.path.join(os.path.dirname(__file__), "instance"), exist_ok=True)
-    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///instance/tournoi.db"
+    local_db_path = os.path.join(INSTANCE_DIR, "tournoi.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{local_db_path}"
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config["UPLOAD_FOLDER"] = "uploads"
-#app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://swiss_user:pRF2UGRYcncpoB7byrGFn1c6RrVnMwio@dpg-d0q4qqmuk2gs73a8ba50-a.singapore-postgres.render.com/swissdb'
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 socketio = SocketIO(
     app,
