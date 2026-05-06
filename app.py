@@ -3536,36 +3536,6 @@ def playoff_detail(playoff_id):
     )
 
 
-@app.route('/playoff/<int:playoff_id>/live-scores')
-@login_required
-def playoff_live_scores(playoff_id):
-    """คืนคะแนนเพลย์ออฟล่าสุดสำหรับใช้เป็น realtime สำรองกรณี Socket.IO ไม่ถึงหน้าเว็บ"""
-    try:
-        rows = db.session.execute(text("""
-            SELECT ps.round_id, ps.group_no, ps.slot_no, ps.stage_no, ps.score
-            FROM playoff_scores ps
-            JOIN playoff_rounds pr ON pr.id = ps.round_id
-            WHERE pr.playoff_id = :pid
-            ORDER BY ps.round_id, ps.group_no, ps.stage_no, ps.slot_no
-        """), {'pid': playoff_id}).mappings().all()
-        return jsonify({
-            'ok': True,
-            'playoff_id': playoff_id,
-            'scores': [
-                {
-                    'playoff_id': playoff_id,
-                    'round_id': int(r['round_id']),
-                    'group_no': int(r['group_no']),
-                    'slot_no': int(r['slot_no']),
-                    'stage_no': int(r['stage_no']),
-                    'score': int(r['score']) if r['score'] is not None else None,
-                } for r in rows
-            ]
-        })
-    except Exception as e:
-        return jsonify({'ok': False, 'message': str(e), 'scores': []}), 500
-
-
 @app.route('/playoff/<int:playoff_id>/print')
 @login_required
 def playoff_print_report(playoff_id):
@@ -3671,6 +3641,32 @@ def renumber_playoff_courts(playoff_id):
     return redirect(url_for('playoff_detail', playoff_id=playoff_id) + f"#round-{round_id}")
 
 
+
+
+
+@app.route('/playoff/<int:playoff_id>/live-scores')
+@login_required
+def playoff_live_scores(playoff_id):
+    rows = db.session.execute(text("""
+        SELECT ps.round_id, ps.group_no, ps.slot_no, ps.stage_no, ps.score
+        FROM playoff_scores ps
+        JOIN playoff_rounds pr ON pr.id = ps.round_id
+        WHERE pr.playoff_id = :pid
+        ORDER BY ps.round_id, ps.group_no, ps.stage_no, ps.slot_no
+    """), {'pid': playoff_id}).mappings().all()
+    return jsonify({
+        'ok': True,
+        'playoff_id': playoff_id,
+        'scores': [
+            {
+                'round_id': int(r['round_id']),
+                'group_no': int(r['group_no']),
+                'slot_no': int(r['slot_no']),
+                'stage_no': int(r['stage_no']),
+                'score': r['score'] if r['score'] is None else int(r['score']),
+            } for r in rows
+        ]
+    })
 
 @app.route('/playoff/<int:playoff_id>/autosave-score', methods=['POST'])
 @login_required
