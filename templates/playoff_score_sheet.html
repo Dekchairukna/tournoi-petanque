@@ -83,7 +83,7 @@
     <div class="row">
       <div class="label">ทีม:</div>
       <div class="boxes">
-        <div class="team-name-box team-name">{{ sheet.team1_name }}</div>
+        <div class="team-name-box team-name">{{ sheet.team1_print_name }}</div>
         {% for _ in range(13) %}<div class="box"></div>{% endfor %}
         <div class="box">{{ sheet.team1_score if sheet.team1_score != none else '' }}</div>
       </div>
@@ -101,7 +101,7 @@
     <div class="row">
       <div class="label">ทีม:</div>
       <div class="boxes">
-        <div class="team-name-box team-name">{{ sheet.team2_name }}</div>
+        <div class="team-name-box team-name">{{ sheet.team2_print_name }}</div>
         {% for _ in range(13) %}<div class="box"></div>{% endfor %}
         <div class="box">{{ sheet.team2_score if sheet.team2_score != none else '' }}</div>
       </div>

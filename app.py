@@ -3196,11 +3196,14 @@ def _playoff_scorecard_serializer():
     return URLSafeSerializer(app.config.get("SECRET_KEY", "your_secret_key"), salt="playoff-scorecard-v1")
 
 
-def _make_playoff_scorecard_token(playoff_id, round_id, group_no, stage_no, a_slot_no, b_slot_no):
-    return _playoff_scorecard_serializer().dumps({
+def _make_playoff_scorecard_token(playoff_id, round_id, group_no, stage_no, a_slot_no, b_slot_no, pair_key=None):
+    data = {
         'p': int(playoff_id), 'r': int(round_id), 'g': int(group_no),
         'st': int(stage_no), 'a': int(a_slot_no), 'b': int(b_slot_no),
-    })
+    }
+    if pair_key:
+        data['k'] = str(pair_key)
+    return _playoff_scorecard_serializer().dumps(data)
 
 
 def _load_playoff_scorecard_token(token):
@@ -3213,6 +3216,7 @@ def _load_playoff_scorecard_token(token):
             'stage_no': _as_int(data.get('st')),
             'a_slot_no': _as_int(data.get('a')),
             'b_slot_no': _as_int(data.get('b')),
+            'pair_key': data.get('k'),
         }
     except BadSignature:
         return None
@@ -3249,17 +3253,50 @@ def _playoff_score_map_for_round(round_id):
     return {(int(s['group_no']), int(s['slot_no']), int(s['stage_no'])): s['score'] for s in rows}
 
 
+
+def _playoff_placeholder_slot(name):
+    return {'slot_no': 0, 'team_name': name, 'is_bye': False, 'is_placeholder': True, 'court_name': ''}
+
+
+def _playoff_token_pair(playoff_id, rnd, group_no, pair_key, a_slot_no=0, b_slot_no=0):
+    """Resolve a printed/QR playoff scorecard pair.
+    Future pairs keep the same QR: before the real teams are known it returns blank placeholders;
+    after prior matches are scored it resolves to the real winning/losing slots.
+    """
+    slots = _playoff_slot_dict_by_no(rnd['id'], group_no)
+    score_map = _playoff_score_map_for_round(rnd['id'])
+    if pair_key == 'qf1':
+        return slots.get(1), slots.get(2)
+    if pair_key == 'qf2':
+        return slots.get(3), slots.get(4)
+    if rnd['round_type'] == 'double_knockout':
+        dec = _double_group_decisions(list(slots.values()), score_map)
+        if pair_key == 'wf':
+            return (dec.get('wf') or {}).get('a') or _playoff_placeholder_slot(''), (dec.get('wf') or {}).get('b') or _playoff_placeholder_slot('')
+        if pair_key == 'lf':
+            return (dec.get('lf') or {}).get('a') or _playoff_placeholder_slot(''), (dec.get('lf') or {}).get('b') or _playoff_placeholder_slot('')
+        if pair_key == 'final2':
+            return (dec.get('final2') or {}).get('a') or _playoff_placeholder_slot(''), (dec.get('final2') or {}).get('b') or _playoff_placeholder_slot('')
+    return slots.get(a_slot_no), slots.get(b_slot_no)
+
+
+def _playoff_is_real_score_slot(slot):
+    return bool(slot and int(slot.get('slot_no') or 0) > 0 and not slot.get('is_placeholder'))
+
+
 def _playoff_pair_sheet(playoff_id, comp, rnd, this_group_no, pair_key, label, stage_no, a, b, score_map):
     if not a and not b:
         return None
-    # ไม่สร้างสกอร์ชีทออนไลน์ให้คู่ X vs X / คู่ว่างทั้งคู่
+    # ไม่สร้างสกอร์ชีทคู่ X vs X / คู่ว่างทั้งคู่
     if a and b and a.get('is_bye') and b.get('is_bye'):
         return None
+
     a_slot = int((a or {}).get('slot_no') or 0)
     b_slot = int((b or {}).get('slot_no') or 0)
-    if not a_slot or not b_slot:
-        return None
-    token = _make_playoff_scorecard_token(playoff_id, rnd['id'], this_group_no, stage_no, a_slot, b_slot)
+    can_score_online = _playoff_is_real_score_slot(a) and _playoff_is_real_score_slot(b)
+    # ให้มี QR รอไว้ทุกใบ แม้คู่อนาคตยังไม่รู้ชื่อทีมจริง
+    token = _make_playoff_scorecard_token(playoff_id, rnd['id'], this_group_no, stage_no, a_slot, b_slot, pair_key)
+    scorecard_url = url_for('public_playoff_scorecard', token=token, _external=True)
     court = (a or b or {}).get('court_name') or ''
     return {
         'playoff_id': playoff_id,
@@ -3274,12 +3311,15 @@ def _playoff_pair_sheet(playoff_id, comp, rnd, this_group_no, pair_key, label, s
         'court_name': court,
         'team1_name': _slot_name(a),
         'team2_name': _slot_name(b),
+        'team1_print_name': '' if (a or {}).get('is_placeholder') else _slot_name(a),
+        'team2_print_name': '' if (b or {}).get('is_placeholder') else _slot_name(b),
         'team1_slot_no': a_slot,
         'team2_slot_no': b_slot,
-        'team1_score': score_map.get((this_group_no, a_slot, stage_no), ''),
-        'team2_score': score_map.get((this_group_no, b_slot, stage_no), ''),
+        'team1_score': score_map.get((this_group_no, a_slot, stage_no), '') if can_score_online else '',
+        'team2_score': score_map.get((this_group_no, b_slot, stage_no), '') if can_score_online else '',
         'token': token,
-        'scorecard_url': url_for('public_playoff_scorecard', token=token, _external=True),
+        'scorecard_url': scorecard_url,
+        'can_score_online': can_score_online,
     }
 
 
@@ -3300,12 +3340,18 @@ def _playoff_score_sheet_rows(playoff_id, round_id=None, group_no=None):
             slots = {int(s['slot_no']): s for s in group.get('slots', [])}
             if rnd['round_type'] == 'double_knockout':
                 dec = _double_group_decisions(list(slots.values()), score_map)
+
+                def ph(name):
+                    return _playoff_placeholder_slot(name)
+
+                # ทำสกอร์ชีทให้ครบตามต้นฉบับตั้งแต่ยังไม่กรอกคะแนน:
+                # 1) คู่แรก 1-2, 2) คู่แรก 3-4, 3) ผู้ชนะพบผู้ชนะ, 4) ผู้แพ้พบผู้แพ้, 5) ชิงอันดับ 2
                 pair_defs = [
                     ('qf1', 1, slots.get(1), slots.get(2)),
                     ('qf2', 1, slots.get(3), slots.get(4)),
-                    ('wf', 2, (dec.get('wf') or {}).get('a'), (dec.get('wf') or {}).get('b')),
-                    ('lf', 2, (dec.get('lf') or {}).get('a'), (dec.get('lf') or {}).get('b')),
-                    ('final2', 3, (dec.get('final2') or {}).get('a'), (dec.get('final2') or {}).get('b')),
+                    ('wf', 2, (dec.get('wf') or {}).get('a') or ph('ผู้ชนะคู่ที่ 1'), (dec.get('wf') or {}).get('b') or ph('ผู้ชนะคู่ที่ 2')),
+                    ('lf', 2, (dec.get('lf') or {}).get('a') or ph('ผู้แพ้คู่ที่ 1'), (dec.get('lf') or {}).get('b') or ph('ผู้แพ้คู่ที่ 2')),
+                    ('final2', 3, (dec.get('final2') or {}).get('a') or ph('ผู้แพ้ผู้ชนะพบผู้ชนะ'), (dec.get('final2') or {}).get('b') or ph('ผู้ชนะผู้แพ้พบผู้แพ้')),
                 ]
                 for pair_key, stage_no, a, b in pair_defs:
                     if not a or not b:
@@ -3373,13 +3419,15 @@ def _playoff_online_context(data, token):
     rnd = db.session.execute(text("SELECT * FROM playoff_rounds WHERE id=:rid AND playoff_id=:pid"), {'rid': data['round_id'], 'pid': data['playoff_id']}).mappings().first()
     if not comp or not rnd:
         return None
-    slots = _playoff_slot_dict_by_no(data['round_id'], data['group_no'])
-    a = slots.get(data['a_slot_no'])
-    b = slots.get(data['b_slot_no'])
+    pair_key = data.get('pair_key')
+    a, b = _playoff_token_pair(data['playoff_id'], dict(rnd), data['group_no'], pair_key, data['a_slot_no'], data['b_slot_no'])
     if not a or not b:
         return None
     score_map = _playoff_score_map_for_round(data['round_id'])
     source_event = Event.query.get(comp['source_event_id'])
+    a_slot = int((a or {}).get('slot_no') or 0)
+    b_slot = int((b or {}).get('slot_no') or 0)
+    can_score_online = _playoff_is_real_score_slot(a) and _playoff_is_real_score_slot(b)
     return {
         'token': token,
         'competition': dict(comp),
@@ -3387,11 +3435,12 @@ def _playoff_online_context(data, token):
         'source_event': source_event,
         'group_no': data['group_no'],
         'stage_no': data['stage_no'],
-        'stage_label': _playoff_stage_label(rnd['round_type'], data['stage_no']),
+        'stage_label': _playoff_stage_label(rnd['round_type'], data['stage_no'], pair_key),
         'team1': dict(a),
         'team2': dict(b),
-        'team1_score': score_map.get((data['group_no'], data['a_slot_no'], data['stage_no']), ''),
-        'team2_score': score_map.get((data['group_no'], data['b_slot_no'], data['stage_no']), ''),
+        'team1_score': score_map.get((data['group_no'], a_slot, data['stage_no']), '') if can_score_online else '',
+        'team2_score': score_map.get((data['group_no'], b_slot, data['stage_no']), '') if can_score_online else '',
+        'can_score_online': can_score_online,
         'autosave_url': url_for('public_playoff_scorecard_autosave', token=token),
         'finish_url': url_for('public_playoff_scorecard_finish', token=token),
         'scorecard_public_url': url_for('public_playoff_scorecard', token=token, _external=True),
@@ -3404,15 +3453,20 @@ def _save_playoff_scorecard_values(data, score1_raw, score2_raw):
         score2 = max(0, min(13, int(score2_raw)))
     except Exception:
         return False, 'กรุณากรอกคะแนน 0-13'
-    # ไม่ให้คีย์ผล X ชนะทีมจริงโดยไม่ตั้งใจ
-    slots = _playoff_slot_dict_by_no(data['round_id'], data['group_no'])
-    a = slots.get(data['a_slot_no'])
-    b = slots.get(data['b_slot_no'])
+    # QR ของคู่อนาคตเปิดรอได้ แต่จะบันทึกคะแนนได้เมื่อระบบทราบชื่อทีมจริงแล้ว
+    rnd = db.session.execute(text("SELECT * FROM playoff_rounds WHERE id=:rid AND playoff_id=:pid"), {'rid': data['round_id'], 'pid': data['playoff_id']}).mappings().first()
+    if not rnd:
+        return False, 'ไม่พบรอบแข่งขัน'
+    a, b = _playoff_token_pair(data['playoff_id'], dict(rnd), data['group_no'], data.get('pair_key'), data['a_slot_no'], data['b_slot_no'])
+    if not (_playoff_is_real_score_slot(a) and _playoff_is_real_score_slot(b)):
+        return False, 'คู่นี้ยังรอทราบทีมจริง ยังบันทึกคะแนนไม่ได้'
+    a_slot_no = int(a['slot_no'])
+    b_slot_no = int(b['slot_no'])
     if a and a.get('is_bye'):
         score1 = 0
     if b and b.get('is_bye'):
         score2 = 0
-    for slot_no, score in ((data['a_slot_no'], score1), (data['b_slot_no'], score2)):
+    for slot_no, score in ((a_slot_no, score1), (b_slot_no, score2)):
         db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {
             'rid': data['round_id'], 'g': data['group_no'], 's': slot_no, 'st': data['stage_no']
         })
@@ -3423,11 +3477,11 @@ def _save_playoff_scorecard_values(data, score1_raw, score2_raw):
     db.session.commit()
     socketio.emit('playoff_score_updated', {
         'playoff_id': data['playoff_id'], 'round_id': data['round_id'], 'group_no': data['group_no'],
-        'slot_no': data['a_slot_no'], 'stage_no': data['stage_no'], 'score': score1,
+        'slot_no': a_slot_no, 'stage_no': data['stage_no'], 'score': score1,
     }, to=f"playoff_{data['playoff_id']}")
     socketio.emit('playoff_score_updated', {
         'playoff_id': data['playoff_id'], 'round_id': data['round_id'], 'group_no': data['group_no'],
-        'slot_no': data['b_slot_no'], 'stage_no': data['stage_no'], 'score': score2,
+        'slot_no': b_slot_no, 'stage_no': data['stage_no'], 'score': score2,
     }, to=f"playoff_{data['playoff_id']}")
     return True, 'บันทึกคะแนนออนไลน์แล้ว'
 
