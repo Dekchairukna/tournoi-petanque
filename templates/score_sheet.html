@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="{{ current_lang|default('th') }}">
 
 <head>
   <meta charset="UTF-8">
@@ -167,10 +167,10 @@
         <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">{{ event.name }}</div>
 
         <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">
-          ประเภท: {{ event.category }}{{ event.sex }} &nbsp;&nbsp;
-          รุ่น: {{ event.age_group }} &nbsp;&nbsp;
-          ครั้งที่: {{ match.round }} &nbsp;&nbsp;
-          สนาม: {{ match.field if match.field is not none else '__________' }}
+          {{ t('competition_type') }}: {{ event.category }}{{ event.sex }} &nbsp;&nbsp;
+          {{ t('age_group') }}: {{ event.age_group }} &nbsp;&nbsp;
+          {{ t('round') }}: {{ match.round }} &nbsp;&nbsp;
+          {{ t('field') }}: {{ match.field if match.field is not none else '__________' }}
         </div>
 
       </div>
@@ -190,7 +190,7 @@
 
     <!-- แถวของทีม A -->
     <div class="row">
-      <div class="label"><strong>ทีม:</strong></div>
+      <div class="label"><strong>{{ t('team') }}:</strong></div>
 
       <div class="boxes">
         <!-- ช่องชื่อทีม -->
@@ -207,7 +207,7 @@
 
     <!-- แถวของคะแนน -->
     <div class="row">
-      <div class="label"><strong>คะแนน:</strong></div>
+      <div class="label"><strong>{{ t('score') }}:</strong></div>
 
       <div class="boxes">
         <!-- ช่องว่าง (ไม่มีชื่อทีม) -->
@@ -217,19 +217,18 @@
         <div class="box">{{ i }}</div>
         {% endfor %}
         <!-- ช่อง "รวม" -->
-        <div class="box">รวม</div>
+        <div class="box">{{ t('total') }}</div>
       </div>
 
     </div>
 
     <!-- แถวของทีม B -->
     <div class="row">
-      <div class="label"><strong>ทีม:</strong></div>
+      <div class="label"><strong>{{ t('team') }}:</strong></div>
 
       <div class="boxes">
         <!-- ช่องชื่อทีม -->
-        <div class="team-name-box"><span class="team-name">{{ match.team2.name if match.team2 else 'BYE / ไม่มีคู่แข่ง'
-            }}</span></div>
+        <div class="team-name-box"><span class="team-name">{{ match.team2.name if match.team2 else t('bye') }}</span></div>
         <!-- ช่องคะแนน 13 ช่อง -->
         {% for _ in range(13) %}
         <div class="box"></div>

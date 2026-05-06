@@ -98,3 +98,21 @@ button.btn,
   color: #fff;
 }
 
+
+.score-level-0 {
+  background-color: #f1f3f5 !important; /* เทาพาสเทล */
+  color: #343a40 !important;
+}
+
+/* ให้สีติดชัดทั้งแถวในตาราง standings */
+tr.score-level-7 > td,
+tr.score-level-6 > td,
+tr.score-level-5 > td,
+tr.score-level-4 > td,
+tr.score-level-3 > td,
+tr.score-level-2 > td,
+tr.score-level-1 > td,
+tr.score-level-0 > td {
+  background-color: inherit !important;
+  color: inherit !important;
+}

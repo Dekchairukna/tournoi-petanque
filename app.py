@@ -25,8 +25,11 @@ from flask_wtf.file import FileField, FileAllowed
 import json
 import secrets
 import qrcode
+from i18n import SUPPORTED_LANGS, TEXT_TRANSLATIONS, translate
 # สำหรับ Excel
 import io
+import math
+import random
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
@@ -59,6 +62,34 @@ event_bp = Blueprint('event', __name__)  # สร้าง blueprint event ถ�
 login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
+
+def get_current_lang():
+    lang = request.args.get("lang") or session.get("lang") or "th"
+    if lang not in SUPPORTED_LANGS:
+        lang = "th"
+    session["lang"] = lang
+    return lang
+
+
+@app.context_processor
+def inject_i18n():
+    lang = get_current_lang()
+    return {
+        "current_lang": lang,
+        "supported_langs": SUPPORTED_LANGS,
+        "text_translations": TEXT_TRANSLATIONS,
+        "t": lambda key: translate(key, lang),
+    }
+
+
+@app.route("/set-language/<lang>")
+def set_language(lang):
+    if lang not in SUPPORTED_LANGS:
+        lang = "th"
+    session["lang"] = lang
+    next_url = request.args.get("next") or request.referrer or url_for("index")
+    return redirect(next_url)
+
 
 def ensure_runtime_columns():
     """เพิ่มคอลัมน์ใหม่ให้ฐานข้อมูลเดิมโดยไม่ลบข้อมูลเก่า"""
@@ -120,9 +151,70 @@ def ensure_match_tokens(matches):
     return matches
 
 
+def ensure_playoff_tables():
+    """Create persistent playoff/bracket tables used after a Swiss standing is finished."""
+    dialect = db.engine.dialect.name
+    if dialect == 'postgresql':
+        stmts = [
+            """CREATE TABLE IF NOT EXISTS playoff_competitions (
+                id SERIAL PRIMARY KEY, source_event_id INTEGER NOT NULL, title VARCHAR(255) NOT NULL,
+                competition_type VARCHAR(40) NOT NULL, pairing_method VARCHAR(30) NOT NULL DEFAULT 'seed',
+                status VARCHAR(30) NOT NULL DEFAULT 'active', report_note TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_rounds (
+                id SERIAL PRIMARY KEY, playoff_id INTEGER NOT NULL, round_no INTEGER NOT NULL,
+                round_name VARCHAR(255) NOT NULL, round_type VARCHAR(40) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_slots (
+                id SERIAL PRIMARY KEY, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL, slot_no INTEGER NOT NULL,
+                seed INTEGER, team_id INTEGER, team_name VARCHAR(255), is_bye BOOLEAN DEFAULT FALSE, court_name VARCHAR(80),
+                UNIQUE(round_id, group_no, slot_no)
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_scores (
+                id SERIAL PRIMARY KEY, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL, slot_no INTEGER NOT NULL,
+                stage_no INTEGER NOT NULL, score INTEGER, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(round_id, group_no, slot_no, stage_no)
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_manual_results (
+                id SERIAL PRIMARY KEY, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL,
+                winner_slot_no INTEGER, second_slot_no INTEGER, UNIQUE(round_id, group_no)
+            )""",
+        ]
+    else:
+        stmts = [
+            """CREATE TABLE IF NOT EXISTS playoff_competitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, source_event_id INTEGER NOT NULL, title TEXT NOT NULL,
+                competition_type TEXT NOT NULL, pairing_method TEXT NOT NULL DEFAULT 'seed',
+                status TEXT NOT NULL DEFAULT 'active', report_note TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_rounds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, playoff_id INTEGER NOT NULL, round_no INTEGER NOT NULL,
+                round_name TEXT NOT NULL, round_type TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_slots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL, slot_no INTEGER NOT NULL,
+                seed INTEGER, team_id INTEGER, team_name TEXT, is_bye BOOLEAN DEFAULT 0, court_name TEXT,
+                UNIQUE(round_id, group_no, slot_no)
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL, slot_no INTEGER NOT NULL,
+                stage_no INTEGER NOT NULL, score INTEGER, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(round_id, group_no, slot_no, stage_no)
+            )""",
+            """CREATE TABLE IF NOT EXISTS playoff_manual_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL,
+                winner_slot_no INTEGER, second_slot_no INTEGER, UNIQUE(round_id, group_no)
+            )""",
+        ]
+    for stmt in stmts:
+        db.session.execute(text(stmt))
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()  # สร้างตารางตามโมเดล
     ensure_runtime_columns()  # อัปเกรดฐานข
+    ensure_playoff_tables()  # ตารางระบบน็อคเอาท์/ดับเบิ้ลหลังจบ Standing
     #ensure_match_tokens(Match.query.all())  # สร้าง token QR ให้แมตช์เก่า้อมูลเดิมแบบไม่ลบข้อมูล
 
 @login_manager.user_loader
@@ -137,6 +229,17 @@ def unauthorized():
 
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
 
+
+
+@socketio.on('join_playoff')
+def handle_join_playoff(data):
+    try:
+        playoff_id = int((data or {}).get('playoff_id', 0))
+        if playoff_id:
+            from flask_socketio import join_room
+            join_room(f'playoff_{playoff_id}')
+    except Exception:
+        pass
 
 @socketio.on('update_score')
 @login_required
@@ -487,6 +590,8 @@ def event_detail(event_id):
     except Exception:
         event.logo_list = []
 
+    active_playoffs = _active_playoffs_for_event(event_id)
+
     return render_template(
         "event.html",
         event=event,
@@ -494,7 +599,8 @@ def event_detail(event_id):
         standings=standings,
         matches=matches,
         current_round=current_round,      # ✅ ส่งไปยัง template
-        matches_round_1=matches_round_1   # ✅ ส่งไปด้วยหากใช้
+        matches_round_1=matches_round_1,  # ✅ ส่งไปด้วยหากใช้
+        active_playoffs=active_playoffs
     )
 
 
@@ -1410,6 +1516,8 @@ def round_matches(event_id, round):
     standings = calculate_standings(event_id)
     total_rounds = event.rounds if event.rounds else db.session.query(db.func.max(Match.round)).filter(Match.event_id == event_id).scalar() or 1
     auto_fields = generate_field_numbers(event, len(matches)) if auto_assign_field else []
+    all_current_round_locked = bool(matches) and all(m.is_locked for m in matches)
+    is_last_configured_round = bool(total_rounds) and round >= total_rounds
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -1552,6 +1660,8 @@ def round_matches(event_id, round):
         auto_fields=auto_fields,
         error_message=None,
         selected_round=round,  # ✅ ส่งตัวแปรนี้ไปให้ HTML
+        all_current_round_locked=all_current_round_locked,
+        is_last_configured_round=is_last_configured_round,
     )
 
 @app.route("/users")
@@ -1728,6 +1838,288 @@ def match_pairs(event_id):
     )
 
 #--------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Finish round / next competition helpers
+
+def _as_int(value, default=0):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _team_rank_map(event_id):
+    """Return standings rows plus rank map from the current Swiss standings."""
+    rows = calculate_standings(event_id)
+    rank_map = {}
+    for idx, row in enumerate(rows, start=1):
+        rank_map[_as_int(row.get("team_id"))] = idx
+    return rows, rank_map
+
+
+def _selected_rows_from_standings(event_id, selected_ids):
+    standings_rows, rank_map = _team_rank_map(event_id)
+    by_id = {_as_int(row.get("team_id")): row for row in standings_rows}
+    selected = []
+    for tid in selected_ids:
+        row = by_id.get(tid)
+        if row:
+            row = dict(row)
+            row["rank"] = rank_map.get(tid, 999999)
+            selected.append(row)
+    selected.sort(key=lambda r: r.get("rank", 999999))
+    return selected
+
+
+def _make_next_event_from_selected(source_event, selected_rows, stage_name, rounds=3):
+    """Create a fresh Swiss event from selected teams. Existing scores/matches are not copied."""
+    owner_id = getattr(current_user, "id", None) or source_event.creator_id
+    new_event = Event(
+        name=f"{source_event.name} - {stage_name}" if stage_name else f"{source_event.name} - รอบใหม่",
+        location=source_event.location,
+        category=source_event.category,
+        sex=source_event.sex,
+        age_group=source_event.age_group,
+        rounds=rounds or 3,
+        current_round=1,
+        date=source_event.date,
+        auto_field_enabled=source_event.auto_field_enabled,
+        field_prefix=source_event.field_prefix,
+        field_start=source_event.field_start,
+        field_max=source_event.field_max,
+        field_exclude=source_event.field_exclude,
+        logo_filename=source_event.logo_filename,
+        creator_id=owner_id,
+    )
+    db.session.add(new_event)
+    db.session.flush()
+    for row in selected_rows:
+        db.session.add(Team(name=row.get("team_name", ""), event_id=new_event.id))
+    db.session.commit()
+    return new_event
+
+
+def _next_power_of_two(n):
+    if n <= 1:
+        return 1
+    return 1 << (n - 1).bit_length()
+
+
+def _seed_spread_order(n):
+    """Fishbone/bracket seed order: 1 and 2 stay on opposite sides."""
+    if n <= 1:
+        return [1]
+    size = _next_power_of_two(n)
+    order = [1, 2]
+    while len(order) < size:
+        next_size = len(order) * 2
+        order = [seed for old in order for seed in (old, next_size + 1 - old)]
+    return [seed for seed in order if seed <= n]
+
+
+def _seed_spread_order_with_byes(n):
+    """ก้างปลาแบบแยก seed 1 กับ seed 2 ให้อยู่คนละครึ่งตาราง"""
+    size = _next_power_of_two(n)
+    fixed = {
+        1: [1],
+        2: [1, 2],
+        4: [1, 4, 2, 3],
+        8: [1, 8, 4, 5, 3, 6, 2, 7],
+        16: [1, 16, 8, 9, 4, 13, 5, 12, 3, 14, 6, 11, 7, 10, 2, 15],
+        32: [1, 32, 16, 17, 8, 25, 9, 24, 4, 29, 13, 20, 5, 28, 12, 21, 3, 30, 14, 19, 6, 27, 11, 22, 7, 26, 10, 23, 2, 31, 15, 18],
+    }
+    if size in fixed:
+        return fixed[size]
+    seeds = list(range(1, size + 1))
+    return seeds[:1] + seeds[2:] + [2]
+
+
+def _knockout_pairs(selected_rows):
+    """Create fishbone knockout pairs: 1 is far from 2 and can meet 2 only in final."""
+    teams = list(selected_rows)
+    by_seed = {idx: row for idx, row in enumerate(teams, start=1)}
+    slots = _seed_spread_order_with_byes(len(teams))
+    pairs = []
+    for i in range(0, len(slots), 2):
+        a_seed = slots[i]
+        b_seed = slots[i + 1] if i + 1 < len(slots) else None
+        team_a = by_seed.get(a_seed)
+        team_b = by_seed.get(b_seed) if b_seed else None
+        if team_a:
+            team_a = dict(team_a)
+            team_a["bracket_seed"] = a_seed
+        if team_b:
+            team_b = dict(team_b)
+            team_b["bracket_seed"] = b_seed
+        pairs.append({
+            "match_no": len(pairs) + 1,
+            "slot_a_seed": a_seed,
+            "slot_b_seed": b_seed,
+            "team1": team_a,
+            "team2": team_b,
+        })
+    return pairs
+
+
+def _calculate_group_sizes_3_4(team_count):
+    """Return group sizes for double knockout: each group must contain 3 or 4 real teams.
+
+    Normal/random mode keeps 4-team groups first and 3-team groups last.
+    If no valid 3-4 split exists (for example 1, 2, or 5 teams), return an empty list.
+    """
+    if team_count < 3:
+        return []
+    # Prefer as many 4-team groups as possible. The number of 3-team groups (b)
+    # is the smallest b where team_count - 3b is divisible by 4.
+    for b in range(0, 4):
+        remaining = team_count - (3 * b)
+        if remaining < 0:
+            continue
+        if remaining % 4 == 0:
+            a = remaining // 4
+            sizes = ([4] * a) + ([3] * b)
+            if sum(sizes) == team_count and sizes:
+                return sizes
+    return []
+
+
+def _double_seed_flat_order(team_count):
+    """Seed order for normal double groups without the special X formula.
+
+    It starts from real seed pairs: best vs worst, second vs second worst, etc.,
+    then orders those pairs so seed 1 stays far from seed 2 in the display.
+    """
+    pair_count = team_count // 2
+    raw_pairs = {idx: (idx, team_count + 1 - idx) for idx in range(1, pair_count + 1)}
+    flat = []
+    for pair_no in _pair_order_for_bracket(pair_count):
+        pair = raw_pairs.get(pair_no)
+        if pair:
+            flat.extend(pair)
+    if team_count % 2 == 1:
+        middle_seed = pair_count + 1
+        if middle_seed not in flat:
+            flat.append(middle_seed)
+    return flat
+
+
+def _slots_from_double_chunk(chunk, mode='normal'):
+    """Create 4 slots for one double group.
+
+    Seed-special mode uses Team, X, Team, Team.
+    Normal/random mode uses Team, Team, Team, X for 3-team groups.
+    Four-team groups are Team, Team, Team, Team.
+    """
+    chunk = list(chunk)
+    if len(chunk) >= 4:
+        return chunk[:4]
+    if len(chunk) == 3:
+        return [chunk[0], None, chunk[1], chunk[2]] if mode == 'seed_special' else [chunk[0], chunk[1], chunk[2], None]
+    return chunk + [None] * (4 - len(chunk))
+
+
+def _arrange_random_double_group(rows):
+    """Random/normal double group: place random teams one by one.
+
+    If the group has 3 real teams, X/empty slot is always at slot 4, and
+    groups with X must be placed after complete 4-team groups by the caller.
+    """
+    return _slots_from_double_chunk(list(rows), mode='normal')
+
+
+def _double_top_seed_order(k):
+    # กฎที่ตกลง: 12 ทีม(k=4), 24 ทีม(k=8), 48 ทีม(k=16)
+    fixed = {
+        1: [1],
+        2: [1, 2],
+        4: [1, 4, 3, 2],
+        8: [1, 8, 5, 4, 3, 6, 7, 2],
+        16: [1, 16, 9, 8, 5, 12, 13, 4, 3, 14, 11, 6, 7, 10, 15, 2],
+    }
+    if k in fixed:
+        return fixed[k]
+    return _seed_spread_order(k)
+
+
+def _double_knockout_groups(selected_rows):
+    """
+    Double knockout setup:
+    - If selected team count is divisible by 3, use the agreed 3-layer seed rule.
+    - If not divisible by 3, randomize into 3-4 team groups using the petanque_tournament style.
+    """
+    rows = [dict(row) for row in selected_rows]
+    total = len(rows)
+    if total <= 0:
+        return [], "ยังไม่ได้เลือกทีม"
+
+    by_rank = {idx: row for idx, row in enumerate(rows, start=1)}
+    groups = []
+
+    if total >= 3 and total % 3 == 0:
+        k = total // 3
+        for group_no, top_seed in enumerate(_double_top_seed_order(k), start=1):
+            middle_seed = (2 * k) + 1 - top_seed
+            lower_seed = (3 * k) + 1 - top_seed
+            groups.append({
+                "group_no": group_no,
+                "mode": "seeded",
+                "slots": [
+                    {"seed": top_seed, "team": by_rank.get(top_seed), "is_bye": False},
+                    {"seed": "-", "team": None, "is_bye": True},
+                    {"seed": lower_seed, "team": by_rank.get(lower_seed), "is_bye": False},
+                    {"seed": middle_seed, "team": by_rank.get(middle_seed), "is_bye": False},
+                ],
+            })
+        return groups, "เข้ากฎหาร 3 ลงตัว: ใช้กฎ seed บนเจอ X และกลุ่มกลางประกบกลุ่มล่าง"
+
+    random_rows = list(rows)
+    random.shuffle(random_rows)
+    sizes = _calculate_group_sizes_3_4(total)
+    cursor = 0
+    for group_no, size in enumerate(sizes, start=1):
+        chunk = random_rows[cursor:cursor + size]
+        cursor += size
+        arranged = _arrange_random_double_group(chunk)
+        while len(arranged) < 4:
+            arranged.append(None)
+        slots = []
+        for item in arranged[:4]:
+            if item is None:
+                slots.append({"seed": "-", "team": None, "is_bye": True})
+            else:
+                slots.append({"seed": item.get("rank", ""), "team": item, "is_bye": False})
+        groups.append({"group_no": group_no, "mode": "random", "slots": slots})
+    return groups, "จำนวนทีมไม่หาร 3 ลงตัว: ระบบสุ่มจัดสาย 3–4 ทีมตาม logic ตัวอย่าง"
+
+def _round_robin_pairs(selected_rows):
+    pairs = []
+    match_no = 1
+    for i in range(len(selected_rows)):
+        for j in range(i + 1, len(selected_rows)):
+            pairs.append({"match_no": match_no, "team1": selected_rows[i], "team2": selected_rows[j]})
+            match_no += 1
+    return pairs
+
+
+def _active_playoffs_for_event(event_id):
+    # รายการเพลย์ออฟที่สร้างจาก Event นี้ เพื่อให้กลับเข้าไปทำงานต่อได้ถ้าเผลอออกจากหน้า
+    try:
+        ensure_playoff_tables()
+        rows = db.session.execute(text("""
+            SELECT pc.id, pc.title, pc.competition_type, pc.pairing_method,
+                   COUNT(pr.id) AS round_count,
+                   MAX(pr.round_no) AS latest_round
+            FROM playoff_competitions pc
+            LEFT JOIN playoff_rounds pr ON pr.playoff_id = pc.id
+            WHERE pc.source_event_id = :event_id
+            GROUP BY pc.id, pc.title, pc.competition_type, pc.pairing_method
+            ORDER BY pc.id DESC
+        """), {'event_id': event_id}).mappings().all()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
 # Swiss System Logic & Standings Display - เริ่มปรับปรุงที่นี่
 
 # ฟังก์ชันคำนวณ Buchholz (BHN) และ Fine Buchholz (fBHN) ที่นำมาจาก standings.py
@@ -1738,26 +2130,26 @@ def match_pairs(event_id):
 @login_required
 def event_standings(event_id):
     current_event = Event.query.get_or_404(event_id)
+    standings_data = calculate_standings(event_id)
 
-    # เรียกใช้ calculate_standings จาก standings.py
-    # ฟังก์ชันนี้ควรจะคืนค่า standings_data ที่จัดเรียงแล้วและมีข้อมูล BHN, fBHN, point_diff ครบถ้วน
-    standings_data = calculate_standings(event_id) # standings_data จะเป็น list ของ dicts
-
-    # รับค่าจำนวนทีมที่เข้ารอบจากฟอร์ม (หรือใช้ค่าเริ่มต้น)
-    # ถ้าไม่มีการส่งค่ามาหรือค่าว่าง จะใช้ 8 เป็นค่าเริ่มต้น
-    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=8)
-
-    # ตรวจสอบว่าค่าไม่เกินจำนวนทีมทั้งหมด
+    # จำนวนทีมที่เข้ารอบใช้เพื่อแยก 2 กลุ่มในรายงาน: เข้ารอบ / ตกรอบ
+    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=min(8, len(standings_data) or 8))
     if num_qualified_teams > len(standings_data):
         num_qualified_teams = len(standings_data)
-    if num_qualified_teams < 0: # ป้องกันค่าติดลบ
+    if num_qualified_teams < 0:
         num_qualified_teams = 0
+
+    qualified_rows = standings_data[:num_qualified_teams]
+    eliminated_rows = standings_data[num_qualified_teams:]
 
     return render_template(
         'event_standings.html',
         event=current_event,
         standings=standings_data,
-        num_qualified_teams=num_qualified_teams # ส่งค่านี่ไปที่ template ด้วย
+        qualified_rows=qualified_rows,
+        eliminated_rows=eliminated_rows,
+        num_qualified_teams=num_qualified_teams,
+        active_playoffs=_active_playoffs_for_event(event_id),
     )
 
 # เส้นทางใหม่สำหรับดาวน์โหลด Excel
@@ -1977,6 +2369,1126 @@ def save_bracket_pairings(event_id):
         flash(f'เกิดข้อผิดพลาดในการบันทึกการจับคู่: {str(e)}', 'danger')
         return redirect(url_for('create_bracket', event_id=event_id))
 
+
+
+
+@app.route('/event/<int:event_id>/create-next-competition', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def create_next_competition(event_id):
+    source_event = Event.query.get_or_404(event_id)
+    raw_ids = request.form.getlist('team_ids')
+    selected_ids = []
+    for raw in raw_ids:
+        tid = _as_int(raw)
+        if tid and tid not in selected_ids:
+            selected_ids.append(tid)
+
+    if not selected_ids:
+        flash('กรุณาเลือกทีมอย่างน้อย 1 ทีมก่อนสร้างรอบถัดไป', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id, num_qualified_teams=request.form.get('num_qualified_teams', 8)))
+
+    competition_type = (request.form.get('competition_type') or 'knockout').strip()
+    next_stage_name = (request.form.get('next_stage_name') or '').strip() or 'รอบถัดไป'
+    swiss_rounds = max(1, _as_int(request.form.get('swiss_rounds'), 3))
+
+    selected_rows = _selected_rows_from_standings(event_id, selected_ids)
+    if not selected_rows:
+        flash('ไม่พบทีมที่เลือกในตาราง Standing', 'danger')
+        return redirect(url_for('event_standings', event_id=event_id))
+
+    pairing_method = (request.form.get('pairing_method') or 'seed').strip()
+    if pairing_method not in {'seed', 'random', 'manual'}:
+        pairing_method = 'seed'
+    add_bye = request.form.get('add_bye') == '1'
+
+    payload = {
+        'source_event_id': event_id,
+        'competition_type': competition_type,
+        'next_stage_name': next_stage_name,
+        'team_ids': [row['team_id'] for row in selected_rows],
+        'pairing_method': pairing_method,
+        'add_bye': add_bye,
+        'created_at': datetime.utcnow().isoformat(),
+    }
+    session[f'next_competition_{event_id}'] = payload
+
+    if competition_type == 'swiss':
+        new_event = _make_next_event_from_selected(source_event, selected_rows, next_stage_name, rounds=swiss_rounds)
+        flash('สร้างอีเว้นท์ Swiss ใหม่แล้ว ข้อมูลคะแนน/แมตช์เดิมไม่ถูกนำมาด้วย ให้เริ่มจับคู่รอบแรกใหม่', 'success')
+        return redirect(url_for('event_detail', event_id=new_event.id))
+
+    if competition_type == 'round_robin':
+        flash('Round Robin ยังติดไว้ก่อน เดี๋ยวมาพัฒนาต่อ', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+
+    if competition_type in {'knockout', 'double_knockout'}:
+        try:
+            playoff_id = _create_playoff_competition(source_event, selected_rows, next_stage_name, competition_type, pairing_method, add_bye=add_bye)
+        except ValueError as exc:
+            flash(str(exc), 'warning')
+            return redirect(url_for('event_standings', event_id=event_id, num_qualified_teams=request.form.get('num_qualified_teams', 8)))
+        flash('สร้างระบบแข่งขันต่อแล้ว สามารถกรอกผลและสร้างรอบต่อไปได้จากหน้านี้', 'success')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+
+    return redirect(url_for('knockout_setup', event_id=event_id))
+
+
+def _get_next_competition_payload(event_id):
+    payload = session.get(f'next_competition_{event_id}')
+    if not payload:
+        return None, []
+    selected_ids = [_as_int(x) for x in payload.get('team_ids', [])]
+    return payload, _selected_rows_from_standings(event_id, selected_ids)
+
+
+@app.route('/event/<int:event_id>/knockout/setup')
+@login_required
+def knockout_setup(event_id):
+    event = Event.query.get_or_404(event_id)
+    payload, selected_rows = _get_next_competition_payload(event_id)
+    if not payload or not selected_rows:
+        flash('กรุณาเลือกทีมจากหน้า Standing ก่อน', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+    return render_template(
+        'next_knockout_setup.html',
+        event=event,
+        next_stage_name=payload.get('next_stage_name', 'รอบถัดไป'),
+        selected_rows=selected_rows,
+        pairs=_knockout_pairs(selected_rows),
+    )
+
+
+@app.route('/event/<int:event_id>/double-knockout/setup')
+@login_required
+def double_knockout_setup(event_id):
+    event = Event.query.get_or_404(event_id)
+    payload, selected_rows = _get_next_competition_payload(event_id)
+    if not payload or not selected_rows:
+        flash('กรุณาเลือกทีมจากหน้า Standing ก่อน', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+    try:
+        raw_groups = _playoff_double_groups(
+            selected_rows,
+            payload.get('pairing_method', 'seed'),
+            add_bye=bool(payload.get('add_bye'))
+        )
+        groups = []
+        for group_no, slots in enumerate(raw_groups, start=1):
+            groups.append({
+                'group_no': group_no,
+                'mode': payload.get('pairing_method', 'seed'),
+                'slots': [
+                    {'seed': '-', 'team': None, 'is_bye': True} if slot is None else {'seed': slot.get('seed'), 'team': slot, 'is_bye': False}
+                    for slot in slots
+                ]
+            })
+        draw_message = 'จัดสายดับเบิ้ลตามวิธีประกบคู่ที่เลือกไว้'
+        error_message = None
+    except ValueError as exc:
+        groups = []
+        draw_message = ''
+        error_message = str(exc)
+    return render_template(
+        'next_double_knockout_setup.html',
+        event=event,
+        next_stage_name=payload.get('next_stage_name', 'รอบถัดไป'),
+        selected_rows=selected_rows,
+        groups=groups,
+        draw_message=draw_message,
+        error_message=error_message,
+    )
+
+
+@app.route('/event/<int:event_id>/round-robin/setup')
+@login_required
+def round_robin_setup(event_id):
+    event = Event.query.get_or_404(event_id)
+    payload, selected_rows = _get_next_competition_payload(event_id)
+    if not payload or not selected_rows:
+        flash('กรุณาเลือกทีมจากหน้า Standing ก่อน', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+    return render_template(
+        'next_round_robin_setup.html',
+        event=event,
+        next_stage_name=payload.get('next_stage_name', 'รอบถัดไป'),
+        selected_rows=selected_rows,
+        pairs=_round_robin_pairs(selected_rows),
+    )
+
+
+@app.route('/event/<int:event_id>/clear-next-competition')
+@login_required
+@roles_required('admin', 'superadmin')
+def clear_next_competition(event_id):
+    session.pop(f'next_competition_{event_id}', None)
+    flash('ล้างชุดทีมที่เลือกสำหรับรอบถัดไปแล้ว', 'info')
+    return redirect(url_for('event_standings', event_id=event_id))
+
+
+# ------------------------- Playoff / bracket engine after Standing -------------------------
+def _row_to_seed_payload(row, seed=None):
+    return {
+        'team_id': _as_int(row.get('team_id')),
+        'team_name': row.get('team_name') or row.get('name') or '',
+        'seed': seed if seed is not None else _as_int(row.get('rank'), 0),
+        'rank': _as_int(row.get('rank'), 0),
+    }
+
+
+def _rows_for_pairing(selected_rows, pairing_method):
+    rows = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+    if pairing_method == 'random':
+        random.shuffle(rows)
+        for idx, row in enumerate(rows, start=1):
+            row['seed'] = idx
+            row['rank'] = idx
+    return rows
+
+
+def _pair_order_for_bracket(pair_count):
+    """Order pair numbers so pair 1 and pair 2 are far apart in the display."""
+    fixed = {
+        1: [1],
+        2: [1, 2],
+        3: [1, 3, 2],
+        4: [1, 4, 3, 2],
+        6: [1, 6, 5, 4, 3, 2],
+        8: [1, 8, 5, 4, 3, 6, 7, 2],
+        12: [1, 12, 8, 5, 4, 9, 3, 10, 6, 7, 11, 2],
+        16: [1, 16, 9, 8, 5, 12, 13, 4, 3, 14, 11, 6, 7, 10, 15, 2],
+    }
+    if pair_count in fixed:
+        return fixed[pair_count]
+    order = [x for x in _seed_spread_order_with_byes(pair_count) if 1 <= x <= pair_count]
+    if 2 in order:
+        order = [x for x in order if x != 2] + [2]
+    return order
+
+
+def _normal_seed_pairs(rows):
+    """Pair real teams only: best vs worst, second best vs second worst, then display fishbone."""
+    n = len(rows)
+    raw_pairs = []
+    for i in range(n // 2):
+        raw_pairs.append([rows[i], rows[n - 1 - i]])
+    order = _pair_order_for_bracket(len(raw_pairs))
+    by_no = {idx + 1: pair for idx, pair in enumerate(raw_pairs)}
+    return [by_no[i] for i in order if i in by_no]
+
+
+def _random_pairs(rows):
+    """True random: shuffle and pair adjacent teams. No seed formula."""
+    rows = list(rows)
+    random.shuffle(rows)
+    pairs = []
+    for i in range(0, len(rows), 2):
+        pairs.append([rows[i], rows[i + 1] if i + 1 < len(rows) else None])
+    return pairs
+
+
+def _playoff_knockout_groups(selected_rows, pairing_method='seed', add_bye=False):
+    rows = _rows_for_pairing(selected_rows, pairing_method)
+    if len(rows) % 2 == 1 and not add_bye:
+        raise ValueError('จำนวนทีมเป็นเลขคี่ ถ้าไม่ต้องการเพิ่ม X/BYE กรุณาเลือกทีมให้เป็นจำนวนคู่ หรือเปิดตัวเลือกเพิ่ม X/BYE')
+    if pairing_method == 'random':
+        if add_bye and len(rows) % 2 == 1:
+            rows.append(None)
+        return _random_pairs(rows)
+    if add_bye:
+        # เพิ่ม X/BYE เฉพาะเมื่อผู้ใช้ติ๊กเท่านั้น
+        by_seed = {idx: _row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)}
+        slots = _seed_spread_order_with_byes(len(selected_rows))
+        groups = []
+        for i in range(0, len(slots), 2):
+            groups.append([by_seed.get(slots[i]), by_seed.get(slots[i + 1]) if i + 1 < len(slots) else None])
+        return groups
+    # ค่าเริ่มต้น: ไม่เพิ่ม X จับทีมจริง ดีสุดเจอท้ายสุด และวาง 1 ไกล 2
+    return _normal_seed_pairs(rows)
+
+
+def _playoff_double_groups(selected_rows, pairing_method='seed', add_bye=False):
+    """Create double-knockout groups.
+
+    Rules locked with the user:
+    - Double knockout is NOT pair-by-pair like knockout. It is 3-4 teams per group.
+    - Random = shuffle all teams, then place teams into groups one by one.
+    - Normal/random 3-team groups use slots: Team, Team, Team, X and stay at the end.
+    - Seed + special X uses the divisible-by-3 formula: Team, X, Team, Team.
+    - Seed + no special X uses real teams in 3-4 team groups; no seed-special X.
+    """
+    n = len(selected_rows)
+    if n < 3:
+        raise ValueError('ดับเบิ้ลน็อคเอาท์ต้องมีอย่างน้อย 3 ทีมต่อการจัดสาย')
+
+    # Seed + special X formula: K groups, each group = 3 real teams + X in slot 2.
+    if pairing_method != 'random' and add_bye and n % 3 == 0:
+        rows = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+        by_rank = {idx: row for idx, row in enumerate(rows, start=1)}
+        k = n // 3
+        groups = []
+        for top_seed in _double_top_seed_order(k):
+            middle_seed = (2 * k) + 1 - top_seed
+            lower_seed = (3 * k) + 1 - top_seed
+            groups.append([
+                by_rank.get(top_seed),
+                None,
+                by_rank.get(lower_seed),
+                by_rank.get(middle_seed),
+            ])
+        return groups
+
+    sizes = _calculate_group_sizes_3_4(n)
+    if not sizes:
+        raise ValueError('จำนวนทีมนี้จัดดับเบิ้ลแบบสายละ 3–4 ทีมไม่ได้ กรุณาเลือกจำนวนทีมใหม่ หรือเปลี่ยนระบบแข่งขัน')
+
+    if pairing_method == 'random':
+        rows = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+        random.shuffle(rows)
+    else:
+        seed_rows = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+        by_seed = {row['seed']: row for row in seed_rows}
+        rows = [by_seed[s] for s in _double_seed_flat_order(n) if s in by_seed]
+
+    # sizes already keeps 4-team groups first and 3-team groups last.
+    groups, cursor = [], 0
+    for size in sizes:
+        chunk = rows[cursor:cursor + size]
+        cursor += size
+        groups.append(_slots_from_double_chunk(chunk, mode='normal'))
+    return groups
+
+def _create_playoff_round(playoff_id, round_no, round_name, round_type, grouped_slots):
+    res = db.session.execute(text("""
+        INSERT INTO playoff_rounds (playoff_id, round_no, round_name, round_type)
+        VALUES (:playoff_id, :round_no, :round_name, :round_type)
+    """), {'playoff_id': playoff_id, 'round_no': round_no, 'round_name': round_name, 'round_type': round_type})
+    db.session.flush()
+    if db.engine.dialect.name == 'postgresql':
+        round_id = db.session.execute(text("SELECT currval(pg_get_serial_sequence('playoff_rounds','id')) AS id")).mappings().first()['id']
+    else:
+        round_id = res.lastrowid
+    for group_no, slots in enumerate(grouped_slots, start=1):
+        for slot_no, item in enumerate(slots, start=1):
+            is_bye = item is None
+            db.session.execute(text("""
+                INSERT INTO playoff_slots (round_id, group_no, slot_no, seed, team_id, team_name, is_bye)
+                VALUES (:round_id, :group_no, :slot_no, :seed, :team_id, :team_name, :is_bye)
+            """), {
+                'round_id': round_id, 'group_no': group_no, 'slot_no': slot_no,
+                'seed': None if is_bye else item.get('seed'),
+                'team_id': None if is_bye else item.get('team_id'),
+                'team_name': 'X' if is_bye else item.get('team_name'),
+                'is_bye': bool(is_bye),
+            })
+    return round_id
+
+
+def _create_playoff_competition(source_event, selected_rows, title, competition_type, pairing_method, add_bye=False):
+    res = db.session.execute(text("""
+        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method)
+        VALUES (:source_event_id, :title, :competition_type, :pairing_method)
+    """), {
+        'source_event_id': source_event.id,
+        'title': title,
+        'competition_type': competition_type,
+        'pairing_method': pairing_method,
+    })
+    db.session.flush()
+    if db.engine.dialect.name == 'postgresql':
+        playoff_id = db.session.execute(text("SELECT currval(pg_get_serial_sequence('playoff_competitions','id')) AS id")).mappings().first()['id']
+    else:
+        playoff_id = res.lastrowid
+    if competition_type == 'double_knockout':
+        groups = _playoff_double_groups(selected_rows, pairing_method, add_bye=add_bye)
+    else:
+        groups = _playoff_knockout_groups(selected_rows, pairing_method, add_bye=add_bye)
+    _create_playoff_round(playoff_id, 1, title or 'รอบที่ 1', competition_type, groups)
+    db.session.commit()
+    return playoff_id
+
+
+def _fetch_playoff(playoff_id):
+    comp = db.session.execute(text("SELECT * FROM playoff_competitions WHERE id = :id"), {'id': playoff_id}).mappings().first()
+    if not comp:
+        return None
+    rounds = db.session.execute(text("SELECT * FROM playoff_rounds WHERE playoff_id = :pid ORDER BY round_no"), {'pid': playoff_id}).mappings().all()
+    round_views = []
+    for rnd in rounds:
+        slots = db.session.execute(text("SELECT * FROM playoff_slots WHERE round_id = :rid ORDER BY group_no, slot_no"), {'rid': rnd['id']}).mappings().all()
+        scores = db.session.execute(text("SELECT * FROM playoff_scores WHERE round_id = :rid"), {'rid': rnd['id']}).mappings().all()
+        manuals = db.session.execute(text("SELECT * FROM playoff_manual_results WHERE round_id = :rid"), {'rid': rnd['id']}).mappings().all()
+        score_map = {(s['group_no'], s['slot_no'], s['stage_no']): s['score'] for s in scores}
+        manual_map = {m['group_no']: m for m in manuals}
+        group_nos = sorted({slot['group_no'] for slot in slots})
+        group_views = []
+        for group_no in group_nos:
+            gslots = [dict(slot) for slot in slots if slot['group_no'] == group_no]
+            _apply_bye_auto_scores_to_map(gslots, score_map)
+            result = _compute_playoff_group_result(rnd['round_type'], gslots, score_map, manual_map.get(group_no))
+            stage_state = _build_playoff_stage_state(rnd['round_type'], gslots, score_map)
+            manual_options = [s for s in gslots if not s.get('is_bye')]
+            group_views.append({'group_no': group_no, 'slots': gslots, 'result': result, 'stage_state': stage_state, 'manual_options': manual_options, 'manual_override': manual_map.get(group_no)})
+        round_views.append({'round': dict(rnd), 'score_map': score_map, 'group_views': group_views})
+    return {'competition': dict(comp), 'round_views': round_views}
+
+
+def _slot_payload(slot):
+    if not slot or slot.get('is_bye'):
+        return None
+    return {'team_id': slot.get('team_id'), 'team_name': slot.get('team_name'), 'seed': slot.get('seed') or slot.get('slot_no'), 'rank': slot.get('seed') or slot.get('slot_no')}
+
+
+def _apply_bye_auto_scores_to_map(slots, score_map):
+    """Display/compute BYE pairs as 13:0 without asking to fill the X slot.
+
+    X/BYE is a real bracket placeholder, not a missing team name.
+    When a real team meets X in stage 1, the real team wins automatically 13:0.
+    This fills the in-memory score map for UI colors, result calculation, and reports.
+    It does not require the user to type a team name into the X slot.
+    """
+    by_slot = {int(s.get('slot_no')): s for s in slots}
+    for a_no, b_no in ((1, 2), (3, 4)):
+        a = by_slot.get(a_no)
+        b = by_slot.get(b_no)
+        if not a or not b:
+            continue
+        if bool(a.get('is_bye')) == bool(b.get('is_bye')):
+            continue
+        group_no = int(a.get('group_no') or b.get('group_no') or 0)
+        if a.get('is_bye') and not b.get('is_bye'):
+            score_map[(group_no, a_no, 1)] = 0
+            score_map[(group_no, b_no, 1)] = 13
+        elif b.get('is_bye') and not a.get('is_bye'):
+            score_map[(group_no, a_no, 1)] = 13
+            score_map[(group_no, b_no, 1)] = 0
+
+
+def _playoff_score(score_map, slot, stage):
+    if not slot:
+        return None
+    if slot.get('is_bye'):
+        return 0
+    return score_map.get((slot['group_no'], slot['slot_no'], stage))
+
+
+def _decide_playoff_pair(a, b, stage_no, score_map):
+    """Decide one pair like the original petanque_tournament engine.
+    - BYE/X auto-advances the real team.
+    - If both score boxes are blank, the pair is still incomplete.
+    - If one side is keyed and the other is blank, blank is treated as 0.
+      This allows either direct score entry or manual dropdown override.
+    """
+    if not a and not b:
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': None, 'loser': None, 'complete': False, 'score_a': None, 'score_b': None}
+    if a and a.get('is_bye') and b and not b.get('is_bye'):
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': b, 'loser': a, 'complete': True, 'score_a': 0, 'score_b': 13}
+    if b and b.get('is_bye') and a and not a.get('is_bye'):
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': a, 'loser': b, 'complete': True, 'score_a': 13, 'score_b': 0}
+    if a and not b:
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': a, 'loser': None, 'complete': True, 'score_a': None, 'score_b': None}
+    if b and not a:
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': b, 'loser': None, 'complete': True, 'score_a': None, 'score_b': None}
+
+    sa_raw = _playoff_score(score_map, a, stage_no)
+    sb_raw = _playoff_score(score_map, b, stage_no)
+    if sa_raw is None and sb_raw is None:
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': None, 'loser': None, 'complete': False, 'score_a': None, 'score_b': None}
+
+    sa = 0 if sa_raw is None else int(sa_raw)
+    sb = 0 if sb_raw is None else int(sb_raw)
+    if sa == sb:
+        return {'a': a, 'b': b, 'stage': stage_no, 'winner': None, 'loser': None, 'complete': False, 'score_a': sa, 'score_b': sb}
+    winner = a if sa > sb else b
+    loser = b if winner is a else a
+    return {'a': a, 'b': b, 'stage': stage_no, 'winner': winner, 'loser': loser, 'complete': True, 'score_a': sa, 'score_b': sb}
+
+
+def _double_group_decisions(slots, score_map):
+    by = {s['slot_no']: s for s in slots}
+    qf1 = _decide_playoff_pair(by.get(1), by.get(2), 1, score_map)
+    qf2 = _decide_playoff_pair(by.get(3), by.get(4), 1, score_map)
+    wf = _decide_playoff_pair(qf1.get('winner'), qf2.get('winner'), 2, score_map) if qf1.get('complete') and qf2.get('complete') else None
+    lf = _decide_playoff_pair(qf1.get('loser'), qf2.get('loser'), 2, score_map) if qf1.get('loser') and qf2.get('loser') else None
+    final2 = _decide_playoff_pair(wf.get('loser'), lf.get('winner'), 3, score_map) if wf and wf.get('loser') and lf and lf.get('winner') else None
+    return {'qf1': qf1, 'qf2': qf2, 'wf': wf, 'lf': lf, 'final2': final2}
+def _blank_stage_state(slots):
+    state = {}
+    for s in slots:
+        state[s['slot_no']] = {
+            1: {'color': '', 'editable': True},
+            2: {'color': '', 'editable': False},
+            3: {'color': '', 'editable': False},
+        }
+    return state
+
+
+def _mark_decision_state(state, dec):
+    if not dec:
+        return
+    a, b = dec.get('a'), dec.get('b')
+    st = int(dec.get('stage') or 1)
+    for side in ('a', 'b'):
+        s = dec.get(side)
+        if s and s.get('slot_no') in state:
+            state[s['slot_no']][st]['editable'] = True
+    if dec.get('winner') and dec.get('loser'):
+        w = dec['winner'].get('slot_no')
+        l = dec['loser'].get('slot_no')
+        if w in state:
+            state[w][st]['color'] = 'win'
+        if l in state:
+            state[l][st]['color'] = 'loss'
+
+
+def _build_playoff_stage_state(round_type, slots, score_map):
+    state = _blank_stage_state(slots)
+    if round_type == 'knockout':
+        dec = _decide_playoff_pair(slots[0] if len(slots)>0 else None, slots[1] if len(slots)>1 else None, 1, score_map)
+        _mark_decision_state(state, dec)
+        return state
+    decisions = _double_group_decisions(slots, score_map)
+    for key in ('qf1','qf2'):
+        _mark_decision_state(state, decisions.get(key))
+    qf1, qf2 = decisions.get('qf1'), decisions.get('qf2')
+    if qf1 and qf1.get('complete') and qf2 and qf2.get('complete'):
+        for key in ('wf','lf'):
+            d = decisions.get(key)
+            if d:
+                _mark_decision_state(state, d)
+                for side in ('a','b'):
+                    s = d.get(side)
+                    if s and s.get('slot_no') in state:
+                        state[s['slot_no']][2]['editable'] = True
+    d = decisions.get('final2')
+    if d:
+        _mark_decision_state(state, d)
+        for side in ('a','b'):
+            s = d.get(side)
+            if s and s.get('slot_no') in state:
+                state[s['slot_no']][3]['editable'] = True
+    return state
+
+def _compute_playoff_group_result(round_type, slots, score_map, manual=None):
+    """Compute winners using bracket flow from the original sample.
+    Manual dropdown is optional; score boxes alone can finish the group.
+    """
+    valid = [s for s in slots if not s.get('is_bye')]
+    by_slot = {s['slot_no']: s for s in slots}
+    if manual and manual.get('winner_slot_no'):
+        winner = by_slot.get(manual.get('winner_slot_no'))
+        second = by_slot.get(manual.get('second_slot_no')) if round_type == 'double_knockout' else None
+        if winner and not winner.get('is_bye'):
+            if round_type != 'double_knockout' or (second and not second.get('is_bye') and second.get('slot_no') != winner.get('slot_no')):
+                return {'winner': _slot_payload(winner), 'second': _slot_payload(second), 'complete': True, 'manual': True}
+
+    if round_type == 'knockout':
+        if len(valid) == 1:
+            return {'winner': _slot_payload(valid[0]), 'second': None, 'complete': True, 'manual': False}
+        if len(valid) < 2:
+            return {'winner': None, 'second': None, 'complete': False, 'manual': False}
+        dec = _decide_playoff_pair(slots[0] if len(slots) > 0 else None, slots[1] if len(slots) > 1 else None, 1, score_map)
+        return {'winner': _slot_payload(dec.get('winner')) if dec and dec.get('winner') else None, 'second': None, 'complete': bool(dec and dec.get('winner')), 'manual': False}
+
+    # Double knockout: original flow
+    # stage 1: 1-2 and 3-4
+    # stage 2: winners vs winners, losers vs losers
+    # stage 3: loser of winners-final vs winner of losers-final for rank 2
+    if len(valid) <= 2:
+        if len(valid) < 2:
+            return {'winner': _slot_payload(valid[0]) if valid else None, 'second': None, 'complete': bool(valid), 'manual': False}
+        dec = _decide_playoff_pair(valid[0], valid[1], 1, score_map)
+        return {'winner': _slot_payload(dec.get('winner')) if dec and dec.get('winner') else None,
+                'second': _slot_payload(dec.get('loser')) if dec and dec.get('loser') else None,
+                'complete': bool(dec and dec.get('complete')), 'manual': False}
+    decisions = _double_group_decisions(slots, score_map)
+    wf = decisions.get('wf')
+    lf = decisions.get('lf')
+    final2 = decisions.get('final2')
+    top1 = wf.get('winner') if wf and wf.get('complete') else None
+    top2 = final2.get('winner') if final2 and final2.get('complete') else None
+    return {'winner': _slot_payload(top1) if top1 else None, 'second': _slot_payload(top2) if top2 else None, 'complete': bool(top1 and top2), 'manual': False}
+
+
+def _playoff_round_complete(round_view):
+    return all(g['result'].get('complete') for g in round_view.get('group_views', []))
+
+
+def _participants_from_round(round_view):
+    participants = []
+    rtype = round_view['round']['round_type']
+    for g in round_view.get('group_views', []):
+        if g['result'].get('winner'):
+            participants.append(g['result']['winner'])
+        if rtype == 'double_knockout' and g['result'].get('second'):
+            participants.append(g['result']['second'])
+    seen, out = set(), []
+    for p in participants:
+        key = p.get('team_id') or p.get('team_name')
+        if key not in seen:
+            seen.add(key); out.append(p)
+    return out
+
+
+def _next_playoff_round_no(playoff_id):
+    row = db.session.execute(text("SELECT COALESCE(MAX(round_no), 0) AS n FROM playoff_rounds WHERE playoff_id = :pid"), {'pid': playoff_id}).mappings().first()
+    return int(row['n'] or 0) + 1
+
+
+
+def _playoff_source_teams(playoff_id):
+    rows = db.session.execute(text('''
+        SELECT ps.team_id, ps.team_name, COALESCE(ps.seed, ps.slot_no) AS seed
+        FROM playoff_slots ps
+        JOIN playoff_rounds pr ON pr.id = ps.round_id
+        WHERE pr.playoff_id = :pid AND pr.round_no = 1 AND ps.is_bye = false
+        ORDER BY COALESCE(ps.seed, ps.slot_no), ps.id
+    '''), {'pid': playoff_id}).mappings().all()
+    return [{'id': r['team_id'], 'name': r['team_name'], 'seed': r['seed']} for r in rows]
+
+
+
+def _source_event_full_report(event_id, qualified_team_ids=None):
+    """รายงานรอบแรก Swiss: รายชื่อทีม, ผลการแข่งขันแต่ละครั้ง, ผลจัดลำดับ."""
+    if not event_id:
+        return {'teams': [], 'rounds': [], 'standings': []}
+    qids = {int(x) for x in (qualified_team_ids or []) if x is not None}
+    teams = Team.query.filter_by(event_id=event_id).order_by(Team.id.asc()).all()
+    matches = Match.query.filter_by(event_id=event_id).order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
+    round_map = {}
+    for m in matches:
+        t1 = m.team1.name if m.team1 else '-'
+        t2 = m.team2.name if m.team2 else 'BYE'
+        s1 = '0' if m.team1_score is None else str(m.team1_score)
+        s2 = '0' if m.team2_score is None else str(m.team2_score)
+        if not m.is_locked:
+            result = 'รอยืนยันผล'
+        elif m.team2_id is None:
+            result = f'{t1} ชนะ BYE'
+        elif int(m.team1_score or 0) > int(m.team2_score or 0):
+            result = f'{t1} ชนะ'
+        elif int(m.team2_score or 0) > int(m.team1_score or 0):
+            result = f'{t2} ชนะ'
+        else:
+            result = 'เสมอ'
+        round_map.setdefault(m.round or 1, []).append({'field': m.field or '', 'team1': t1, 'team2': t2, 'score': f'{s1} - {s2}' if m.team2_id else 'BYE', 'result': result})
+    standings_rows = []
+    for idx, row in enumerate(calculate_standings(event_id), start=1):
+        status = 'เข้ารอบ' if row.get('team_id') in qids else 'ตกรอบ'
+        standings_rows.append({'rank': idx, 'team_name': row.get('team_name'), 'score': row.get('score'), 'buchholz': row.get('buchholz'), 'final_buchholz': row.get('final_buchholz'), 'point_for': row.get('point_for'), 'point_against': row.get('point_against'), 'status': status})
+    return {'teams': [{'id': t.id, 'name': t.name} for t in teams], 'rounds': [{'round_no': rn, 'matches': rows} for rn, rows in sorted(round_map.items())], 'standings': standings_rows}
+
+
+def _slot_name(slot):
+    if not slot:
+        return '-'
+    return 'X' if slot.get('is_bye') else (slot.get('team_name') or '-')
+
+
+def _slot_score(score_map, group_no, slot, stage):
+    if not slot:
+        return ''
+    v = score_map.get((group_no, slot.get('slot_no'), stage))
+    return '' if v is None else str(v)
+
+
+def _slot_score_for_report(score_map, group_no, slot, stage):
+    """คะแนนสำหรับรายงาน: ช่องว่างให้นับเป็น 0 ตามที่ใช้ตรวจผลจริง."""
+    if not slot:
+        return '-'
+    if slot.get('is_bye'):
+        return '0'
+    v = score_map.get((group_no, slot.get('slot_no'), stage))
+    return '0' if v is None else str(v)
+
+
+def _report_match_row(group_no, court, label, a, b, stage, score_map, winner=None):
+    sa = _slot_score_for_report(score_map, group_no, a, stage)
+    sb = _slot_score_for_report(score_map, group_no, b, stage)
+    if a and b and (a.get('is_bye') or b.get('is_bye')):
+        if a.get('is_bye') and not b.get('is_bye'):
+            sa, sb = '0', '13'
+        elif b.get('is_bye') and not a.get('is_bye'):
+            sa, sb = '13', '0'
+    win_key = None
+    if isinstance(winner, dict):
+        win_key = winner.get('slot_no') or winner.get('team_id') or winner.get('team_name')
+    def is_win(slot):
+        if not slot or not win_key:
+            return False
+        return win_key in {slot.get('slot_no'), slot.get('team_id'), slot.get('team_name')}
+    return {
+        'group_no': group_no,
+        'court': court or '',
+        'label': label,
+        'team1': _slot_name(a),
+        'team2': _slot_name(b),
+        'score': f'{sa} - {sb}',
+        'result': (winner or {}).get('team_name') if isinstance(winner, dict) else (winner or ''),
+        'team1_class': 'report-team-win' if is_win(a) else ('report-team-loss' if winner and b else ''),
+        'team2_class': 'report-team-win' if is_win(b) else ('report-team-loss' if winner and a else ''),
+    }
+
+
+def _playoff_round_report_pages(view):
+    """รายงานเพลย์ออฟ: 1 รอบต่อ 1 หน้า."""
+    pages = []
+    if not view:
+        return pages
+    pairing_label = {'seed': 'ตาม seed', 'random': 'สุ่ม', 'manual': 'แอดมินกำหนด'}
+    comp_pairing = pairing_label.get(view.get('competition', {}).get('pairing_method'), view.get('competition', {}).get('pairing_method') or '')
+    for rv in view.get('round_views', []):
+        rtype = rv['round']['round_type']
+        system = 'ดับเบิ้ลน็อคเอ้าท์' if rtype == 'double_knockout' else 'น็อคเอ้าท์'
+        rows = []
+        for g in rv.get('group_views', []):
+            slots = {int(s['slot_no']): s for s in g.get('slots', [])}
+            score_map = rv.get('score_map', {})
+            def add(label, a, b, stage, winner=None):
+                if not a and not b:
+                    return
+                rows.append(_report_match_row(g['group_no'], (a or b or {}).get('court_name') or '', label, a, b, stage, score_map, winner))
+            if rtype == 'double_knockout':
+                dec = _double_group_decisions(list(slots.values()), score_map)
+                for key, label, stage in [('qf1','ผลการแข่งขันครั้งที่ 1: คู่บน',1),('qf2','ผลการแข่งขันครั้งที่ 1: คู่ล่าง',1),('wf','ผลการแข่งขันครั้งที่ 2: ผู้ชนะพบผู้ชนะ',2),('lf','ผลการแข่งขันครั้งที่ 2: ผู้แพ้พบผู้แพ้',2),('final2','ผลการแข่งขันครั้งที่ 3: หาอันดับ 2',3)]:
+                    d = dec.get(key)
+                    if d:
+                        add(label, d.get('a'), d.get('b'), stage, d.get('winner'))
+            else:
+                d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, score_map)
+                add('ผลการแข่งขัน', slots.get(1), slots.get(2), 1, d.get('winner') if d else None)
+        pages.append({'round_name': rv['round']['round_name'], 'system': system, 'pairing_method': comp_pairing, 'rows': rows})
+    return pages
+
+
+def _latest_knockout_losers(round_view):
+    losers = []
+    if not round_view:
+        return losers
+    for g in round_view.get('group_views', []):
+        if round_view['round']['round_type'] == 'knockout':
+            slots = {int(s['slot_no']): s for s in g.get('slots', [])}
+            d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, round_view.get('score_map', {}))
+            if d and d.get('loser') and not d.get('loser').get('is_bye'):
+                losers.append(_slot_payload(d.get('loser')))
+        elif g['result'].get('second'):
+            losers.append(g['result']['second'])
+    seen, out = set(), []
+    for p in losers:
+        key = p.get('team_id') or p.get('team_name')
+        if key not in seen:
+            seen.add(key); out.append(p)
+    return out
+
+
+def _final_ranking_preview(view):
+    """สรุปอันดับ 1-4 สำหรับหน้ารายงาน.
+    - รอบชิง 1 คู่: ผู้ชนะ=1 ผู้แพ้=2 และผู้แพ้รอบรอง 2 ทีมเป็นอันดับ 3 ร่วม
+    - รอบชิงที่มี 2 คู่: คู่แรกเป็นชิง 1/2, คู่สองเป็นชิง 3/4
+    - ดับเบิ้ล: ใช้ผล winner/second ของกลุ่มสุดท้าย
+    """
+    if not view or not view.get('round_views'):
+        return []
+    latest = view['round_views'][-1]
+    if not _playoff_round_complete(latest):
+        return []
+    rows = []
+    if latest['round']['round_type'] == 'double_knockout':
+        for g in latest.get('group_views', []):
+            if g['result'].get('winner'):
+                rows.append({'rank': 1, 'team_name': g['result']['winner']['team_name']})
+            if g['result'].get('second'):
+                rows.append({'rank': 2, 'team_name': g['result']['second']['team_name']})
+        return rows
+
+    groups = latest.get('group_views', [])
+    # กรณีสร้างรอบชิงแบบ "ชิงอันดับ 3" จะมี 2 คู่ในรอบเดียวกัน
+    if len(groups) >= 2:
+        # คู่ที่ 1 = ชิง 1/2
+        g = groups[0]
+        slots = {int(s['slot_no']): s for s in g.get('slots', [])}
+        d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, latest.get('score_map', {}))
+        if d and d.get('winner'):
+            rows.append({'rank': 1, 'team_name': d['winner']['team_name']})
+        if d and d.get('loser') and not d['loser'].get('is_bye'):
+            rows.append({'rank': 2, 'team_name': d['loser']['team_name']})
+        # คู่ที่ 2 = ชิงอันดับ 3/4
+        g = groups[1]
+        slots = {int(s['slot_no']): s for s in g.get('slots', [])}
+        d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, latest.get('score_map', {}))
+        if d and d.get('winner'):
+            rows.append({'rank': 3, 'team_name': d['winner']['team_name']})
+        if d and d.get('loser') and not d['loser'].get('is_bye'):
+            rows.append({'rank': 4, 'team_name': d['loser']['team_name']})
+        return rows
+
+    # รอบชิงปกติ 1 คู่: อันดับ 3 ร่วม = ผู้แพ้รอบรอง 2 ทีม
+    if len(groups) == 1:
+        g = groups[0]
+        slots = {int(s['slot_no']): s for s in g.get('slots', [])}
+        d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, latest.get('score_map', {}))
+        if d and d.get('winner'):
+            rows.append({'rank': 1, 'team_name': d['winner']['team_name']})
+        if d and d.get('loser') and not d['loser'].get('is_bye'):
+            rows.append({'rank': 2, 'team_name': d['loser']['team_name']})
+        if len(view.get('round_views', [])) >= 2:
+            semi_losers = _latest_knockout_losers(view['round_views'][-2])[:2]
+            for p in semi_losers:
+                rows.append({'rank': 3, 'team_name': p.get('team_name')})
+    return rows
+
+
+def _playoff_report_rows(view):
+    rows = []
+    if not view:
+        return rows
+    for rv in view.get('round_views', []):
+        rtype = rv['round']['round_type']
+        system = 'ดับเบิ้ลน็อคเอ้าท์' if rtype == 'double_knockout' else 'น็อคเอ้าท์'
+        round_name = rv['round']['round_name']
+        for g in rv.get('group_views', []):
+            slots = {int(s['slot_no']): s for s in g.get('slots', [])}
+            score_map = rv.get('score_map', {})
+            def nm(slot):
+                if not slot:
+                    return '-'
+                return 'X' if slot.get('is_bye') else (slot.get('team_name') or slot.get('display_name') or '-')
+            def add(label, a, b, stage, result=''):
+                if not a and not b:
+                    return
+                winner = None
+                if result:
+                    for cand in (a, b):
+                        if cand and cand.get('team_name') == result:
+                            winner = cand
+                            break
+                row = _report_match_row(g['group_no'], (a or b or {}).get('court_name') or '', label, a, b, stage, score_map, winner)
+                row.update({'round_name': round_name, 'system': system})
+                rows.append(row)
+            if rtype == 'double_knockout':
+                dec = _double_group_decisions(list(slots.values()), score_map)
+                for key,label,stage in [('qf1','รอบ 1 คู่บน',1),('qf2','รอบ 1 คู่ล่าง',1),('wf','ผู้ชนะเจอผู้ชนะ',2),('lf','ผู้แพ้เจอผู้แพ้',2),('final2','หาอันดับ 2',3)]:
+                    d = dec.get(key)
+                    if d:
+                        add(label, d.get('a'), d.get('b'), stage, (d.get('winner') or {}).get('team_name') if d.get('winner') else '')
+            else:
+                d = _decide_playoff_pair(slots.get(1), slots.get(2), 1, score_map)
+                add('คู่แข่งขัน', slots.get(1), slots.get(2), 1, (d.get('winner') or {}).get('team_name') if d and d.get('winner') else '')
+    return rows
+
+@app.route('/playoff/<int:playoff_id>')
+@login_required
+def playoff_detail(playoff_id):
+    view = _fetch_playoff(playoff_id)
+    if not view:
+        flash('ไม่พบระบบแข่งขันต่อ', 'danger')
+        return redirect(url_for('index'))
+    source_event = Event.query.get(view['competition']['source_event_id'])
+    latest = view['round_views'][-1] if view['round_views'] else None
+    latest_complete = _playoff_round_complete(latest) if latest else False
+    next_participants = _participants_from_round(latest) if latest and latest_complete else []
+    source_teams = _playoff_source_teams(playoff_id)
+    qualified_ids = [t.get('id') for t in source_teams]
+    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids)
+    latest_losers = _latest_knockout_losers(latest) if latest and latest_complete else []
+    return render_template(
+        'playoff_detail.html',
+        view=view,
+        source_event=source_event,
+        latest_complete=latest_complete,
+        next_participants=next_participants,
+        latest_losers=latest_losers,
+        source_teams=source_teams,
+        source_report=source_report,
+        playoff_report_pages=_playoff_round_report_pages(view),
+        final_ranking_preview=_final_ranking_preview(view),
+        full_report_rows=_playoff_report_rows(view),
+    )
+
+
+@app.route('/playoff/<int:playoff_id>/print')
+@login_required
+def playoff_print_report(playoff_id):
+    view = _fetch_playoff(playoff_id)
+    if not view:
+        flash('ไม่พบระบบแข่งขันต่อ', 'danger')
+        return redirect(url_for('index'))
+    source_event = Event.query.get(view['competition']['source_event_id'])
+    source_teams = _playoff_source_teams(playoff_id)
+    qualified_ids = [t.get('id') for t in source_teams]
+    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids)
+    return render_template(
+        'playoff_print_report.html',
+        view=view,
+        source_event=source_event,
+        source_teams=source_teams,
+        source_report=source_report,
+        playoff_report_pages=_playoff_round_report_pages(view),
+        final_ranking_preview=_final_ranking_preview(view),
+    )
+
+
+@app.route('/playoff/<int:playoff_id>/round/<int:round_id>/save', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def save_playoff_round(playoff_id, round_id):
+    # ปุ่มบันทึกผลมี 2 แบบ:
+    # - save_group=<เลขสาย> บันทึกเฉพาะสายนั้น
+    # - save_all=1 หรือไม่ส่ง save_group บันทึกทุกสาย
+    target_group = _as_int(request.form.get('save_group'), 0)
+    slots = db.session.execute(text("SELECT * FROM playoff_slots WHERE round_id = :rid ORDER BY group_no, slot_no"), {'rid': round_id}).mappings().all()
+    if target_group:
+        slots_to_save = [slot for slot in slots if int(slot['group_no']) == int(target_group)]
+    else:
+        slots_to_save = list(slots)
+
+    if not slots_to_save:
+        flash('ไม่พบสายที่ต้องการบันทึก', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id) + f"#round-{round_id}")
+
+    for slot in slots_to_save:
+        court_key = f"court_{slot['id']}"
+        if court_key in request.form:
+            court = request.form.get(court_key, '').strip()
+            pair_start = 1 if int(slot['slot_no']) <= 2 else 3
+            pair_end = pair_start + 1
+            db.session.execute(text("""
+                UPDATE playoff_slots SET court_name = :court
+                WHERE round_id = :rid AND group_no = :g AND slot_no BETWEEN :a AND :b
+            """), {'court': court or None, 'rid': round_id, 'g': slot['group_no'], 'a': pair_start, 'b': pair_end})
+        for stage in (1, 2, 3):
+            raw = request.form.get(f"score_{slot['id']}_{stage}", '')
+            db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': round_id, 'g': slot['group_no'], 's': slot['slot_no'], 'st': stage})
+            if raw != '':
+                try:
+                    val = max(0, min(13, int(raw)))
+                except Exception:
+                    continue
+                db.session.execute(text("""
+                    INSERT INTO playoff_scores (round_id, group_no, slot_no, stage_no, score)
+                    VALUES (:rid, :g, :s, :st, :score)
+                """), {'rid': round_id, 'g': slot['group_no'], 's': slot['slot_no'], 'st': stage, 'score': val})
+
+    group_nos = sorted({slot['group_no'] for slot in slots_to_save})
+    for group_no in group_nos:
+        w = _as_int(request.form.get(f'manual_winner_{group_no}'), 0)
+        sec = _as_int(request.form.get(f'manual_second_{group_no}'), 0)
+        db.session.execute(text("DELETE FROM playoff_manual_results WHERE round_id=:rid AND group_no=:g"), {'rid': round_id, 'g': group_no})
+        if w:
+            db.session.execute(text("""
+                INSERT INTO playoff_manual_results (round_id, group_no, winner_slot_no, second_slot_no)
+                VALUES (:rid, :g, :w, :s)
+            """), {'rid': round_id, 'g': group_no, 'w': w, 's': sec or None})
+    db.session.commit()
+    socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
+    if target_group:
+        flash(f'บันทึกผลสายที่ {target_group} แล้ว', 'success')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id) + f"#round-{round_id}-group-{target_group}")
+    flash('บันทึกผลทุกสายในรอบนี้แล้ว', 'success')
+    return redirect(url_for('playoff_detail', playoff_id=playoff_id) + f"#round-{round_id}")
+
+
+@app.route('/playoff/<int:playoff_id>/renumber-courts', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def renumber_playoff_courts(playoff_id):
+    round_id = _as_int(request.form.get('round_id'))
+    start = max(1, _as_int(request.form.get('start_court'), 1))
+    skip = { _as_int(x.strip()) for x in (request.form.get('skip_courts') or '').split(',') if x.strip() }
+    slots = db.session.execute(text("SELECT * FROM playoff_slots WHERE round_id=:rid ORDER BY group_no, slot_no"), {'rid': round_id}).mappings().all()
+    court = start
+    assigned = {}
+    for slot in slots:
+        pair_key = (slot['group_no'], 1 if slot['slot_no'] <= 2 else 3)
+        if pair_key not in assigned:
+            while court in skip:
+                court += 1
+            assigned[pair_key] = str(court); court += 1
+        db.session.execute(text("UPDATE playoff_slots SET court_name=:court WHERE id=:id"), {'court': assigned[pair_key], 'id': slot['id']})
+    db.session.commit()
+    socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
+    flash('จัดเลขสนามอัตโนมัติแล้ว', 'success')
+    return redirect(url_for('playoff_detail', playoff_id=playoff_id) + f"#round-{round_id}")
+
+
+
+@app.route('/playoff/<int:playoff_id>/autosave-score', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def autosave_playoff_score(playoff_id):
+    data = request.get_json(silent=True) or request.form
+    round_id = _as_int(data.get('round_id'))
+    group_no = _as_int(data.get('group_no'))
+    slot_no = _as_int(data.get('slot_no'))
+    stage_no = _as_int(data.get('stage_no'))
+    raw = (str(data.get('score')) if data.get('score') is not None else '').strip()
+    db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no})
+    score = None
+    if raw != '':
+        try:
+            score = max(0, min(13, int(raw)))
+        except Exception:
+            return jsonify({'ok': False, 'message': 'กรอกคะแนน 0-13'}), 400
+        db.session.execute(text("""
+            INSERT INTO playoff_scores (round_id, group_no, slot_no, stage_no, score)
+            VALUES (:rid, :g, :s, :st, :score)
+        """), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no, 'score': score})
+    db.session.commit()
+    socketio.emit('playoff_score_updated', {
+        'playoff_id': playoff_id, 'round_id': round_id, 'group_no': group_no,
+        'slot_no': slot_no, 'stage_no': stage_no, 'score': score
+    }, to=f'playoff_{playoff_id}')
+    return jsonify({'ok': True})
+
+
+@app.route('/playoff/<int:playoff_id>/autosave-court', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def autosave_playoff_court(playoff_id):
+    data = request.get_json(silent=True) or request.form
+    slot_id = _as_int(data.get('slot_id'))
+    court = (data.get('court') or data.get('court_name') or '').strip()
+    slot = db.session.execute(text("SELECT round_id, group_no, slot_no FROM playoff_slots WHERE id=:id"), {'id': slot_id}).mappings().first()
+    if not slot:
+        return jsonify({'ok': False, 'message': 'ไม่พบช่องสนาม'}), 404
+    pair_start = 1 if int(slot['slot_no']) <= 2 else 3
+    pair_end = pair_start + 1
+    pair_slots = db.session.execute(text("""
+        SELECT id FROM playoff_slots
+        WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
+    """), {'rid': slot['round_id'], 'g': slot['group_no'], 'a': pair_start, 'b': pair_end}).mappings().all()
+    db.session.execute(text("""
+        UPDATE playoff_slots SET court_name=:court
+        WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
+    """), {'court': court or None, 'rid': slot['round_id'], 'g': slot['group_no'], 'a': pair_start, 'b': pair_end})
+    db.session.commit()
+    for ps in pair_slots:
+        socketio.emit('playoff_court_updated', {'playoff_id': playoff_id, 'slot_id': ps['id'], 'court': court}, to=f'playoff_{playoff_id}')
+    return jsonify({'ok': True})
+
+
+@app.route('/playoff/<int:playoff_id>/round/<int:round_id>/delete', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def delete_playoff_round(playoff_id, round_id):
+    latest = db.session.execute(text("""
+        SELECT id FROM playoff_rounds WHERE playoff_id=:pid ORDER BY round_no DESC, id DESC LIMIT 1
+    """), {'pid': playoff_id}).mappings().first()
+    if not latest or int(latest['id']) != int(round_id):
+        flash('ลบได้เฉพาะรอบล่าสุดเท่านั้น', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid"), {'rid': round_id})
+    db.session.execute(text("DELETE FROM playoff_manual_results WHERE round_id=:rid"), {'rid': round_id})
+    db.session.execute(text("DELETE FROM playoff_slots WHERE round_id=:rid"), {'rid': round_id})
+    db.session.execute(text("DELETE FROM playoff_rounds WHERE id=:rid"), {'rid': round_id})
+    db.session.commit()
+    socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
+    flash('ลบรอบล่าสุดแล้ว', 'success')
+    return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+
+
+@app.route('/playoff/<int:playoff_id>/slot/<int:slot_id>/fill-bye', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def fill_playoff_bye_slot(playoff_id, slot_id):
+    team_name = (request.form.get('team_name') or '').strip()
+    if not team_name:
+        flash('กรุณากรอกชื่อทีม', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    db.session.execute(text("UPDATE playoff_slots SET team_name=:name, is_bye=false WHERE id=:id"), {'name': team_name, 'id': slot_id})
+    db.session.commit()
+    socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
+    flash('เพิ่มทีมแทน X แล้ว', 'success')
+    return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+
+
+@app.route('/playoff/<int:playoff_id>/next-round', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def create_playoff_next_round(playoff_id):
+    view = _fetch_playoff(playoff_id)
+    if not view or not view['round_views']:
+        flash('ไม่พบข้อมูลรอบเดิม', 'danger')
+        return redirect(url_for('index'))
+    latest = view['round_views'][-1]
+    if not _playoff_round_complete(latest):
+        flash('กรุณาบันทึกผลให้ครบทุกสายก่อนสร้างรอบต่อไป', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    participants = _participants_from_round(latest)
+    if len(participants) < 2:
+        flash('เหลือผู้ชนะแล้ว ไม่ต้องสร้างรอบต่อไป', 'info')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    next_type = (request.form.get('next_type') or 'knockout').strip()
+    pairing_method = (request.form.get('pairing_method') or 'seed').strip()
+    if pairing_method not in {'seed', 'random', 'manual'}:
+        pairing_method = 'seed'
+    add_bye = request.form.get('add_bye') == '1'
+    round_name = (request.form.get('round_name') or f"รอบที่ {_next_playoff_round_no(playoff_id)}").strip()
+    final_third_mode = (request.form.get('final_third_mode') or 'joint_third').strip()
+    if len(participants) == 2:
+        next_type = 'knockout'
+    if next_type == 'swiss':
+        comp = view['competition']
+        source_event = Event.query.get(comp['source_event_id'])
+        if source_event:
+            rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx} for idx, p in enumerate(participants, start=1)]
+            new_event = _make_next_event_from_selected(source_event, rows, round_name, rounds=max(1, _as_int(request.form.get('swiss_rounds'), 3)))
+            flash('สร้าง Swiss ใหม่จากทีมที่ผ่านเข้ารอบแล้ว', 'success')
+            return redirect(url_for('event_detail', event_id=new_event.id))
+    if next_type == 'round_robin':
+        flash('Round Robin ยังติดไว้ก่อน', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx, 'seed': idx} for idx, p in enumerate(participants, start=1)]
+    if len(participants) == 2 and final_third_mode == 'third_place':
+        losers = _latest_knockout_losers(latest)[:2]
+        groups = [rows[:2]]
+        if len(losers) >= 2:
+            bronze_rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx + 3, 'seed': idx + 3} for idx, p in enumerate(losers, start=1)]
+            groups.append(bronze_rows[:2])
+    else:
+        try:
+            groups = _playoff_double_groups(rows, pairing_method, add_bye=add_bye) if next_type == 'double_knockout' else _playoff_knockout_groups(rows, pairing_method, add_bye=add_bye)
+        except ValueError as exc:
+            flash(str(exc), 'warning')
+            return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    _create_playoff_round(playoff_id, _next_playoff_round_no(playoff_id), round_name, next_type, groups)
+    db.session.commit()
+    socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
+    flash('สร้างรอบต่อไปแล้ว', 'success')
+    return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+
+
+
+@app.route('/playoff/<int:playoff_id>/delete', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def delete_playoff_competition(playoff_id):
+    comp = db.session.execute(text('SELECT * FROM playoff_competitions WHERE id=:id'), {'id': playoff_id}).mappings().first()
+    if not comp:
+        flash('ไม่พบเพลย์ออฟ', 'warning')
+        return redirect(url_for('index'))
+    round_ids = [r['id'] for r in db.session.execute(text('SELECT id FROM playoff_rounds WHERE playoff_id=:pid'), {'pid': playoff_id}).mappings().all()]
+    for rid in round_ids:
+        db.session.execute(text('DELETE FROM playoff_scores WHERE round_id=:rid'), {'rid': rid})
+        db.session.execute(text('DELETE FROM playoff_manual_results WHERE round_id=:rid'), {'rid': rid})
+        db.session.execute(text('DELETE FROM playoff_slots WHERE round_id=:rid'), {'rid': rid})
+    db.session.execute(text('DELETE FROM playoff_rounds WHERE playoff_id=:pid'), {'pid': playoff_id})
+    db.session.execute(text('DELETE FROM playoff_competitions WHERE id=:id'), {'id': playoff_id})
+    db.session.commit()
+    flash('ลบเพลย์ออฟนี้แล้ว', 'success')
+    if comp.get('source_event_id'):
+        return redirect(url_for('event_standings', event_id=comp.get('source_event_id')))
+    return redirect(url_for('index'))
+
+@app.route('/playoff/<int:playoff_id>/save-report', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def save_playoff_report(playoff_id):
+    note = request.form.get('report_note', '')
+    db.session.execute(text("UPDATE playoff_competitions SET report_note=:note WHERE id=:id"), {'note': note, 'id': playoff_id})
+    db.session.commit()
+    flash('บันทึกข้อความรายงานแล้ว', 'success')
+    return redirect(url_for('playoff_detail', playoff_id=playoff_id) + '#report')
 
 
 def calculate_end_time(duration: str):

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}สกอร์การ์ดออนไลน์ - {{ event.name }}{% endblock %}
+{% block title %}{{ t('scorecard_online') }} - {{ event.name }}{% endblock %}
 
 {% block content %}
 <style>
@@ -66,7 +66,7 @@
 <div class="scorecard-wrap">
   <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
     {% if not is_public_scorecard %}
-      <a href="{{ url_for('round_matches', event_id=event.id, round=match.round) }}" class="btn btn-outline-secondary">← กลับหน้า Round</a>
+      <a href="{{ url_for('round_matches', event_id=event.id, round=match.round) }}" class="btn btn-outline-secondary">{{ t('back_to_round') }}</a>
       <a href="{{ scorecard_public_url }}" class="btn btn-outline-primary" target="_blank">เปิดลิงก์ QR</a>
     {% else %}
       <span class="badge bg-primary fs-6">เข้าโดย QR สกอร์การ์ด</span>
@@ -114,9 +114,9 @@
     <input type="hidden" name="score_ends" id="score_ends" value='{{ score_ends|tojson }}'>
 
     <div class="row g-3 mb-3">
-      <div class="col-5"><div class="live-score-box team1-box"><div class="mb-2"><span class="team-chip team1-chip">ฝั่งทีม 1</span></div><div class="fw-bold text-truncate">{{ teams[match.team1_id] if match.team1_id else '-' }}</div><div class="live-score-number" id="team1Total">0</div></div></div>
+      <div class="col-5"><div class="live-score-box team1-box"><div class="mb-2"><span class="team-chip team1-chip">{{ t('side_team_1') }}</span></div><div class="fw-bold text-truncate">{{ teams[match.team1_id] if match.team1_id else '-' }}</div><div class="live-score-number" id="team1Total">0</div></div></div>
       <div class="col-2 d-flex align-items-center justify-content-center vs-text">VS</div>
-      <div class="col-5"><div class="live-score-box team2-box"><div class="mb-2"><span class="team-chip team2-chip">ฝั่งทีม 2</span></div><div class="fw-bold text-truncate">{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</div><div class="live-score-number" id="team2Total">0</div></div></div>
+      <div class="col-5"><div class="live-score-box team2-box"><div class="mb-2"><span class="team-chip team2-chip">{{ t('side_team_2') }}</span></div><div class="fw-bold text-truncate">{{ teams[match.team2_id] if match.team2_id else t('bye') }}</div><div class="live-score-number" id="team2Total">0</div></div></div>
     </div>
 
     <div class="alert alert-info mb-3">
@@ -124,8 +124,8 @@
     </div>
 
     <div class="score-mode-tabs" role="group" aria-label="เลือกรูปแบบการกรอกคะแนน">
-      <button type="button" class="score-mode-btn" id="modeManualBtn" data-score-mode="manual">กรอกคะแนนเลย</button>
-      <button type="button" class="score-mode-btn" id="modeEndsBtn" data-score-mode="ends">กรอกแบบมีประวัติ End</button>
+      <button type="button" class="score-mode-btn" id="modeManualBtn" data-score-mode="manual">{{ t('enter_total_score') }}</button>
+      <button type="button" class="score-mode-btn" id="modeEndsBtn" data-score-mode="ends">{{ t('enter_by_end') }}</button>
     </div>
 
     <div class="manual-score-panel mb-3" id="manualScorePanel">
@@ -134,16 +134,16 @@
       </div>
       <div class="row g-3 align-items-end">
         <div class="col-12 col-md-5">
-          <label class="form-label fw-bold"><span class="team-chip team1-chip">ฝั่งทีม 1</span></label>
+          <label class="form-label fw-bold"><span class="team-chip team1-chip">{{ t('side_team_1') }}</span></label>
           <input type="number" min="0" max="13" class="form-control manual-score-input" id="manualTeam1Score" value="0" {% if match.is_locked or match.pending_is_submitted %}readonly{% endif %}>
         </div>
         <div class="col-12 col-md-2 text-center vs-text pb-md-3">VS</div>
         <div class="col-12 col-md-5">
-          <label class="form-label fw-bold"><span class="team-chip team2-chip">ฝั่งทีม 2</span></label>
+          <label class="form-label fw-bold"><span class="team-chip team2-chip">{{ t('side_team_2') }}</span></label>
           <input type="number" min="0" max="13" class="form-control manual-score-input" id="manualTeam2Score" value="0" {% if not match.team2_id or match.is_locked or match.pending_is_submitted %}readonly{% endif %}>
         </div>
       </div>
-      <button type="button" class="btn btn-success w-100 mt-3" id="saveManualBtn" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>บันทึกคะแนนรวมทันที</button>
+      <button type="button" class="btn btn-success w-100 mt-3" id="saveManualBtn" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>{{ t('save_total_score') }}</button>
     </div>
 
     <div id="endsScorePanel">
@@ -155,7 +155,7 @@
         <div class="score-cell team-cell team1-row" title="{{ teams[match.team1_id] if match.team1_id else '-' }}">{{ teams[match.team1_id] if match.team1_id else '-' }}</div>
         {% for i in range(1, 14) %}<div class="score-cell" data-team="1" data-total="{{ i }}"></div>{% endfor %}
         <div class="score-cell fs-4" id="team1TotalCell">0</div>
-        <div class="score-cell team-cell team2-row" title="{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}">{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</div>
+        <div class="score-cell team-cell team2-row" title="{{ teams[match.team2_id] if match.team2_id else t('bye') }}">{{ teams[match.team2_id] if match.team2_id else t('bye') }}</div>
         {% for i in range(1, 14) %}<div class="score-cell" data-team="2" data-total="{{ i }}"></div>{% endfor %}
         <div class="score-cell fs-4" id="team2TotalCell">0</div>
       </div>
@@ -165,21 +165,21 @@
       <h5 class="fw-bold mb-3">เพิ่ม End</h5>
       <div class="row g-2 align-items-end">
         <div class="col-12 col-md-5">
-          <label class="form-label fw-bold">ฝั่งที่ได้แต้ม</label>
+          <label class="form-label fw-bold">{{ t('scoring_side') }}</label>
           <div class="d-grid gap-2">
             <button type="button" class="btn btn-outline-primary btn-team-choice active" data-team-choice="1">{{ teams[match.team1_id] if match.team1_id else '-' }}</button>
-            <button type="button" class="btn btn-outline-primary btn-team-choice" data-team-choice="2" {% if not match.team2_id %}disabled{% endif %}>{{ teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง' }}</button>
+            <button type="button" class="btn btn-outline-primary btn-team-choice" data-team-choice="2" {% if not match.team2_id %}disabled{% endif %}>{{ teams[match.team2_id] if match.team2_id else t('bye') }}</button>
           </div>
         </div>
         <div class="col-12 col-md-3">
-          <label class="form-label fw-bold">แต้มใน End นี้</label>
+          <label class="form-label fw-bold">{{ t('end_points') }}</label>
           <select class="form-select form-select-lg" id="endPoints">
             {% for i in range(1, 7) %}<option value="{{ i }}">{{ i }} แต้ม</option>{% endfor %}
           </select>
         </div>
         <div class="col-12 col-md-4">
-          <button type="button" class="btn btn-success btn-lg w-100" id="addEndBtn">+ เพิ่ม End</button>
-          <button type="button" class="btn btn-outline-danger w-100 mt-2" id="undoEndBtn">ลบ End ล่าสุด</button>
+          <button type="button" class="btn btn-success btn-lg w-100" id="addEndBtn">{{ t('add_end') }}</button>
+          <button type="button" class="btn btn-outline-danger w-100 mt-2" id="undoEndBtn">{{ t('undo_last_end') }}</button>
         </div>
       </div>
       <div class="small text-muted mt-2">สามารถกดสิ้นสุดการแข่งขันได้แม้คะแนนยังไม่ถึง 13</div>
@@ -187,33 +187,33 @@
 
     <div class="card mb-3">
       <div class="card-body">
-        <h5 class="fw-bold mb-2">รายการ End ที่กรอก</h5>
-        <div id="endList" class="small text-muted">ยังไม่มีการเพิ่ม End</div>
+        <h5 class="fw-bold mb-2">{{ t('end_list') }}</h5>
+        <div id="endList" class="small text-muted">{{ t('no_end_yet') }}</div>
       </div>
     </div>
 
     </div>
 
-    <div class="mb-3"><span class="saved-dot" id="saveDot"></span><span id="saveText">ยังไม่มีการบันทึกอัตโนมัติ</span></div>
+    <div class="mb-3"><span class="saved-dot" id="saveDot"></span><span id="saveText">{{ t('not_saved_yet') }}</span></div>
 
     <hr>
-    <h5 class="fw-bold mb-3">ลายเซ็นยืนยันผลจากนักกีฬาทั้งสองทีม</h5>
+    <h5 class="fw-bold mb-3">{{ t('signature_confirm') }}</h5>
     <div class="row g-3">
       <div class="col-12 col-md-6">
-        <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 1</label>
+        <label class="form-label fw-bold">{{ t('team_signature_1') }}</label>
         <canvas class="signature-box" data-sig-canvas="team1_signature"></canvas>
         <input type="hidden" name="team1_signature" id="team1_signature" value="{{ match.team1_signature or '' }}">
-        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team1_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
+        <div class="signature-tools"><small class="text-muted">{{ t('sign_here') }}</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team1_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>{{ t('clear') }}</button></div>
       </div>
       <div class="col-12 col-md-6">
-        <label class="form-label fw-bold">ลายเซ็นนักกีฬา / ตัวแทนทีม 2</label>
+        <label class="form-label fw-bold">{{ t('team_signature_2') }}</label>
         <canvas class="signature-box" data-sig-canvas="team2_signature"></canvas>
         <input type="hidden" name="team2_signature" id="team2_signature" value="{{ match.team2_signature or '' }}">
-        <div class="signature-tools"><small class="text-muted">เซ็นในกรอบนี้</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>ล้าง</button></div>
+        <div class="signature-tools"><small class="text-muted">{{ t('sign_here') }}</small><button type="button" class="btn btn-sm btn-outline-secondary" data-clear-sig="team2_signature" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>{{ t('clear') }}</button></div>
       </div>
     </div>
 
-    <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>สิ้นสุดการแข่งขัน / ส่งให้ admin ยืนยัน</button>
+    <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>{{ t('finish_match') }}</button>
   </form>
 </div>
 {% endblock %}
@@ -224,7 +224,7 @@
 (function(){
   const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
   const saveUrl = "{% if is_public_scorecard %}{{ url_for('public_autosave_online_scorecard', token=match.scorecard_token) }}{% else %}{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}{% endif %}";
-  const teamNames = {1: {{ (teams[match.team1_id] if match.team1_id else '-')|tojson }}, 2: {{ (teams[match.team2_id] if match.team2_id else 'BYE / ไม่มีคู่แข่ง')|tojson }}};
+  const teamNames = {1: {{ (teams[match.team1_id] if match.team1_id else '-')|tojson }}, 2: {{ (teams[match.team2_id] if match.team2_id else t('bye'))|tojson }}};
   const saveDot = document.getElementById('saveDot');
   const saveText = document.getElementById('saveText');
   const scoreEndsInput = document.getElementById('score_ends');
@@ -312,7 +312,7 @@
     scoreEndsInput.value = JSON.stringify(scoreEnds);
     const list = document.getElementById('endList');
     if (!scoreEnds.length) {
-      list.innerHTML = 'ยังไม่มีการเพิ่ม End';
+      list.innerHTML = '{{ t('no_end_yet') }}';
     } else {
       list.innerHTML = scoreEnds.map(item => `<div class="end-list-item ${item.team === 1 ? 'team1-item' : 'team2-item'}"><span>End ${item.end}: <strong>${teamNames[item.team]}</strong> ได้ ${item.points} แต้ม</span><span class="fw-bold">${item.team1_total} - ${item.team2_total}</span></div>`).join('');
     }
@@ -429,7 +429,7 @@
     if (isLockedOrSubmitted) return;
     const [t1, t2] = scoreMode === 'manual' ? manualTotals() : totals();
     if (scoreMode === 'manual') { s1.value = t1; s2.value = t2; scoreEnds = []; scoreEndsInput.value = '[]'; }
-    if (scoreMode === 'ends' && !scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน หรือเลือกโหมดกรอกคะแนนเลย'); return; }
+    if (scoreMode === 'ends' && !scoreEnds.length) { e.preventDefault(); alert('กรุณาเพิ่มคะแนนอย่างน้อย 1 End ก่อนสิ้นสุดการแข่งขัน หรือเลือกโหมด{{ t('enter_total_score') }}'); return; }
     // อนุญาตให้ส่งผลได้แม้คะแนนยังไม่ถึง 13
     const missing = ['team1_signature','team2_signature'].filter(id => !document.getElementById(id).value);
     if (missing.length) { e.preventDefault(); alert('ต้องมีลายเซ็นนักกีฬาทั้งสองทีมก่อนสิ้นสุดการแข่งขัน'); }

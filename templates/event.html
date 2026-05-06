@@ -442,6 +442,19 @@
     ดูตารางจัดลำดับกิจกรรม
 </a>
 
+{% if active_playoffs %}
+<div class="card mt-3 mb-3 shadow-sm border-primary">
+  <div class="card-header bg-primary text-white fw-semibold">รอบเพลย์ออฟที่สร้างไว้</div>
+  <div class="card-body d-flex flex-wrap gap-2">
+    {% for po in active_playoffs %}
+      <a href="{{ url_for('playoff_detail', playoff_id=po.id) }}" class="btn btn-primary btn-custom">
+        ไปหน้าเพลย์ออฟ: {{ po.title }}{% if po.latest_round %} / รอบ {{ po.latest_round }}{% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 
     <div class="mb-4 p-2">
       <a href="{{ url_for('index') }}" class="btn btn-secondary btn-lg">← กลับหน้าแรก</a>
