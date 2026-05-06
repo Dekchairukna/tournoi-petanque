@@ -1543,8 +1543,9 @@
     });
   });
 
-  const playoffId = {{ view.competition.id| tojson }};
-  const socket = typeof io !== "undefined" ? io() : null;
+  const playoffId = {{ view.competition.id|tojson }};
+  const liveScoresUrl = {{ url_for('playoff_live_scores', playoff_id=view.competition.id)|tojson }};
+  const socket = typeof io !== "undefined" ? io({ transports: ['websocket', 'polling'] }) : null;
   function getClientSid() { return socket && socket.id ? socket.id : ""; }
   function delayedReload() { setTimeout(() => window.location.reload(), 250); }
   function showLiveBadge(text) {
@@ -1559,20 +1560,50 @@
     clearTimeout(window.__playoffLiveBadgeTimer);
     window.__playoffLiveBadgeTimer = setTimeout(() => { if (badge) badge.remove(); }, 1500);
   }
-  if (socket) {
-    socket.on('connect', () => socket.emit('join_playoff', { playoff_id: playoffId }));
-    socket.on('playoff_score_updated', (p) => {
-      if (!p || Number(p.playoff_id) !== Number(playoffId)) return;
-      const el = document.querySelector(`.autosave-score[data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`);
-      if (el && document.activeElement !== el) {
-        el.value = (p.score === null || p.score === undefined) ? '' : p.score;
-      }
+  function applyPlayoffScoreUpdate(p, silent=false) {
+    if (!p || Number(p.playoff_id) !== Number(playoffId)) return false;
+    const el = document.querySelector(`.autosave-score[data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`);
+    if (!el) return false;
+    const nextValue = (p.score === null || p.score === undefined) ? '' : String(p.score);
+    if (document.activeElement !== el && el.value !== nextValue) {
+      el.value = nextValue;
       refreshGroupColors(p.round_id, p.group_no);
-      showLiveBadge('คะแนนสดอัปเดตแล้ว');
+      if (!silent) showLiveBadge('คะแนนสดอัปเดตแล้ว');
+      return true;
+    }
+    refreshGroupColors(p.round_id, p.group_no);
+    return false;
+  }
+
+  if (socket) {
+    socket.on('connect', () => {
+      socket.emit('join_playoff', { playoff_id: playoffId });
+      showLiveBadge('เชื่อมต่อคะแนนสดแล้ว');
     });
+    socket.on('connect_error', () => showLiveBadge('Socket.IO หลุด ใช้ระบบสำรอง'));
+    socket.on('disconnect', () => showLiveBadge('Socket.IO หลุด ใช้ระบบสำรอง'));
+    socket.on('playoff_score_updated', (p) => applyPlayoffScoreUpdate(p));
     socket.on('playoff_court_updated', (p) => { if (!p || Number(p.playoff_id) !== Number(playoffId)) return; const el = document.querySelector(`.autosave-court[data-slot="${p.slot_id}"]`); if (el && document.activeElement !== el) { el.value = p.court || ''; } });
     socket.on('playoff_reload', (p) => { if (p && Number(p.playoff_id) === Number(playoffId)) delayedReload(); });
   }
+
+  let __lastLiveScoresText = '';
+  async function pollPlayoffLiveScores() {
+    try {
+      const res = await fetch(liveScoresUrl, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data || !data.ok || !Array.isArray(data.scores)) return;
+      const txt = JSON.stringify(data.scores);
+      let changed = false;
+      data.scores.forEach(item => { if (applyPlayoffScoreUpdate(item, true)) changed = true; });
+      if (__lastLiveScoresText && txt !== __lastLiveScoresText && changed) showLiveBadge('คะแนนสดอัปเดตแล้ว');
+      __lastLiveScoresText = txt;
+    } catch (e) {
+      // เงียบไว้ เพื่อไม่รบกวนตอนเน็ตหลุดชั่วคราว
+    }
+  }
+  setInterval(pollPlayoffLiveScores, 1200);
+  document.addEventListener('DOMContentLoaded', pollPlayoffLiveScores);
   const timers = {};
   function postJSON(url, payload) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json().catch(() => ({ ok: false }))); }
   function scoreVal(el) {
