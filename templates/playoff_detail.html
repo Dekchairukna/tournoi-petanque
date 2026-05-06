@@ -150,8 +150,11 @@
           <div
             style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
             <b style="font-size:28px;">สายที่ {{ group.group_no }}</b>
-            <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
-              class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
+            <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+              <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
+              <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
+                class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
+            </div>
           </div>
           <table>
             <thead>
@@ -1544,9 +1547,29 @@
   const socket = typeof io !== "undefined" ? io() : null;
   function getClientSid() { return socket && socket.id ? socket.id : ""; }
   function delayedReload() { setTimeout(() => window.location.reload(), 250); }
+  function showLiveBadge(text) {
+    let badge = document.getElementById('playoff-live-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'playoff-live-badge';
+      badge.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;background:#0f172a;color:#fff;padding:10px 14px;border-radius:999px;font-weight:800;box-shadow:0 10px 25px rgba(0,0,0,.25);';
+      document.body.appendChild(badge);
+    }
+    badge.textContent = text || 'อัปเดตคะแนนสดแล้ว';
+    clearTimeout(window.__playoffLiveBadgeTimer);
+    window.__playoffLiveBadgeTimer = setTimeout(() => { if (badge) badge.remove(); }, 1500);
+  }
   if (socket) {
     socket.on('connect', () => socket.emit('join_playoff', { playoff_id: playoffId }));
-    socket.on('playoff_score_updated', (p) => { if (!p || Number(p.playoff_id) !== Number(playoffId)) return; const el = document.querySelector(`.autosave-score[data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`); if (el && document.activeElement !== el) { el.value = (p.score === null || p.score === undefined) ? '' : p.score; } delayedReload(); });
+    socket.on('playoff_score_updated', (p) => {
+      if (!p || Number(p.playoff_id) !== Number(playoffId)) return;
+      const el = document.querySelector(`.autosave-score[data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`);
+      if (el && document.activeElement !== el) {
+        el.value = (p.score === null || p.score === undefined) ? '' : p.score;
+      }
+      refreshGroupColors(p.round_id, p.group_no);
+      showLiveBadge('คะแนนสดอัปเดตแล้ว');
+    });
     socket.on('playoff_court_updated', (p) => { if (!p || Number(p.playoff_id) !== Number(playoffId)) return; const el = document.querySelector(`.autosave-court[data-slot="${p.slot_id}"]`); if (el && document.activeElement !== el) { el.value = p.court || ''; } });
     socket.on('playoff_reload', (p) => { if (p && Number(p.playoff_id) === Number(playoffId)) delayedReload(); });
   }
@@ -1608,7 +1631,7 @@
     input.addEventListener('blur', () => {
       const key = ['score', input.dataset.round, input.dataset.group, input.dataset.slot, input.dataset.stage].join('-');
       clearTimeout(timers[key]);
-      postJSON(`/playoff/${input.dataset.playoff}/autosave-score`, { round_id: input.dataset.round, group_no: input.dataset.group, slot_no: input.dataset.slot, stage_no: input.dataset.stage, score: input.value }).then(() => setTimeout(() => window.location.reload(), 180));
+      postJSON(`/playoff/${input.dataset.playoff}/autosave-score`, { round_id: input.dataset.round, group_no: input.dataset.group, slot_no: input.dataset.slot, stage_no: input.dataset.stage, score: input.value }).then(() => showLiveBadge('บันทึกคะแนนแล้ว'));
     });
   });
   document.querySelectorAll('.autosave-court').forEach(input => { input.addEventListener('input', () => { const key = 'court-' + input.dataset.slot; clearTimeout(timers[key]); timers[key] = setTimeout(() => postJSON(`/playoff/${input.dataset.playoff}/autosave-court`, { slot_id: input.dataset.slot, court: input.value }), 350); }); });

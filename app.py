@@ -3249,7 +3249,7 @@ def _playoff_score_map_for_round(round_id):
     return {(int(s['group_no']), int(s['slot_no']), int(s['stage_no'])): s['score'] for s in rows}
 
 
-def _playoff_pair_sheet(playoff_id, comp, rnd, group_no, pair_key, label, stage_no, a, b, score_map):
+def _playoff_pair_sheet(playoff_id, comp, rnd, this_group_no, pair_key, label, stage_no, a, b, score_map):
     if not a and not b:
         return None
     # ไม่สร้างสกอร์ชีทออนไลน์ให้คู่ X vs X / คู่ว่างทั้งคู่
@@ -3283,7 +3283,7 @@ def _playoff_pair_sheet(playoff_id, comp, rnd, group_no, pair_key, label, stage_
     }
 
 
-def _playoff_score_sheet_rows(playoff_id, round_id=None):
+def _playoff_score_sheet_rows(playoff_id, round_id=None, group_no=None):
     view = _fetch_playoff(playoff_id)
     if not view:
         return None, []
@@ -3294,7 +3294,9 @@ def _playoff_score_sheet_rows(playoff_id, round_id=None):
             continue
         score_map = rv.get('score_map', {})
         for group in rv.get('group_views', []):
-            group_no = int(group['group_no'])
+            this_group_no = int(group['group_no'])
+            if group_no and this_group_no != int(group_no):
+                continue
             slots = {int(s['slot_no']): s for s in group.get('slots', [])}
             if rnd['round_type'] == 'double_knockout':
                 dec = _double_group_decisions(list(slots.values()), score_map)
@@ -3308,11 +3310,11 @@ def _playoff_score_sheet_rows(playoff_id, round_id=None):
                 for pair_key, stage_no, a, b in pair_defs:
                     if not a or not b:
                         continue
-                    sheet = _playoff_pair_sheet(playoff_id, view['competition'], rnd, group_no, pair_key, _playoff_stage_label(rnd['round_type'], stage_no, pair_key), stage_no, a, b, score_map)
+                    sheet = _playoff_pair_sheet(playoff_id, view['competition'], rnd, this_group_no, pair_key, _playoff_stage_label(rnd['round_type'], stage_no, pair_key), stage_no, a, b, score_map)
                     if sheet:
                         sheets.append(sheet)
             else:
-                sheet = _playoff_pair_sheet(playoff_id, view['competition'], rnd, group_no, 'knockout', _playoff_stage_label(rnd['round_type'], 1), 1, slots.get(1), slots.get(2), score_map)
+                sheet = _playoff_pair_sheet(playoff_id, view['competition'], rnd, this_group_no, 'knockout', _playoff_stage_label(rnd['round_type'], 1), 1, slots.get(1), slots.get(2), score_map)
                 if sheet:
                     sheets.append(sheet)
     return view, sheets
@@ -3322,18 +3324,24 @@ def _playoff_score_sheet_rows(playoff_id, round_id=None):
 @login_required
 def playoff_score_sheet(playoff_id):
     selected_round = request.args.get('round_id', type=int)
-    view, sheets = _playoff_score_sheet_rows(playoff_id, selected_round)
+    selected_group = request.args.get('group_no', type=int)
+    view, sheets = _playoff_score_sheet_rows(playoff_id, selected_round, selected_group)
     if not view:
         flash('ไม่พบระบบเพลย์ออฟ', 'danger')
         return redirect(url_for('index'))
     source_event = Event.query.get(view['competition']['source_event_id']) if view.get('competition') else None
-    return render_template('playoff_score_sheet.html', view=view, source_event=source_event, sheets=sheets, selected_round=selected_round)
+    return render_template('playoff_score_sheet.html', view=view, source_event=source_event, sheets=sheets, selected_round=selected_round, selected_group=selected_group)
 
 
 @app.route('/playoff/<int:playoff_id>/round/<int:round_id>/score-sheet')
 @login_required
 def playoff_round_score_sheet(playoff_id, round_id):
     return redirect(url_for('playoff_score_sheet', playoff_id=playoff_id, round_id=round_id))
+
+@app.route('/playoff/<int:playoff_id>/round/<int:round_id>/group/<int:group_no>/score-sheet')
+@login_required
+def playoff_group_score_sheet(playoff_id, round_id, group_no):
+    return redirect(url_for('playoff_score_sheet', playoff_id=playoff_id, round_id=round_id, group_no=group_no))
 
 
 @app.route('/playoff-scorecard/<token>', methods=['GET'])
@@ -3421,7 +3429,6 @@ def _save_playoff_scorecard_values(data, score1_raw, score2_raw):
         'playoff_id': data['playoff_id'], 'round_id': data['round_id'], 'group_no': data['group_no'],
         'slot_no': data['b_slot_no'], 'stage_no': data['stage_no'], 'score': score2,
     }, to=f"playoff_{data['playoff_id']}")
-    socketio.emit('playoff_reload', {'playoff_id': data['playoff_id']}, to=f"playoff_{data['playoff_id']}")
     return True, 'บันทึกคะแนนออนไลน์แล้ว'
 
 
