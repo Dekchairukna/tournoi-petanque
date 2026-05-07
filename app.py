@@ -3366,6 +3366,84 @@ def _playoff_score_sheet_rows(playoff_id, round_id=None, group_no=None):
     return view, sheets
 
 
+def _playoff_match_table_rows(playoff_id, round_id=None, group_no=None):
+    """Prepare printable playoff competition tables by round/group.
+    One table = one group/สาย, similar to the official blank competition table.
+    """
+    view = _fetch_playoff(playoff_id)
+    if not view:
+        return None, []
+    tables = []
+    for rv in view.get('round_views', []):
+        rnd = rv['round']
+        if round_id and int(rnd['id']) != int(round_id):
+            continue
+        max_stage = 3 if rnd.get('round_type') == 'double_knockout' else 1
+        for group in rv.get('group_views', []):
+            this_group_no = int(group['group_no'])
+            if group_no and this_group_no != int(group_no):
+                continue
+            slots = list(group.get('slots', []))
+            if not slots:
+                continue
+            court_1 = ''
+            court_2 = ''
+            for slot in slots:
+                if int(slot.get('slot_no') or 0) in (1, 2) and slot.get('court_name') and not court_1:
+                    court_1 = slot.get('court_name') or ''
+                if int(slot.get('slot_no') or 0) in (3, 4) and slot.get('court_name') and not court_2:
+                    court_2 = slot.get('court_name') or ''
+            tables.append({
+                'round_id': int(rnd['id']),
+                'round_name': rnd.get('round_name') or '',
+                'round_type': rnd.get('round_type') or '',
+                'system_label': _playoff_system_label(rnd.get('round_type')),
+                'group_no': this_group_no,
+                'max_stage': max_stage,
+                'slots': slots,
+                'court_1': court_1,
+                'court_2': court_2,
+                'result': group.get('result') or {},
+            })
+    return view, tables
+
+
+@app.route('/playoff/<int:playoff_id>/match-tables')
+@login_required
+def playoff_match_tables_print(playoff_id):
+    selected_round = request.args.get('round_id', type=int)
+    selected_group = request.args.get('group_no', type=int)
+    per_page = request.args.get('per_page', default=4, type=int)
+    if per_page not in (1, 2, 3, 4):
+        per_page = 4
+    view, tables = _playoff_match_table_rows(playoff_id, selected_round, selected_group)
+    if not view:
+        flash('ไม่พบระบบเพลย์ออฟ', 'danger')
+        return redirect(url_for('index'))
+    source_event = Event.query.get(view['competition']['source_event_id']) if view.get('competition') else None
+    return render_template(
+        'playoff_match_tables.html',
+        view=view,
+        source_event=source_event,
+        tables=tables,
+        selected_round=selected_round,
+        selected_group=selected_group,
+        per_page=per_page,
+    )
+
+
+@app.route('/playoff/<int:playoff_id>/round/<int:round_id>/match-tables')
+@login_required
+def playoff_round_match_tables_print(playoff_id, round_id):
+    return redirect(url_for('playoff_match_tables_print', playoff_id=playoff_id, round_id=round_id, per_page=request.args.get('per_page', 4)))
+
+
+@app.route('/playoff/<int:playoff_id>/round/<int:round_id>/group/<int:group_no>/match-tables')
+@login_required
+def playoff_group_match_tables_print(playoff_id, round_id, group_no):
+    return redirect(url_for('playoff_match_tables_print', playoff_id=playoff_id, round_id=round_id, group_no=group_no, per_page=request.args.get('per_page', 4)))
+
+
 @app.route('/playoff/<int:playoff_id>/score-sheet')
 @login_required
 def playoff_score_sheet(playoff_id):

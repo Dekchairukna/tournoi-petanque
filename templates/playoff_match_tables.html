@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ตารางแข่งขัน - {{ view.competition.title }}</title>
+  <style>
+    @page { size: A4 {{ 'portrait' if per_page == 2 else 'landscape' }}; margin: 4mm; }
+    
+    body { margin: 0; font-family: Tahoma, Arial, sans-serif; color: #000; background: #fff; }
+    .no-print { padding: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: #f8fafc; border-bottom: 1px solid #d1d5db; }
+    .btn, select { border: 1px solid #111; border-radius: 8px; padding: 8px 12px; background: #fff; color: #111; text-decoration: none; font-weight: 800; font-size: 14px; }
+    .btn-primary { background:#111827; color:#fff; }
+    .btn-active { background:#0d6efd; color:#fff; border-color:#0d6efd; }
+
+    .print-page {
+      width: 100%;
+      min-height: {{ '289mm' if per_page == 2 else '202mm' }};
+      page-break-after: always;
+      break-after: page;
+      display: grid;
+      gap: 2mm;
+      padding: 0;
+    }
+    .print-page:last-child { page-break-after: auto; break-after: auto; }
+    .per-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    .per-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .per-3, .per-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+    .table-card {
+      border: 3px solid #ffffff;
+      padding: 0;
+      overflow: hidden;
+      display:flex;
+      flex-direction:column;
+      min-height: 0;
+      background:#fff;
+    }
+    .event-head {
+      display:grid;
+      grid-template-columns: {% if source_event and source_event.logo_list %}1fr auto{% else %}1fr{% endif %};
+      align-items:center;
+      gap: 6px;
+      text-align: center;
+      border-bottom: 1.5px #ffffff;
+      padding: 3px 7px 5px;
+      min-height: 42px;
+    }
+    .event-title-wrap { min-width:0; }
+    .main-title { font-size: 19px; font-weight: 900; line-height: 1.1; }
+    .sub-title { font-size: 15px; font-weight: 800; margin-top: 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .logo-wrapper { display:flex; gap:6px; justify-content:flex-end; align-items:center; }
+    .logo-on-sheet { height: 39px; width: 39px; object-fit: contain; display:block; }
+
+    .meta-row { display:grid; grid-template-columns: 1.15fr .9fr .45fr .35fr; border-bottom: 1.5px solid #ffffff; font-size: 18px; font-weight: 800; }
+    .meta-row > div { border-right:1.5px solid #ffffff; padding: 4px 5px; min-height: 26px; }
+    .meta-row > div:last-child { border-right:0; text-align:center; font-size: 15px; }
+
+    table.match-table { width: 100%; border-collapse: collapse; table-layout: fixed; flex: 1; }
+    .match-table th, .match-table td {
+      border: 1.5px solid #000;
+      text-align: center;
+      vertical-align: middle;
+      padding: 2px 3px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .match-table thead th { height: 34px; }
+    .match-table .court-col { width: 20%; }
+    .match-table .seed-col { width: 16%; }
+    .match-table .name-col { width: 40%; }
+    .match-table .stage-col { width: 8%; }
+    .match-table tbody td { height: 30px; }
+    .team-name { text-align:left !important; padding-left:6px !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight: 700 !important; }
+
+    .qualified-row { border-top: 1.5px solid #ffffff; padding: 5px 4px 6px; font-size: 13px; font-weight: 900; display:flex; gap: 8px; align-items:center; }
+    .dot-line { flex:1; border-bottom: 2px dotted #111; height: 16px; }
+    .empty-card { border: 0; }
+
+    .per-1 .event-head { min-height: 20px; padding-top: 7px; }
+    .per-1 .main-title { font-size: 36px; }
+    .per-1 .sub-title { font-size: 28px; }
+    .per-1 .logo-on-sheet { width: 54px; height: 54px; }
+    .per-1 .meta-row > div { font-size: 24px; padding: 7px 8px; }
+    .per-1 .meta-row > div:last-child { font-size: 21px; }
+    .per-1 .match-table th, .per-1 .match-table td { font-size: 20px; padding: 5px; }
+    .per-1 .match-table tbody td { height: 40px; }
+    .per-1 .qualified-row { font-size: 18px; padding: 10px 8px; }
+
+    .per-2 .event-head { min-height: 56px; }
+    .per-2 .main-title { font-size: 23px; }
+    .per-2 .sub-title { font-size: 18px; }
+    .per-2 .logo-on-sheet { width: 50px; height: 50px; }
+    .per-2 .meta-row > div { font-size: 16px; padding: 6px 7px; }
+    .per-2 .meta-row > div:last-child { font-size: 18px; }
+    .per-2 .match-table th, .per-2 .match-table td { font-size: 17px; }
+    .per-2 .match-table tbody td { height: 35px; }
+    .per-2 .qualified-row { font-size: 16px; padding: 8px 6px; }
+
+    .per-3 .match-table th, .per-3 .match-table td,
+    .per-4 .match-table th, .per-4 .match-table td { font-size: 13px; }
+
+    @media print {
+      .no-print { display:none !important; }
+      body { background:#fff; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <a class="btn btn-primary" href="javascript:window.print()">พิมพ์ตารางแข่งขัน</a>
+    <a class="btn" href="{{ url_for('playoff_detail', playoff_id=view.competition.id) }}">กลับหน้าเพลย์ออฟ</a>
+    <a class="btn" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, per_page=per_page) }}">ทั้งหมด</a>
+    <span style="font-weight:900; margin-left:8px;">จำนวนตาราง/แผ่น:</span>
+    {% for n in [1,2,3,4] %}
+      <a class="btn {% if per_page == n %}btn-active{% endif %}" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=selected_round, group_no=selected_group, per_page=n) }}">{{ n }}</a>
+    {% endfor %}
+    <span style="font-weight:800;">{% if per_page == 2 %}โหมด 2 ตาราง/แผ่น = แนวตั้ง{% else %}โหมดนี้ = แนวนอน{% endif %}</span>
+  </div>
+
+  <div class="no-print">
+    <strong>เลือกรอบ/สาย:</strong>
+    {% for rv in view.round_views %}
+      <a class="btn" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=per_page) }}">{{ rv.round.round_name }}</a>
+      {% for group in rv.group_views %}
+        <a class="btn" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=per_page) }}">{{ rv.round.round_name }} / สาย {{ group.group_no }}</a>
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  {% if selected_round or selected_group %}
+  <div class="no-print" style="font-weight:900;">โหมดที่เลือก: {% if selected_round %}รอบ ID {{ selected_round }}{% else %}ทุกรอบ{% endif %}{% if selected_group %} · สาย {{ selected_group }}{% endif %}</div>
+  {% endif %}
+
+  {% if not tables %}
+    <div style="padding:24px; font-weight:900;">ยังไม่มีตารางแข่งขันให้พิมพ์</div>
+  {% endif %}
+
+  {% for page in tables|batch(per_page, none) %}
+  <section class="print-page per-{{ per_page }}">
+    {% for tbl in page %}
+      {% if tbl %}
+      <div class="table-card">
+        <div class="event-head">
+          <div class="event-title-wrap">
+            <div class="main-title ">ตารางแข่งขันรายการแข่งขัน</div>
+            <div class="sub-title">{{ source_event.name if source_event else view.competition.title }}</div>
+          </div>
+          {% if source_event and source_event.logo_list %}
+          <div class="logo-wrapper">
+            {% for logo in source_event.logo_list %}
+            <img src="{{ url_for('static', filename='logos/' + logo) }}" class="logo-on-sheet" alt="โลโก้">
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        <div class="meta-row">
+          <div>ประเภท {{ (source_event.category if source_event and source_event.category else 'คู่ทั่วไป') }}{{ (source_event.sex ) }}</div>
+          <div class="center">{{ tbl.round_name }}</div>
+          <div></div>
+          <div>สายที่ {{ tbl.group_no }}</div>
+        </div>
+        <table class="match-table">
+          <thead>
+            <tr class="main-head">
+              <th class="court-col" rowspan="2">สนาม</th>
+              <th class="seed-col" rowspan="2">ลำดับที่</th>
+              <th class="name-col" rowspan="2">รายชื่อทีม</th>
+              <th class="stage-title" colspan="{{ tbl.max_stage }}">แข่งขันครั้งที่</th>
+            </tr>
+            <tr class="stage-head">
+              {% for i in range(1, tbl.max_stage + 1) %}<th class="stage-col">{{ i }}</th>{% endfor %}
+            </tr>
+            
+          </thead>
+          <tbody>
+            {% for slot in tbl.slots %}
+            <tr>
+              {% if slot.slot_no in [1, 3] %}
+              <td rowspan="2">{{ tbl.court_1 if slot.slot_no == 1 else tbl.court_2 }}</td>
+              {% endif %}
+              <td>{{ slot.seed or slot.slot_no }}</td>
+              <td class="team-name">{% if slot.is_bye %}X{% else %}{{ slot.team_name }}{% endif %}</td>
+              {% for i in range(1, tbl.max_stage + 1) %}<td></td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="qualified-row">
+          <span>ทีมที่เข้ารอบ</span>
+          <span>1.</span><span class="dot-line"></span>
+          {% if tbl.round_type == 'double_knockout' %}<span>2.</span><span class="dot-line"></span>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-card"></div>
+      {% endif %}
+    {% endfor %}
+  </section>
+  {% endfor %}
+</body>
+</html>

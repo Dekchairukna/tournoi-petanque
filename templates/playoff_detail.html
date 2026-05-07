@@ -109,6 +109,7 @@
       <div class="round-court-tools no-print">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
           <a href="{{ url_for('playoff_round_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทรอบนี้ / QR ออนไลน์</a>
+          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=4) }}" target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งรอบนี้</a>
         </div>
         <form method="post" action="{{ url_for('renumber_playoff_courts', playoff_id=view.competition.id) }}"
           class="round-court-form">
@@ -152,6 +153,7 @@
             <b style="font-size:28px;">สายที่ {{ group.group_no }}</b>
             <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
               <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
+              <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=4) }}" target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งสายนี้</a>
               <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
                 class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
             </div>
