@@ -2411,7 +2411,7 @@ def create_next_competition(event_id):
         return redirect(url_for('event_standings', event_id=event_id))
 
     pairing_method = (request.form.get('pairing_method') or 'seed').strip()
-    if pairing_method not in {'seed', 'random', 'manual'}:
+    if pairing_method not in {'seed', 'random', 'manual', 'bracket'}:
         pairing_method = 'seed'
     add_bye = request.form.get('add_bye') == '1'
 
@@ -2436,6 +2436,9 @@ def create_next_competition(event_id):
         return redirect(url_for('event_standings', event_id=event_id))
 
     if competition_type in {'knockout', 'double_knockout'}:
+        if pairing_method == 'manual':
+            flash('เลือก MANUAL แล้ว กรุณาจิ้มทีมลงคู่/ลงสายเองก่อนสร้างรอบ', 'info')
+            return redirect(url_for('playoff_manual_pairing_from_event', event_id=event_id))
         try:
             playoff_id = _create_playoff_competition(source_event, selected_rows, next_stage_name, competition_type, pairing_method, add_bye=add_bye)
         except ValueError as exc:
@@ -2454,6 +2457,126 @@ def _get_next_competition_payload(event_id):
     selected_ids = [_as_int(x) for x in payload.get('team_ids', [])]
     return payload, _selected_rows_from_standings(event_id, selected_ids)
 
+
+
+
+def _manual_pairing_plan(selected_rows, competition_type):
+    """Return a plan for the manual pairing page.
+
+    knockout = one pair per group, 2 slots per pair.
+    double_knockout = one group per 3-4 teams, 4 slots per group.
+    """
+    team_count = len(selected_rows)
+    if competition_type == 'double_knockout':
+        sizes = _calculate_group_sizes_3_4(team_count)
+        if not sizes:
+            raise ValueError('Double knockout แบบ MANUAL ต้องจัดทีมเป็นสายละ 3-4 ทีม และต้องมีอย่างน้อย 3 ทีม')
+        return {
+            'slot_count': 4,
+            'groups': [{'group_no': idx + 1, 'required_count': size} for idx, size in enumerate(sizes)],
+            'mode_label': 'Double knockout: เลือกทีมลงตามสาย / ลำดับ 1-4',
+        }
+    group_count = (team_count + 1) // 2
+    return {
+        'slot_count': 2,
+        'groups': [{'group_no': idx + 1, 'required_count': 2} for idx in range(group_count)],
+        'mode_label': 'Knockout: เลือกทีมลงคู่ ทีม A / ทีม B',
+    }
+
+
+def _manual_groups_from_request(selected_rows, competition_type):
+    teams = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+    by_id = {str(t['team_id']): t for t in teams if t.get('team_id')}
+    plan = _manual_pairing_plan(selected_rows, competition_type)
+    used = []
+    groups = []
+    for group in plan['groups']:
+        group_no = group['group_no']
+        slots = []
+        for slot_no in range(1, plan['slot_count'] + 1):
+            raw = (request.form.get(f'team_{group_no}_{slot_no}') or '').strip()
+            if not raw:
+                slots.append(None)
+                continue
+            if raw not in by_id:
+                raise ValueError('พบทีมที่ไม่มีอยู่ในรายการ กรุณาเลือกใหม่')
+            if raw in used:
+                raise ValueError('มีทีมถูกเลือกซ้ำ กรุณาเลือกทีมแต่ละทีมได้ครั้งเดียว')
+            used.append(raw)
+            slots.append(dict(by_id[raw]))
+        groups.append(slots)
+
+    all_ids = set(by_id.keys())
+    used_ids = set(used)
+    missing = [by_id[x]['team_name'] for x in all_ids - used_ids]
+    if missing:
+        raise ValueError('ยังมีทีมที่ยังไม่ได้ลงคู่/ลงสาย: ' + ', '.join(missing))
+    if len(used_ids) < 2:
+        raise ValueError('ต้องเลือกทีมอย่างน้อย 2 ทีม')
+    if competition_type == 'double_knockout':
+        for idx, slots in enumerate(groups, start=1):
+            real_count = sum(1 for x in slots if x is not None)
+            if real_count not in (3, 4):
+                raise ValueError(f'สาย {idx} ต้องมีทีมจริง 3 หรือ 4 ทีม')
+    return groups
+
+
+def _create_playoff_competition_with_groups(source_event, title, competition_type, pairing_method, groups):
+    res = db.session.execute(text("""
+        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method)
+        VALUES (:source_event_id, :title, :competition_type, :pairing_method)
+    """), {
+        'source_event_id': source_event.id if source_event else None,
+        'title': title,
+        'competition_type': competition_type,
+        'pairing_method': pairing_method,
+    })
+    db.session.flush()
+    if db.engine.dialect.name == 'postgresql':
+        playoff_id = db.session.execute(text("SELECT currval(pg_get_serial_sequence('playoff_competitions','id')) AS id")).mappings().first()['id']
+    else:
+        playoff_id = res.lastrowid
+    _create_playoff_round(playoff_id, 1, title or 'รอบที่ 1', competition_type, groups)
+    db.session.commit()
+    return playoff_id
+
+
+@app.route('/event/<int:event_id>/playoff/manual-pairing', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def playoff_manual_pairing_from_event(event_id):
+    source_event = Event.query.get_or_404(event_id)
+    payload, selected_rows = _get_next_competition_payload(event_id)
+    if not payload or not selected_rows:
+        flash('กรุณาเลือกทีมจากหน้า Standing ก่อน', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+    competition_type = payload.get('competition_type') or 'knockout'
+    if competition_type not in {'knockout', 'double_knockout'}:
+        flash('MANUAL ใช้กับ Knockout หรือ Double knockout เท่านั้น', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+    try:
+        plan = _manual_pairing_plan(selected_rows, competition_type)
+    except ValueError as exc:
+        flash(str(exc), 'warning')
+        return redirect(url_for('event_standings', event_id=event_id))
+    teams = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+    if request.method == 'POST':
+        try:
+            groups = _manual_groups_from_request(selected_rows, competition_type)
+            playoff_id = _create_playoff_competition_with_groups(
+                source_event,
+                payload.get('next_stage_name') or 'รอบถัดไป',
+                competition_type,
+                'manual',
+                groups,
+            )
+        except ValueError as exc:
+            flash(str(exc), 'warning')
+            return render_template('playoff_manual_pairing.html', mode='event', source_event=source_event, view=None, payload=payload, teams=teams, plan=plan)
+        session.pop(f'next_competition_{event_id}', None)
+        flash('สร้างรอบ MANUAL ตามที่แอดมินจิ้มคู่แล้ว', 'success')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    return render_template('playoff_manual_pairing.html', mode='event', source_event=source_event, view=None, payload=payload, teams=teams, plan=plan)
 
 @app.route('/event/<int:event_id>/knockout/setup')
 @login_required
@@ -2590,6 +2713,19 @@ def _normal_seed_pairs(rows):
     return [by_no[i] for i in order if i in by_no]
 
 
+def _adjacent_bracket_pairs(rows):
+    """Bracket mode: keep the existing bracket/slot order and pair adjacent teams.
+
+    This is for playoff next rounds: do not reseed winners again.
+    Example: winner of pair 1 meets winner of pair 2, pair 3 meets pair 4, etc.
+    """
+    rows = list(rows)
+    pairs = []
+    for i in range(0, len(rows), 2):
+        pairs.append([rows[i], rows[i + 1] if i + 1 < len(rows) else None])
+    return pairs
+
+
 def _random_pairs(rows):
     """True random: shuffle and pair adjacent teams. No seed formula."""
     rows = list(rows)
@@ -2604,10 +2740,19 @@ def _playoff_knockout_groups(selected_rows, pairing_method='seed', add_bye=False
     rows = _rows_for_pairing(selected_rows, pairing_method)
     if len(rows) % 2 == 1 and not add_bye:
         raise ValueError('จำนวนทีมเป็นเลขคี่ ถ้าไม่ต้องการเพิ่ม X/BYE กรุณาเลือกทีมให้เป็นจำนวนคู่ หรือเปิดตัวเลือกเพิ่ม X/BYE')
+
     if pairing_method == 'random':
         if add_bye and len(rows) % 2 == 1:
             rows.append(None)
         return _random_pairs(rows)
+
+    if pairing_method == 'bracket':
+        # โหมด bracket = คงลำดับสายเดิม แล้วจับคู่ที่ติดกัน
+        # ใช้สำหรับรอบต่อไปหลังจากรอบ 8/16 จัดตาม seed แล้ว ไม่เอาผู้ชนะมา seed ใหม่
+        if add_bye and len(rows) % 2 == 1:
+            rows.append(None)
+        return _adjacent_bracket_pairs(rows)
+
     if add_bye:
         # เพิ่ม X/BYE เฉพาะเมื่อผู้ใช้ติ๊กเท่านั้น
         by_seed = {idx: _row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)}
@@ -2616,7 +2761,7 @@ def _playoff_knockout_groups(selected_rows, pairing_method='seed', add_bye=False
         for i in range(0, len(slots), 2):
             groups.append([by_seed.get(slots[i]), by_seed.get(slots[i + 1]) if i + 1 < len(slots) else None])
         return groups
-    # ค่าเริ่มต้น: ไม่เพิ่ม X จับทีมจริง ดีสุดเจอท้ายสุด และวาง 1 ไกล 2
+    # ค่าเริ่มต้น seed: ไม่เพิ่ม X จับทีมจริง ดีสุดเจอท้ายสุด และวาง 1 ไกล 2
     return _normal_seed_pairs(rows)
 
 
@@ -3854,7 +3999,7 @@ def create_playoff_next_round(playoff_id):
         return redirect(url_for('playoff_detail', playoff_id=playoff_id))
     next_type = (request.form.get('next_type') or 'knockout').strip()
     pairing_method = (request.form.get('pairing_method') or 'seed').strip()
-    if pairing_method not in {'seed', 'random', 'manual'}:
+    if pairing_method not in {'seed', 'random', 'manual', 'bracket'}:
         pairing_method = 'seed'
     add_bye = request.form.get('add_bye') == '1'
     round_name = (request.form.get('round_name') or f"รอบที่ {_next_playoff_round_no(playoff_id)}").strip()
@@ -3873,6 +4018,16 @@ def create_playoff_next_round(playoff_id):
         flash('Round Robin ยังติดไว้ก่อน', 'warning')
         return redirect(url_for('playoff_detail', playoff_id=playoff_id))
     rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx, 'seed': idx} for idx, p in enumerate(participants, start=1)]
+    if pairing_method == 'manual' and len(participants) > 2:
+        session[f'playoff_next_round_manual_{playoff_id}'] = {
+            'next_type': next_type,
+            'round_name': round_name,
+            'add_bye': add_bye,
+            'rows': rows,
+            'created_at': datetime.utcnow().isoformat(),
+        }
+        flash('เลือก MANUAL แล้ว กรุณาจิ้มทีมลงคู่/ลงสายเองก่อนสร้างรอบถัดไป', 'info')
+        return redirect(url_for('playoff_manual_pairing_next_round', playoff_id=playoff_id))
     if len(participants) == 2 and final_third_mode == 'third_place':
         losers = _latest_knockout_losers(latest)[:2]
         groups = [rows[:2]]
@@ -3892,6 +4047,46 @@ def create_playoff_next_round(playoff_id):
     return redirect(url_for('playoff_detail', playoff_id=playoff_id))
 
 
+
+
+
+@app.route('/playoff/<int:playoff_id>/manual-pairing-next', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def playoff_manual_pairing_next_round(playoff_id):
+    view = _fetch_playoff(playoff_id)
+    if not view:
+        flash('ไม่พบข้อมูลเพลย์ออฟ', 'danger')
+        return redirect(url_for('index'))
+    payload = session.get(f'playoff_next_round_manual_{playoff_id}')
+    if not payload:
+        flash('ไม่พบข้อมูลสร้างรอบแบบ MANUAL กรุณากดสร้างรอบต่อไปใหม่อีกครั้ง', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    selected_rows = payload.get('rows') or []
+    competition_type = payload.get('next_type') or 'knockout'
+    if competition_type not in {'knockout', 'double_knockout'}:
+        flash('MANUAL ใช้กับ Knockout หรือ Double knockout เท่านั้น', 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    try:
+        plan = _manual_pairing_plan(selected_rows, competition_type)
+    except ValueError as exc:
+        flash(str(exc), 'warning')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    teams = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+    source_event = Event.query.get(view['competition'].get('source_event_id')) if view['competition'].get('source_event_id') else None
+    if request.method == 'POST':
+        try:
+            groups = _manual_groups_from_request(selected_rows, competition_type)
+        except ValueError as exc:
+            flash(str(exc), 'warning')
+            return render_template('playoff_manual_pairing.html', mode='next', source_event=source_event, view=view, payload=payload, teams=teams, plan=plan)
+        _create_playoff_round(playoff_id, _next_playoff_round_no(playoff_id), payload.get('round_name') or 'รอบถัดไป', competition_type, groups)
+        db.session.commit()
+        session.pop(f'playoff_next_round_manual_{playoff_id}', None)
+        socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
+        flash('สร้างรอบต่อไปแบบ MANUAL ตามที่แอดมินจิ้มคู่แล้ว', 'success')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+    return render_template('playoff_manual_pairing.html', mode='next', source_event=source_event, view=view, payload=payload, teams=teams, plan=plan)
 
 @app.route('/playoff/<int:playoff_id>/delete', methods=['POST'])
 @login_required

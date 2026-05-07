@@ -67,8 +67,8 @@
       </div>
       <div class="muted-text" style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center;">
         <span>ต่อจาก: {{ source_event.name if source_event else 'Standing เดิม' }}</span>
-        <span>จับคู่: {{ {'seed':'ตาม seed','random':'สุ่ม','manual':'แอดมินกำหนด'}[view.competition.pairing_method] if
-          view.competition.pairing_method in ['seed','random','manual'] else view.competition.pairing_method }}</span>
+        <span>จับคู่: {{ {'seed':'ตาม seed','random':'สุ่ม','manual':'แอดมินกำหนด','bracket':'Bracket / สายติดกัน'}[view.competition.pairing_method] if
+          view.competition.pairing_method in ['seed','random','manual','bracket'] else view.competition.pairing_method }}</span>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:16px;">
         {% if source_event %}<a href="{{ url_for('event_standings', event_id=source_event.id) }}"
@@ -282,8 +282,8 @@
     </div>
     {% endfor %}
 
-    <div class="card no-print next-round-panel" id="next-round-panel" style="padding:18px; margin-top:18px;">
-      <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+    <div class="card no-print next-round-panel" id="next-round-panel" style="padding:18px; margin-top:18px; background-color: #c6a9e1;">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; ">
         <div>
           <h2 style="margin:0 0 8px 0;">จับสลาก / สร้างรอบถัดไป</h2>
           <div class="muted-text">อยู่ด้านล่างตามคำขอ: กรอกผลรอบล่าสุดให้ครบ แล้วสร้างรอบต่อไปจากผู้ผ่านเข้ารอบล่าสุด
@@ -296,11 +296,11 @@
       {% if latest_complete %}
       {% if next_participants|length >= 2 %}
       <form method="post" action="{{ url_for('create_playoff_next_round', playoff_id=view.competition.id) }}"
-        style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end;">
+        style="margin-top:16px; display:grid;  gap:12px; align-items:end; ">
         <div>
           <label style="display:block; font-weight:700; margin-bottom:6px;">ชื่อรอบถัดไป</label>
           <select class="next-stage-select" data-hidden="playoffRoundNameHidden" data-custom="playoffRoundNameCustom"
-            style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px;">
+            style="width:100%; padding:10px; border:1px solid #798faf; border-radius:10px;">
             <option value="รอบ {{ next_participants|length }} ทีม">รอบ {{ next_participants|length }} ทีม</option>
             <option value="รอบ 64 ทีม">รอบ 64 ทีม</option>
             <option value="รอบ 48 ทีม">รอบ 48 ทีม</option>
@@ -331,11 +331,12 @@
         <div>
           <label style="display:block; font-weight:700; margin-bottom:6px;">ประกบคู่แบบไหน</label>
           <select name="pairing_method" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px;">
-            <option value="seed">ตาม seed</option>
-            <option value="random">สุ่ม</option>
-            <option value="manual">แอดมินกำหนด</option>
+            <option value="seed">SEED</option>
+            <option value="random">RANDOM</option>
+            <option value="manual">MANUAL</option>
+            <option value="bracket">Bracket / สายติดกัน</option>
           </select>
-          <div style="font-size:12px; color:#64748b; margin-top:4px;">น็อคเอาท์สุ่ม = random แล้วจับตามลำดับ |
+          <div style="font-size:12px; color:#64748b; margin-top:4px;">Bracket = จับผู้ชนะ/ทีมที่ผ่านเข้ารอบตามสายติดกัน ไม่ seed ใหม่ | น็อคเอาท์สุ่ม = random แล้วจับตามลำดับ |
             ดับเบิ้ลสุ่ม = random แล้วลงสายทีละทีม</div>
         </div>
         <div>
@@ -1257,11 +1258,11 @@
   }
 
   .next-round-panel {
-    position: sticky;
+    position: static !important;
     bottom: 16px;
     z-index: 25;
-    border: 1px solid #c7d2fe !important;
-    background: rgba(255, 255, 255, .96) !important;
+    border: 1px solid #a8b8f6 !important;
+    background: rgba(226, 186, 112, 0.96) !important;
     backdrop-filter: blur(10px);
     box-shadow: 0 -8px 30px rgba(15, 23, 42, .12) !important;
     border-radius: 20px !important

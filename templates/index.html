@@ -223,7 +223,6 @@
           <th>วันที่</th>
           <th>สถานที่</th>
           <th>ประเภท</th>
-          <th>เพศ</th>
           <th>รุ่น</th>
           <th>จัดการ</th>
         </tr>
@@ -235,8 +234,8 @@
           <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
           <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
           <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
-          <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
-          <td data-label="เพศ" class="text-center">{{ event.sex or '-' }}</td>
+          <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}{{ event.sex or '-' }}</td>
+          
           <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
           <td data-label="จัดการ" class="text-center">
             <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
