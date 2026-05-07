@@ -344,6 +344,39 @@ def safe_int(value):
         return 0
 
 
+
+
+def _natural_alpha_key(name):
+    """คีย์เรียงชื่อแบบ A-Z และเข้าใจตัวเลขท้ายชื่อ เช่น TEAM 2 มาก่อน TEAM 10"""
+    text = (name or '').strip().upper()
+    text = re.sub(r'\s+', ' ', text)
+    return [int(part) if part.isdigit() else part for part in re.split(r'(\d+)', text)]
+
+
+def _order_pair_by_alphabet(team1_id, team2_id, team_lookup=None):
+    """สลับตำแหน่งในคู่ให้ชื่อที่มาก่อนตามอัลฟาเบตอยู่ฝั่งซ้าย โดยยังเป็นคู่เดิม
+    - BYE/X: ทีมจริงต้องอยู่ฝั่งซ้ายเหมือนเดิม
+    - ใช้กับ Swiss auto pairing เท่านั้น
+    """
+    if not team1_id or not team2_id:
+        return team1_id, team2_id
+
+    def _name(tid):
+        if team_lookup is not None:
+            obj = team_lookup.get(tid)
+            if obj is None:
+                return ''
+            return obj.name if hasattr(obj, 'name') else str(obj)
+        team = Team.query.get(tid)
+        return team.name if team else ''
+
+    name1 = _name(team1_id)
+    name2 = _name(team2_id)
+    if _natural_alpha_key(name2) < _natural_alpha_key(name1):
+        return team2_id, team1_id
+    return team1_id, team2_id
+
+
 def swiss_pairing(event_id, round_no, separate_same_name=False):
     # ตรวจสอบว่ารอบก่อนหน้า (round_no - 1) ถูกล็อกผลหมดหรือยัง
     if round_no > 1:
@@ -363,16 +396,18 @@ def swiss_pairing(event_id, round_no, separate_same_name=False):
     if pairing_results is None:
         return False, "ระบบไม่สามารถจัดคู่ตามเงื่อนไขที่เลือกได้ ต้องจัดการด้วยมือ"
 
+    team_lookup = {team.id: team for team in Team.query.filter_by(event_id=event_id).all()}
     matches = []
     for p in pairing_results:
+        team1_id, team2_id = _order_pair_by_alphabet(p[0], p[1], team_lookup)
         match = Match(
             round=round_no,
-            team1_id=p[0],
-            team2_id=p[1],
+            team1_id=team1_id,
+            team2_id=team2_id,
             event_id=event_id,
             is_locked=False,
         )
-        if p[1] is None:
+        if team2_id is None:
             match.team1_score = 1
             match.team2_score = 0
             match.is_locked = True
@@ -926,12 +961,14 @@ def pair_first_round(event_id):
     if remaining:
         pairings.append((remaining[0], None))
 
+    team_lookup = {team.id: team for team in teams}
     for team1, team2 in pairings:
+        team1_id, team2_id = _order_pair_by_alphabet(team1.id, team2.id if team2 else None, team_lookup)
         match = Match(
             event_id=event_id,
             round=1,
-            team1_id=team1.id,
-            team2_id=team2.id if team2 else None,
+            team1_id=team1_id,
+            team2_id=team2_id,
             is_locked=False
         )
         db.session.add(match)
