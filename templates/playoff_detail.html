@@ -16,7 +16,8 @@
     <div class="sidebar-section-title">เมนูรายการแข่งขัน</div>
 
     {% if source_event %}
-    <a class="sidebar-home-box dashboard-card dashboard-event" href="{{ url_for('event_detail', event_id=source_event.id) }}">
+    <a class="sidebar-home-box dashboard-card dashboard-event"
+      href="{{ url_for('event_detail', event_id=source_event.id) }}">
       <div class="sidebar-avatar">🏆</div>
       <div>
         <div class="sidebar-user-name sidebar-home-title">main_event</div>
@@ -34,17 +35,22 @@
     {% endif %}
 
     {% if source_event %}
-    <a href="{{ url_for('event_standings', event_id=source_event.id) }}" class="top-pill top-pill-standing"><span class="side-icon">📊</span><span>standing</span></a>
+    <a href="{{ url_for('event_standings', event_id=source_event.id) }}" class="top-pill top-pill-standing"><span
+        class="side-icon">📊</span><span>standing</span></a>
     {% endif %}
     <a href="#top" class="top-pill top-pill-playoff"><span class="side-icon">🎯</span><span>play_off</span></a>
     {% for rv in view.round_views %}
-    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round"><span class="side-icon">▸</span><span>{{ rv.round.round_name }}</span></a>
+    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round"><span class="side-icon">▸</span><span>{{
+        rv.round.round_name }}</span></a>
     {% endfor %}
-    <a href="#next-round-panel" class="top-pill top-pill-draw"><span class="side-icon">🎲</span><span>จับสลากสร้างรอบต่อไป</span></a>
+    <a href="#next-round-panel" class="top-pill top-pill-draw"><span
+        class="side-icon">🎲</span><span>จับสลากสร้างรอบต่อไป</span></a>
     <a href="#report" class="top-pill top-pill-report"><span class="side-icon">🧾</span><span>รายงานการแข่ง</span></a>
-    <a href="{{ url_for('playoff_print_report', playoff_id=view.competition.id) }}" target="_blank" class="top-pill top-pill-print"><span class="side-icon">🖨️</span><span>พิมพ์รายงาน</span></a>
-    <a href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" target="_blank" class="top-pill top-pill-print"><span class="side-icon">🧾</span><span>สกอร์ชีท/QR เพลย์ออฟ</span></a>
-   
+    <a href="{{ url_for('playoff_print_report', playoff_id=view.competition.id) }}" target="_blank"
+      class="top-pill top-pill-print"><span class="side-icon">🖨️</span><span>พิมพ์รายงาน</span></a>
+    <a href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" target="_blank"
+      class="top-pill top-pill-print"><span class="side-icon">🧾</span><span>สกอร์ชีท/QR เพลย์ออฟ</span></a>
+
     <div class="sidebar-user-box">
       <div class="sidebar-avatar">👤</div>
       <div>
@@ -62,23 +68,30 @@
       <div style="text-align:center; margin-bottom:18px;">
         <span class="badge"
           style="background:#2f2f2f; color:#ffd900; font-size:24px; padding:10px 22px; font-weight:700;">
-          {% if view.competition.competition_type == 'double_knockout' %}Double knockout{% elif view.competition.competition_type == 'ab_ladder' %}A/B หลัง Swiss{% else %}Knockout{% endif %}
+          {% if view.competition.competition_type == 'double_knockout' %}Double knockout{% elif
+          view.competition.competition_type == 'ab_ladder' %}A/B หลัง Swiss{% else %}Knockout{% endif %}
         </span>
       </div>
       <div class="muted-text" style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center;">
         <span>ต่อจาก: {{ source_event.name if source_event else 'Standing เดิม' }}</span>
-        <span>จับคู่: {{ {'seed':'ตาม seed','random':'สุ่ม','manual':'แอดมินกำหนด','bracket':'Bracket / สายติดกัน'}[view.competition.pairing_method] if
-          view.competition.pairing_method in ['seed','random','manual','bracket'] else view.competition.pairing_method }}</span>
+        <span>จับคู่: {{ {'seed':'ตาม seed','random':'สุ่ม','manual':'แอดมินกำหนด','bracket':'Bracket /
+          สายติดกัน'}[view.competition.pairing_method] if
+          view.competition.pairing_method in ['seed','random','manual','bracket'] else view.competition.pairing_method
+          }}</span>
       </div>
       {% if ab_status %}
       <div class="alert alert-info" style="max-width:900px; margin:14px auto 0; text-align:left;">
         <b>กติกา A/B:</b> กลุ่ม A แพ้ตกลงกลุ่ม B · กลุ่ม B แพ้ตกรอบทันที<br>
         เริ่มต้น A {{ ab_status.config.initial_a_count }} ทีม / B {{ ab_status.config.initial_b_count }} ทีม
         · เป้าประกาศผล A {{ ab_status.target_a or '-' }} ทีม / B {{ ab_status.target_b or '-' }} ทีม
-        {% if ab_status.latest %}<br>หลังรอบล่าสุด: A คงเหลือ {{ ab_status.current_a_count }} ทีม / B คงเหลือ {{ ab_status.current_b_count }} ทีม{% endif %}
-        {% if ab_status.a_finished %}<div class="fw-bold text-success mt-1">สาย A ถึงจำนวนตามกำหนดแล้ว ระบบจบสาย A และรายงานเป็นผู้เข้ารอบตามเลขสาย</div>{% endif %}
-        {% if ab_status.b_finished %}<div class="fw-bold text-success mt-1">สาย B ถึงจำนวนตามกำหนดแล้ว ระบบจบสาย B และรายงานเป็นผู้เข้ารอบตามเลขสาย</div>{% endif %}
-        {% if ab_status.all_finished %}<div class="fw-bold text-success mt-1">A/B ถึงจำนวนครบตามเป้าแล้ว ไม่ต้องสร้างรอบต่อไป</div>{% endif %}
+        {% if ab_status.latest %}<br>หลังรอบล่าสุด: A คงเหลือ {{ ab_status.current_a_count }} ทีม / B คงเหลือ {{
+        ab_status.current_b_count }} ทีม{% endif %}
+        {% if ab_status.a_finished %}<div class="fw-bold text-success mt-1">สาย A ถึงจำนวนตามกำหนดแล้ว ระบบจบสาย A
+          และรายงานเป็นผู้เข้ารอบตามเลขสาย</div>{% endif %}
+        {% if ab_status.b_finished %}<div class="fw-bold text-success mt-1">สาย B ถึงจำนวนตามกำหนดแล้ว ระบบจบสาย B
+          และรายงานเป็นผู้เข้ารอบตามเลขสาย</div>{% endif %}
+        {% if ab_status.all_finished %}<div class="fw-bold text-success mt-1">A/B ถึงจำนวนครบตามเป้าแล้ว
+          ไม่ต้องสร้างรอบต่อไป</div>{% endif %}
       </div>
       {% endif %}
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:16px;">
@@ -119,8 +132,10 @@
 
       <div class="round-court-tools no-print">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
-          <a href="{{ url_for('playoff_round_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทรอบนี้ / QR ออนไลน์</a>
-          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=4) }}" target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งรอบนี้</a>
+          <a href="{{ url_for('playoff_round_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}"
+            target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทรอบนี้ / QR ออนไลน์</a>
+          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=4) }}"
+            target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งรอบนี้</a>
         </div>
         <form method="post" action="{{ url_for('renumber_playoff_courts', playoff_id=view.competition.id) }}"
           class="round-court-form">
@@ -163,18 +178,17 @@
             style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
             <b style="font-size:28px;">
               {% if rv.round.round_type == 'ab_ladder' %}
-                {% set a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
-                กลุ่ม {{ 'A' if group.group_no <= a_pair_count else 'B' }} · สายที่ {{ group.group_no }}
-              {% else %}
-                สายที่ {{ group.group_no }}
-              {% endif %}
-            </b>
-            <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-              <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
-              <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=4) }}" target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งสายนี้</a>
-              <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
-                class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
-            </div>
+              {% set a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
+              กลุ่ม {{ 'A' if group.group_no <= a_pair_count else 'B' }} · สายที่ {{ group.group_no }} {% else %} สายที่
+                {{ group.group_no }} {% endif %} </b>
+                <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                  <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}"
+                    target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
+                  <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=4) }}"
+                    target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งสายนี้</a>
+                  <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
+                    class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
+                </div>
           </div>
           <table>
             <thead>
@@ -182,9 +196,13 @@
                 <th width="110">สนาม</th>
                 <th width="70">ลำดับ</th>
                 <th>ชื่อทีม</th>
+                {% if rv.round.round_type == 'double_knockout' %}
                 <th width="90">1</th>
-                {% if rv.round.round_type == 'double_knockout' %}<th width="90">2</th>
-                <th width="90">3</th>{% endif %}
+                <th width="90">2</th>
+                <th width="90">3</th>
+                {% else %}
+                <th width="140">ผลการแข่งขัน</th>
+                {% endif %}
               </tr>
             </thead>
             <tbody>
@@ -256,60 +274,70 @@
             style="margin-top:14px; font-size:22px; font-weight:800; line-height:1.8;">
             {% if rv.round.round_type == 'ab_ladder' %}
             {% set a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
-            <div>🥇 ผู้ชนะ: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner else '...' }}</span></div>
-            <div style="font-size:16px; color:#64748b;">{{ 'ผู้แพ้ตกลงกลุ่ม B' if group.group_no <= a_pair_count else 'ผู้แพ้ตกรอบทันที' }}</div>
-            {% elif rv.round.round_type == 'double_knockout' %}
-            <div>🥇 อันดับ 1: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner else
-                '...' }}</span> {% if group.result.manual %}<span class="manual-badge">กำหนดเอง</span>{% endif %}</div>
-            <div>🥈 อันดับ 2: <span class="result-second">{{ group.result.second.team_name if group.result.second else
-                '...' }}</span></div>
-            {% else %}
             <div>🥇 ผู้ชนะ: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner else
-                '...' }}</span> {% if group.result.manual %}<span class="manual-badge">กำหนดเอง</span>{% endif %}</div>
-            {% endif %}
-          </div>
-
-          <div class="manual-ranking-box no-print">
-            <div class="manual-ranking-form">
-              <div class="manual-ranking-title">เลือกทีมเข้ารอบเอง (ไม่บังคับ — ถ้าคีย์คะแนนแล้วไม่ต้องเลือก)</div>
-              <div class="manual-ranking-fields">
-                <label><span>อันดับ 1</span>
-                  <select name="manual_winner_{{ group.group_no }}">
-                    <option value="">-- ใช้คะแนนในช่อง --</option>
-                    {% for option in group.manual_options %}
-                    <option value="{{ option.slot_no }}" {% if group.manual_override and
-                      group.manual_override.winner_slot_no==option.slot_no %}selected{% endif %}>{{ option.team_name }}
-                    </option>
-                    {% endfor %}
-                  </select>
-                </label>
-                {% if rv.round.round_type == 'double_knockout' %}
-                <label><span>อันดับ 2</span>
-                  <select name="manual_second_{{ group.group_no }}">
-                    <option value="">-- ใช้คะแนนในช่อง --</option>
-                    {% for option in group.manual_options %}
-                    <option value="{{ option.slot_no }}" {% if group.manual_override and
-                      group.manual_override.second_slot_no==option.slot_no %}selected{% endif %}>{{ option.team_name }}
-                    </option>
-                    {% endfor %}
-                  </select>
-                </label>
+                '...' }}</span></div>
+            <div style="font-size:16px; color:#64748b;">{{ 'ผู้แพ้ตกลงกลุ่ม B' if group.group_no <= a_pair_count
+                else 'ผู้แพ้ตกรอบทันที' }}</div>
+                {% elif rv.round.round_type == 'double_knockout' %}
+                <div>🥇 อันดับ 1: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner
+                    else
+                    '...' }}</span> {% if group.result.manual %}<span class="manual-badge">กำหนดเอง</span>{% endif %}
+                </div>
+                <div>🥈 อันดับ 2: <span class="result-second">{{ group.result.second.team_name if group.result.second
+                    else
+                    '...' }}</span></div>
+                {% else %}
+                <div>🥇 ผู้ชนะ: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner else
+                    '...' }}</span> {% if group.result.manual %}<span class="manual-badge">กำหนดเอง</span>{% endif %}
+                </div>
                 {% endif %}
+            </div>
+
+            <div class="manual-ranking-box no-print">
+              <div class="manual-ranking-form">
+                <div class="manual-ranking-title">เลือกทีมเข้ารอบเอง (ไม่บังคับ — ถ้าคีย์คะแนนแล้วไม่ต้องเลือก)</div>
+                <div class="manual-ranking-fields">
+                  <label><span>อันดับ 1</span>
+                    <select name="manual_winner_{{ group.group_no }}">
+                      <option value="">-- ใช้คะแนนในช่อง --</option>
+                      {% for option in group.manual_options %}
+                      <option value="{{ option.slot_no }}" {% if group.manual_override and
+                        group.manual_override.winner_slot_no==option.slot_no %}selected{% endif %}>{{ option.team_name
+                        }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  {% if rv.round.round_type == 'double_knockout' %}
+                  <label><span>อันดับ 2</span>
+                    <select name="manual_second_{{ group.group_no }}">
+                      <option value="">-- ใช้คะแนนในช่อง --</option>
+                      {% for option in group.manual_options %}
+                      <option value="{{ option.slot_no }}" {% if group.manual_override and
+                        group.manual_override.second_slot_no==option.slot_no %}selected{% endif %}>{{ option.team_name
+                        }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  {% endif %}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        {% endfor %}
+          {% endfor %}
       </form>
     </div>
     {% endfor %}
 
-    <div class="card no-print next-round-panel" id="next-round-panel" style="padding:18px; margin-top:18px; background-color: #c6a9e1;">
+    <div class="card no-print next-round-panel" id="next-round-panel"
+      style="padding:18px; margin-top:18px; background-color: #c6a9e1;">
       <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; ">
         <div>
           <h2 style="margin:0 0 8px 0;">จับสลาก / สร้างรอบถัดไป</h2>
           <div class="muted-text">อยู่ด้านล่างตามคำขอ: กรอกผลรอบล่าสุดให้ครบ แล้วสร้างรอบต่อไปจากผู้ผ่านเข้ารอบล่าสุด
-            {% if view.competition.competition_type == 'ab_ladder' %}<br><b>A/B:</b> ระบบจะส่งผู้ชนะกลุ่ม A ไป A, ผู้แพ้กลุ่ม A ลง B, ผู้ชนะกลุ่ม B อยู่ B และผู้แพ้กลุ่ม B ตกรอบ{% endif %}
+            {% if view.competition.competition_type == 'ab_ladder' %}<br><b>A/B:</b> ระบบจะส่งผู้ชนะกลุ่ม A ไป A,
+            ผู้แพ้กลุ่ม A ลง B, ผู้ชนะกลุ่ม B อยู่ B และผู้แพ้กลุ่ม B ตกรอบ{% endif %}
           </div>
         </div>
         <div class="top-action-buttons">
@@ -318,7 +346,8 @@
       </div>
       {% if latest_complete %}
       {% if view.competition.competition_type == 'ab_ladder' and ab_status and ab_status.all_finished %}
-      <div class="alert alert-success" style="margin-top:14px;">A/B ถึงจำนวนตามกำหนดแล้ว จบการแข่งขันและดูผลเข้ารอบได้ในรายงานด้านล่าง</div>
+      <div class="alert alert-success" style="margin-top:14px;">A/B ถึงจำนวนตามกำหนดแล้ว
+        จบการแข่งขันและดูผลเข้ารอบได้ในรายงานด้านล่าง</div>
       {% elif next_participants|length >= 2 %}
       <form method="post" action="{{ url_for('create_playoff_next_round', playoff_id=view.competition.id) }}"
         style="margin-top:16px; display:grid;  gap:12px; align-items:end; ">
@@ -365,7 +394,8 @@
             <option value="manual">MANUAL</option>
             <option value="bracket">Bracket / สายติดกัน</option>
           </select>
-          <div style="font-size:12px; color:#64748b; margin-top:4px;">Bracket = จับผู้ชนะ/ทีมที่ผ่านเข้ารอบตามสายติดกัน ไม่ seed ใหม่ | น็อคเอาท์สุ่ม = random แล้วจับตามลำดับ |
+          <div style="font-size:12px; color:#64748b; margin-top:4px;">Bracket = จับผู้ชนะ/ทีมที่ผ่านเข้ารอบตามสายติดกัน
+            ไม่ seed ใหม่ | น็อคเอาท์สุ่ม = random แล้วจับตามลำดับ |
             ดับเบิ้ลสุ่ม = random แล้วลงสายทีละทีม</div>
         </div>
         <div>
@@ -410,7 +440,7 @@
       <div class="no-print"
         style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
         <h2 style="margin:0;">รายงานการแข่งขันตั้งแต่ต้นจนจบ</h2>
-        <button onclick="window.print()" class="btn btn-primary">พิมพ์รายงาน</button>
+
       </div>
       <form method="post" action="{{ url_for('save_playoff_report', playoff_id=view.competition.id) }}" class="no-print"
         style="margin:14px 0;">
@@ -482,7 +512,8 @@
           </thead>
           <tbody>
             {% for row in source_report.standings %}
-            <tr class="{% if row.status == 'เข้ารอบ' %}report-qualified{% else %}report-eliminated{% endif %}">
+            <tr
+              class="{% if row.status and row.status.startswith('ตัวแทน') %}report-direct{% elif row.status == 'จัดแข่งต่อ' %}report-qualified{% else %}report-eliminated{% endif %}">
               <td>{{ row.rank }}</td>
               <td>{{ row.team_name }}</td>
               <td>{{ row.score }}</td>
@@ -533,7 +564,8 @@
       {% endfor %}
 
       <section class="report-page">
-        <h2>{% if view.competition.competition_type == 'ab_ladder' %}ผลเข้ารอบ A/B{% else %}รอบชิง / ผลการแข่งขัน{% endif %}</h2>
+        <h2>{% if view.competition.competition_type == 'ab_ladder' %}ผลเข้ารอบ A/B{% else %}รอบชิง / ผลการแข่งขัน{%
+          endif %}</h2>
         {% if final_ranking_preview %}
         <table class="report-table final-rank-table">
           <thead>
@@ -546,7 +578,8 @@
           <tbody>
             {% for row in final_ranking_preview %}
             <tr>
-              <td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{
+                row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td>
               <td><b>{{ row.team_name }}</b></td>
               {% if view.competition.competition_type == 'ab_ladder' %}<td>สาย {{ row.group_no or '-' }}</td>{% endif %}
             </tr>
@@ -562,23 +595,28 @@
           </tbody>
         </table>
         {% else %}
-        <div class="report-meta">{% if view.competition.competition_type == 'ab_ladder' %}ยังไม่ถึงจำนวนทีมที่กำหนด หรือยังบันทึกผลไม่ครบ{% else %}ยังไม่จบรอบชิง หรือยังบันทึกผลไม่ครบ{% endif %}</div>
+        <div class="report-meta">{% if view.competition.competition_type == 'ab_ladder' %}ยังไม่ถึงจำนวนทีมที่กำหนด
+          หรือยังบันทึกผลไม่ครบ{% else %}ยังไม่จบรอบชิง หรือยังบันทึกผลไม่ครบ{% endif %}</div>
         <table class="report-table final-rank-table">
           <tbody>
             <tr>
-              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 1{% else %}อันดับ 1{% endif %}</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 1{% else %}อันดับ 1{% endif %}
+              </td>
               <td class="editable-blank">........................................................</td>
             </tr>
             <tr>
-              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 2{% else %}อันดับ 2{% endif %}</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 2{% else %}อันดับ 2{% endif %}
+              </td>
               <td class="editable-blank">........................................................</td>
             </tr>
             <tr>
-              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 3{% else %}อันดับ 3{% endif %}</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 3{% else %}อันดับ 3{% endif %}
+              </td>
               <td class="editable-blank">........................................................</td>
             </tr>
             <tr>
-              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 4{% else %}อันดับ 4{% endif %}</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 4{% else %}อันดับ 4{% endif %}
+              </td>
               <td class="editable-blank">........................................................</td>
             </tr>
           </tbody>
@@ -601,7 +639,7 @@
     align-items: center;
     gap: 12px;
     text-decoration: none;
-    border: 1px solid rgba(255,255,255,.7);
+    border: 1px solid rgba(255, 255, 255, .7);
     box-shadow: 0 10px 22px rgba(15, 23, 42, .08);
     transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
   }
@@ -631,10 +669,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255,255,255,.65);
+    background: rgba(255, 255, 255, .65);
     color: inherit;
     font-size: 20px;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .45);
   }
 
   .sidebar-home-title {
@@ -1094,7 +1132,7 @@
     justify-content: flex-start;
     gap: 10px;
     text-decoration: none;
-    border: 1px solid rgba(255,255,255,.75);
+    border: 1px solid rgba(255, 255, 255, .75);
     border-radius: 16px;
     padding: 12px 15px;
     font-weight: 900;
@@ -1164,7 +1202,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255,255,255,.58);
+    background: rgba(255, 255, 255, .58);
     flex: 0 0 28px;
   }
 
@@ -1423,6 +1461,12 @@
     text-align: center
   }
 
+  .report-direct td {
+    background: #fff3cd !important;
+    color: #664d03 !important;
+    font-weight: 800
+  }
+
   .report-qualified td {
     background: #dcfce7 !important;
     color: #14532d !important;
@@ -1594,7 +1638,7 @@
     clearTimeout(window.__playoffLiveBadgeTimer);
     window.__playoffLiveBadgeTimer = setTimeout(() => { if (badge) badge.remove(); }, 1500);
   }
-  function applyPlayoffScore(p, silent=false) {
+  function applyPlayoffScore(p, silent = false) {
     if (!p || Number(p.playoff_id) !== Number(playoffId)) return false;
     const el = document.querySelector(`.autosave-score[data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`);
     if (!el) return false;

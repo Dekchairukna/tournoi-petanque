@@ -2263,22 +2263,38 @@ def event_standings(event_id):
     current_event = Event.query.get_or_404(event_id)
     standings_data = calculate_standings(event_id)
 
-    # จำนวนทีมที่เข้ารอบใช้เพื่อแยก 2 กลุ่มในรายงาน: เข้ารอบ / ตกรอบ
-    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=min(8, len(standings_data) or 8))
-    if num_qualified_teams > len(standings_data):
-        num_qualified_teams = len(standings_data)
-    if num_qualified_teams < 0:
-        num_qualified_teams = 0
+    # โหมดคัดหลัง Swiss แบบ 3 กลุ่ม:
+    # 1) อันดับดีที่สุด เข้ารอบอัตโนมัติ
+    # 2) อันดับถัดมา นำไปจัดแข่งต่อ
+    # 3) ลำดับล่าง ตกรอบ
+    total_rows = len(standings_data)
+    direct_advance_count = request.args.get('direct_advance_count', type=int)
+    continue_count = request.args.get('continue_count', type=int)
 
-    qualified_rows = standings_data[:num_qualified_teams]
+    # รองรับ URL เดิมที่เคยใช้ num_qualified_teams = จำนวนที่เลือกไปแข่งต่อ/เข้ารอบรวม
+    legacy_qualified = request.args.get('num_qualified_teams', type=int, default=min(8, total_rows or 8))
+    if direct_advance_count is None:
+        direct_advance_count = 0
+    if continue_count is None:
+        continue_count = legacy_qualified
+
+    direct_advance_count = max(0, min(total_rows, int(direct_advance_count or 0)))
+    continue_count = max(0, min(total_rows - direct_advance_count, int(continue_count or 0)))
+    num_qualified_teams = direct_advance_count + continue_count
+
+    direct_rows = standings_data[:direct_advance_count]
+    qualified_rows = standings_data[direct_advance_count:num_qualified_teams]
     eliminated_rows = standings_data[num_qualified_teams:]
 
     return render_template(
         'event_standings.html',
         event=current_event,
         standings=standings_data,
+        direct_rows=direct_rows,
         qualified_rows=qualified_rows,
         eliminated_rows=eliminated_rows,
+        direct_advance_count=direct_advance_count,
+        continue_count=continue_count,
         num_qualified_teams=num_qualified_teams,
         active_playoffs=_active_playoffs_for_event(event_id),
     )
@@ -2290,15 +2306,20 @@ def event_standings(event_id):
 def download_standings_excel(event_id):
     current_event = Event.query.get_or_404(event_id)
     
-    # ดึงค่า 'num_qualified_teams' จาก URL (Frontend)
-    # ถ้าไม่ได้ส่งมา ให้ใช้ค่าเริ่มต้น เช่น 8
-    num_qualified_teams = request.args.get('num_qualified_teams', type=int, default=8)
+    # รับค่าแบ่งกลุ่มหลัง Swiss: direct / แข่งต่อ / ตกรอบ
+    legacy_qualified = request.args.get('num_qualified_teams', type=int, default=8)
+    direct_advance_count = request.args.get('direct_advance_count', type=int, default=0)
+    continue_count = request.args.get('continue_count', type=int, default=legacy_qualified)
     
     # ดึงข้อมูล Round ที่อาจจะส่งมา (ถ้ามี)
     # ถ้า 'round' ไม่ได้ถูกส่งมา, อาจจะถือว่าเป็นการดาวน์โหลดตารางคะแนนรวม
     requested_round = request.args.get('round', type=int) 
     
     standings_data = calculate_standings(event_id) # เรียกใช้ฟังก์ชันเดิม
+    total_rows = len(standings_data)
+    direct_advance_count = max(0, min(total_rows, int(direct_advance_count or 0)))
+    continue_count = max(0, min(total_rows - direct_advance_count, int(continue_count or 0)))
+    num_qualified_teams = direct_advance_count + continue_count
     
     # ถ้ามีการระบุ round ให้กรองข้อมูล (สำหรับตอนนี้ ยังคง pass ไว้)
     if requested_round:
@@ -2312,12 +2333,12 @@ def download_standings_excel(event_id):
     ws.title = "Standings"
 
     # --- Header Information (ชื่อกิจกรรม, ประเภท, รุ่น) ---
-    ws.merge_cells('A1:F1') # รวมเซลล์สำหรับหัวข้อหลัก
+    ws.merge_cells('A1:G1') # รวมเซลล์สำหรับหัวข้อหลัก
     ws['A1'] = f"รายงานผลจัดลำดับ: {current_event.name}"
     ws['A1'].font = Font(bold=True, size=14)
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
 
-    ws.merge_cells('A2:F2') # รวมเซลล์สำหรับประเภทและรุ่น
+    ws.merge_cells('A2:G2') # รวมเซลล์สำหรับประเภทและรุ่น
     # ใช้ฟิลด์ category และ age_group ตามที่เราได้ตกลงกันไว้ใน models.py
     event_type_str = current_event.category if hasattr(current_event, 'category') and current_event.category else 'ไม่ระบุประเภท'
     event_category_str = current_event.age_group if hasattr(current_event, 'age_group') and current_event.age_group else 'ไม่ระบุรุ่น'
@@ -2327,7 +2348,7 @@ def download_standings_excel(event_id):
 
     # ถ้ามีข้อมูลรอบที่เฉพาะเจาะจงที่ดาวน์โหลด
     if requested_round:
-        ws.merge_cells('A3:F3') # รวมเซลล์สำหรับรอบที่
+        ws.merge_cells('A3:G3') # รวมเซลล์สำหรับรอบที่
         ws['A3'] = f"ครั้งการแข่งขัน: รอบที่ {requested_round}"
         ws['A3'].font = Font(bold=True)
         ws['A3'].alignment = Alignment(horizontal='center', vertical='center')
@@ -2341,7 +2362,7 @@ def download_standings_excel(event_id):
 
     # --- Table Headers (หัวตาราง) ---
     # ******************************** สำคัญ: ลบ "Point For" และ "Point Against" ออกจาก headers ********************************
-    headers = ["อันดับ", "ชื่อทีม", "คะแนน", "BHN", "fBHN", "Point Diff"] 
+    headers = ["อันดับ", "ชื่อทีม", "คะแนน", "BHN", "fBHN", "Point Diff", "หมายเหตุ"] 
     col_start = 1 # เริ่มต้นคอลัมน์ A (Excel)
     for col_num, header in enumerate(headers, col_start):
         cell = ws.cell(row=header_row_start, column=col_num, value=header)
@@ -2358,14 +2379,16 @@ def download_standings_excel(event_id):
         row_font = Font() # ฟอนต์ปกติ
         row_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         
-        # ถ้าทีมนี้เป็นทีมที่เข้ารอบ (อันดับ <= num_qualified_teams) ให้กำหนดสีพื้นหลัง
-        if i <= num_qualified_teams:
-            row_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid") # สีเขียวอ่อนสำหรับทีมเข้ารอบ
-            row_font = Font(color="000000") # สีข้อความดำสำหรับทีมเข้ารอบ
+        if i <= direct_advance_count:
+            row_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+            status_text = f"ตัวแทนคนที่ {i}"
+        elif i <= num_qualified_teams:
+            row_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
+            status_text = "เข้ารอบ"
         else:
-            # กำหนดสีพื้นหลังสำหรับทีมที่ตกรอบ
-            row_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid") # สีขาวสำหรับทีมตกรอบ
-            row_font = Font(color="000000") # สีข้อความดำสำหรับทีมตกรอบ
+            row_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
+            status_text = "ตกรอบ"
+        row_font = Font(color="000000")
 
 
         # ใส่ข้อมูลและกำหนดสไตล์ให้กับแต่ละเซลล์ในแถวนี้
@@ -2376,7 +2399,8 @@ def download_standings_excel(event_id):
         ws.cell(row=row_num, column=5, value=team['final_buchholz']).alignment = Alignment(horizontal='center')
         # ******************************** สำคัญ: ลบ team['point_for'] และ team['point_against'] ออก ********************************
         # ******************************** และปรับ column ของ 'point_diff' เป็น 6 ********************************
-        ws.cell(row=row_num, column=6, value=f"{team['point_for']}:{team['point_against']}").alignment = Alignment(horizontal='center') 
+        ws.cell(row=row_num, column=6, value=f"{team['point_for']}:{team['point_against']}").alignment = Alignment(horizontal='center')
+        ws.cell(row=row_num, column=7, value=status_text).alignment = Alignment(horizontal='center')
 
         # วนลูปเพื่อกำหนดสีพื้นหลัง, ฟอนต์ และขอบให้กับทุกเซลล์ในแถวปัจจุบัน
         # len(headers) จะเป็น 6 (ตามจำนวน headers ใหม่) ทำให้ลูปวนแค่ 6 คอลัมน์
@@ -2508,36 +2532,59 @@ def save_bracket_pairings(event_id):
 @roles_required('admin', 'superadmin')
 def create_next_competition(event_id):
     source_event = Event.query.get_or_404(event_id)
-    raw_ids = request.form.getlist('team_ids')
+
     selected_ids = []
-    for raw in raw_ids:
+    for raw in request.form.getlist('team_ids'):
         tid = _as_int(raw)
         if tid and tid not in selected_ids:
             selected_ids.append(tid)
 
-    if not selected_ids:
-        flash('กรุณาเลือกทีมอย่างน้อย 1 ทีมก่อนสร้างรอบถัดไป', 'warning')
-        return redirect(url_for('event_standings', event_id=event_id, num_qualified_teams=request.form.get('num_qualified_teams', 8)))
+    direct_ids = []
+    for raw in request.form.getlist('direct_team_ids'):
+        tid = _as_int(raw)
+        if tid and tid not in direct_ids:
+            direct_ids.append(tid)
 
     competition_type = (request.form.get('competition_type') or 'knockout').strip()
     next_stage_name = (request.form.get('next_stage_name') or '').strip() or 'รอบถัดไป'
     swiss_rounds = max(1, _as_int(request.form.get('swiss_rounds'), 3))
-
-    selected_rows = _selected_rows_from_standings(event_id, selected_ids)
-    if not selected_rows:
-        flash('ไม่พบทีมที่เลือกในตาราง Standing', 'danger')
-        return redirect(url_for('event_standings', event_id=event_id))
-
     pairing_method = (request.form.get('pairing_method') or 'seed').strip()
     if pairing_method not in {'seed', 'random', 'manual', 'bracket'}:
         pairing_method = 'seed'
     add_bye = request.form.get('add_bye') == '1'
+
+    selected_rows = _selected_rows_from_standings(event_id, selected_ids)
+    direct_rows = _selected_rows_from_standings(event_id, direct_ids) if direct_ids else []
+
+    # ไม่ติ๊ก: direct_rows = ตัวแทนคนที่ 1, 2 ... และไม่แข่ง playoff
+    # ติ๊ก: รวม direct_rows เข้า playoff แล้วไม่ล็อกเป็นตัวแทนอัตโนมัติ
+    include_direct_in_playoff = request.form.get('include_direct_in_playoff') == '1'
+    if include_direct_in_playoff and direct_rows:
+        merged_rows, seen = [], set()
+        for row in list(direct_rows) + list(selected_rows):
+            key = row.get('team_id') or row.get('team_name')
+            if key in seen:
+                continue
+            seen.add(key)
+            merged_rows.append(row)
+        selected_rows = merged_rows
+        direct_rows_for_report = []
+    else:
+        direct_rows_for_report = direct_rows
+
+    if not selected_rows:
+        flash('กรุณาเลือกทีมอย่างน้อย 1 ทีมก่อนสร้างรอบถัดไป', 'warning')
+        return redirect(url_for('event_standings', event_id=event_id,
+                                direct_advance_count=request.form.get('direct_advance_count', 0),
+                                continue_count=request.form.get('continue_count', request.form.get('num_qualified_teams', 8))))
 
     payload = {
         'source_event_id': event_id,
         'competition_type': competition_type,
         'next_stage_name': next_stage_name,
         'team_ids': [row['team_id'] for row in selected_rows],
+        'direct_team_ids': [row['team_id'] for row in direct_rows_for_report],
+        'include_direct_in_playoff': include_direct_in_playoff,
         'pairing_method': pairing_method,
         'add_bye': add_bye,
         'created_at': datetime.utcnow().isoformat(),
@@ -2554,10 +2601,14 @@ def create_next_competition(event_id):
             a_team_count = _as_int(request.form.get('ab_a_team_count'), max(1, len(selected_rows)//2))
             advance_a = _as_int(request.form.get('ab_advance_a'), 0)
             advance_b = _as_int(request.form.get('ab_advance_b'), 0)
-            playoff_id = _create_ab_ladder_competition(source_event, selected_rows, next_stage_name, pairing_method, a_team_count, advance_a, advance_b)
+            playoff_id = _create_ab_ladder_competition(source_event, selected_rows, next_stage_name, pairing_method,
+                                                       a_team_count, advance_a, advance_b,
+                                                       direct_rows=direct_rows_for_report)
         except ValueError as exc:
             flash(str(exc), 'warning')
-            return redirect(url_for('event_standings', event_id=event_id, num_qualified_teams=request.form.get('num_qualified_teams', 8)))
+            return redirect(url_for('event_standings', event_id=event_id,
+                                    direct_advance_count=request.form.get('direct_advance_count', 0),
+                                    continue_count=request.form.get('continue_count', 8)))
         flash('สร้างการแข่งขันแบบแบ่งกลุ่ม A/B ต่อจาก Swiss แล้ว: A แพ้ตกลง B, B แพ้ตกรอบ', 'success')
         return redirect(url_for('playoff_detail', playoff_id=playoff_id))
 
@@ -2570,10 +2621,15 @@ def create_next_competition(event_id):
             flash('เลือก MANUAL แล้ว กรุณาจิ้มทีมลงคู่/ลงสายเองก่อนสร้างรอบ', 'info')
             return redirect(url_for('playoff_manual_pairing_from_event', event_id=event_id))
         try:
-            playoff_id = _create_playoff_competition(source_event, selected_rows, next_stage_name, competition_type, pairing_method, add_bye=add_bye)
+            playoff_id = _create_playoff_competition(source_event, selected_rows, next_stage_name,
+                                                     competition_type, pairing_method,
+                                                     add_bye=add_bye,
+                                                     direct_rows=direct_rows_for_report)
         except ValueError as exc:
             flash(str(exc), 'warning')
-            return redirect(url_for('event_standings', event_id=event_id, num_qualified_teams=request.form.get('num_qualified_teams', 8)))
+            return redirect(url_for('event_standings', event_id=event_id,
+                                    direct_advance_count=request.form.get('direct_advance_count', 0),
+                                    continue_count=request.form.get('continue_count', 8)))
         flash('สร้างระบบแข่งขันต่อแล้ว สามารถกรอกผลและสร้างรอบต่อไปได้จากหน้านี้', 'success')
         return redirect(url_for('playoff_detail', playoff_id=playoff_id))
 
@@ -2651,15 +2707,27 @@ def _manual_groups_from_request(selected_rows, competition_type):
     return groups
 
 
-def _create_playoff_competition_with_groups(source_event, title, competition_type, pairing_method, groups):
+def _create_playoff_competition_with_groups(source_event, title, competition_type, pairing_method, groups, direct_rows=None):
+    config = {
+        'direct_qualified': [
+            {
+                'rank': idx,
+                'team_id': row.get('team_id'),
+                'team_name': row.get('team_name'),
+                'seed': row.get('seed') or row.get('rank') or idx,
+            }
+            for idx, row in enumerate((direct_rows or []), start=1)
+        ]
+    }
     res = db.session.execute(text("""
-        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method)
-        VALUES (:source_event_id, :title, :competition_type, :pairing_method)
+        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method, config_json)
+        VALUES (:source_event_id, :title, :competition_type, :pairing_method, :config_json)
     """), {
         'source_event_id': source_event.id if source_event else None,
         'title': title,
         'competition_type': competition_type,
         'pairing_method': pairing_method,
+        'config_json': json.dumps(config, ensure_ascii=False),
     })
     db.session.flush()
     if db.engine.dialect.name == 'postgresql':
@@ -2699,6 +2767,7 @@ def playoff_manual_pairing_from_event(event_id):
                 competition_type,
                 'manual',
                 groups,
+                direct_rows=_selected_rows_from_standings(event_id, payload.get('direct_team_ids', [])),
             )
         except ValueError as exc:
             flash(str(exc), 'warning')
@@ -3004,13 +3073,14 @@ def _ab_make_round_groups(a_rows, b_rows, pairing_method='seed'):
     return a_groups + b_groups, {'a_pair_count': len(a_groups), 'b_pair_count': len(b_groups)}
 
 
-def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_method, a_team_count, advance_a, advance_b):
+def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_method, a_team_count, advance_a, advance_b, direct_rows=None):
     """สร้างระบบ A/B ต่อจาก Standing:
     - ทีมบนตาม Standing เข้า A ตามจำนวนที่กำหนด
     - ทีมที่เหลือเข้า B
     - A ชนะอยู่ A, A แพ้ตกลง B, B แพ้ตกรอบ
     """
     selected_rows = list(selected_rows or [])
+    direct_rows = list(direct_rows or [])
     total = len(selected_rows)
     if total < 2:
         raise ValueError('ระบบ A/B ต้องมีทีมอย่างน้อย 2 ทีม')
@@ -3028,6 +3098,16 @@ def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_me
         'advance_a': advance_a,
         'advance_b': advance_b,
         'pairing_method': pairing_method,
+        # ทีมที่ไม่ต้องแข่งต่อหลัง Swiss เช่น อันดับ 1-2 ให้ถือว่าเข้ารอบ/ได้ลำดับก่อน A/B
+        'direct_qualified': [
+            {
+                'rank': idx,
+                'team_id': row.get('team_id'),
+                'team_name': row.get('team_name'),
+                'seed': row.get('seed') or row.get('rank') or idx,
+            }
+            for idx, row in enumerate(direct_rows, start=1)
+        ],
     }
     res = db.session.execute(text("""
         INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method, config_json)
@@ -3050,15 +3130,27 @@ def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_me
     return playoff_id
 
 
-def _create_playoff_competition(source_event, selected_rows, title, competition_type, pairing_method, add_bye=False):
+def _create_playoff_competition(source_event, selected_rows, title, competition_type, pairing_method, add_bye=False, direct_rows=None):
+    config = {
+        'direct_qualified': [
+            {
+                'rank': idx,
+                'team_id': row.get('team_id'),
+                'team_name': row.get('team_name'),
+                'seed': row.get('seed') or row.get('rank') or idx,
+            }
+            for idx, row in enumerate((direct_rows or []), start=1)
+        ]
+    }
     res = db.session.execute(text("""
-        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method)
-        VALUES (:source_event_id, :title, :competition_type, :pairing_method)
+        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method, config_json)
+        VALUES (:source_event_id, :title, :competition_type, :pairing_method, :config_json)
     """), {
         'source_event_id': source_event.id,
         'title': title,
         'competition_type': competition_type,
         'pairing_method': pairing_method,
+        'config_json': json.dumps(config, ensure_ascii=False),
     })
     db.session.flush()
     if db.engine.dialect.name == 'postgresql':
@@ -3403,6 +3495,8 @@ def _ab_state_for_view(view):
     config = _safe_json_loads((view.get('competition') or {}).get('config_json'), {})
     target_a = int(config.get('advance_a') or 0)
     target_b = int(config.get('advance_b') or 0)
+    direct_qualified = list(config.get('direct_qualified') or [])
+    direct_count = len(direct_qualified)
     final_a, final_b = [], []
     latest_complete_summary = {}
     latest_complete_round = None
@@ -3441,9 +3535,11 @@ def _ab_state_for_view(view):
         'b_finished': b_finished,
         'all_finished': all_finished,
         'reached_target': all_finished,
-        # รายงาน A/B ใช้ลำดับรวมต่อเนื่อง: ถ้า A ได้ 1-4 แล้ว B ต้องเริ่ม 5,6,7...
-        'final_a': [{'rank': i, 'team_name': p.get('team_name'), 'group_no': p.get('group_no')} for i, p in enumerate(final_a, start=1)],
-        'final_b': [{'rank': i + len(final_a), 'team_name': p.get('team_name'), 'group_no': p.get('group_no')} for i, p in enumerate(final_b, start=1)],
+        # รายงาน A/B ใช้ลำดับรวมต่อเนื่อง:
+        # direct จาก Swiss มาก่อน แล้วตามด้วย A และ B เช่น direct 1-2, A 3-4, B 5-...
+        'direct_qualified': [{'rank': i, 'team_name': p.get('team_name'), 'group_no': p.get('group_no')} for i, p in enumerate(direct_qualified, start=1)],
+        'final_a': [{'rank': i + direct_count, 'team_name': p.get('team_name'), 'group_no': p.get('group_no')} for i, p in enumerate(final_a, start=1)],
+        'final_b': [{'rank': i + direct_count + len(final_a), 'team_name': p.get('team_name'), 'group_no': p.get('group_no')} for i, p in enumerate(final_b, start=1)],
         'latest_round_complete': latest_complete,
         'latest_complete_round_id': (latest_complete_round or {}).get('round', {}).get('id') if latest_complete_round else None,
     }
@@ -3508,11 +3604,12 @@ def _playoff_source_teams(playoff_id):
 
 
 
-def _source_event_full_report(event_id, qualified_team_ids=None):
+def _source_event_full_report(event_id, qualified_team_ids=None, status_by_team_id=None):
     """รายงานรอบแรก Swiss: รายชื่อทีม, ผลการแข่งขันแต่ละครั้ง, ผลจัดลำดับ."""
     if not event_id:
         return {'teams': [], 'rounds': [], 'standings': []}
     qids = {int(x) for x in (qualified_team_ids or []) if x is not None}
+    status_by_team_id = status_by_team_id or {}
     teams = Team.query.filter_by(event_id=event_id).order_by(Team.id.asc()).all()
     matches = Match.query.filter_by(event_id=event_id).order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
     round_map = {}
@@ -3534,7 +3631,8 @@ def _source_event_full_report(event_id, qualified_team_ids=None):
         round_map.setdefault(m.round or 1, []).append({'field': m.field or '', 'team1': t1, 'team2': t2, 'score': f'{s1} - {s2}' if m.team2_id else 'BYE', 'result': result})
     standings_rows = []
     for idx, row in enumerate(calculate_standings(event_id), start=1):
-        status = 'เข้ารอบ' if row.get('team_id') in qids else 'ตกรอบ'
+        tid = row.get('team_id')
+        status = status_by_team_id.get(tid) or ('เข้ารอบ' if tid in qids else 'ตกรอบ')
         standings_rows.append({'rank': idx, 'team_name': row.get('team_name'), 'score': row.get('score'), 'buchholz': row.get('buchholz'), 'final_buchholz': row.get('final_buchholz'), 'point_for': row.get('point_for'), 'point_against': row.get('point_against'), 'status': status})
     return {'teams': [{'id': t.id, 'name': t.name} for t in teams], 'rounds': [{'round_no': rn, 'matches': rows} for rn, rows in sorted(round_map.items())], 'standings': standings_rows}
 
@@ -3656,6 +3754,9 @@ def _final_ranking_preview(view):
     if view.get('competition', {}).get('competition_type') == 'ab_ladder':
         state = _ab_state_for_view(view) or {}
         out = []
+        if state.get('direct_qualified'):
+            for r in state.get('direct_qualified') or []:
+                out.append({'rank': r.get('rank'), 'team_name': r.get('team_name'), 'group_no': r.get('group_no'), 'label': 'ตัวแทนอัตโนมัติ'})
         if state.get('final_a'):
             for r in state.get('final_a') or []:
                 out.append({'rank': r.get('rank'), 'team_name': r.get('team_name'), 'group_no': r.get('group_no'), 'label': 'เข้ารอบสาย A'})
@@ -3936,38 +4037,62 @@ def _playoff_match_table_rows(playoff_id, round_id=None, group_no=None):
     view = _fetch_playoff(playoff_id)
     if not view:
         return None, []
+
     tables = []
+
     for rv in view.get('round_views', []):
         rnd = rv['round']
+
         if round_id and int(rnd['id']) != int(round_id):
             continue
-        max_stage = 3 if rnd.get('round_type') == 'double_knockout' else 1
+
+        round_type = rnd.get('round_type') or ''
+        max_stage = 3 if round_type == 'double_knockout' else 1
+
         for group in rv.get('group_views', []):
             this_group_no = int(group['group_no'])
+
             if group_no and this_group_no != int(group_no):
                 continue
+
             slots = list(group.get('slots', []))
             if not slots:
                 continue
+
             court_1 = ''
             court_2 = ''
+
             for slot in slots:
-                if int(slot.get('slot_no') or 0) in (1, 2) and slot.get('court_name') and not court_1:
+                slot_no = int(slot.get('slot_no') or 0)
+
+                if slot_no in (1, 2) and slot.get('court_name') and not court_1:
                     court_1 = slot.get('court_name') or ''
-                if int(slot.get('slot_no') or 0) in (3, 4) and slot.get('court_name') and not court_2:
+
+                if slot_no in (3, 4) and slot.get('court_name') and not court_2:
                     court_2 = slot.get('court_name') or ''
+
+            # ✅ แยกกลุ่ม A/B สำหรับระบบ ab_ladder
+            group_label = ''
+            if round_type == 'ab_ladder':
+                group_label = _ab_group_zone(rv, this_group_no)
+
             tables.append({
                 'round_id': int(rnd['id']),
                 'round_name': rnd.get('round_name') or '',
-                'round_type': rnd.get('round_type') or '',
-                'system_label': _playoff_system_label(rnd.get('round_type')),
+                'round_type': round_type,
+                'system_label': _playoff_system_label(round_type),
                 'group_no': this_group_no,
+
+                # ✅ ส่งไปให้ playoff_match_tables.html ใช้แสดง กลุ่ม A / กลุ่ม B
+                'group_label': group_label,
+
                 'max_stage': max_stage,
                 'slots': slots,
                 'court_1': court_1,
                 'court_2': court_2,
                 'result': group.get('result') or {},
             })
+
     return view, tables
 
 
@@ -3976,14 +4101,30 @@ def _playoff_match_table_rows(playoff_id, round_id=None, group_no=None):
 def playoff_match_tables_print(playoff_id):
     selected_round = request.args.get('round_id', type=int)
     selected_group = request.args.get('group_no', type=int)
-    per_page = request.args.get('per_page', default=4, type=int)
-    if per_page not in (1, 2, 3, 4):
-        per_page = 4
+
+    per_page_raw = request.args.get("per_page", "4")
+    if per_page_raw == "all":
+        per_page = "all"
+    else:
+        try:
+            per_page = int(per_page_raw)
+        except (TypeError, ValueError):
+            per_page = 4
+
+        if per_page not in [1, 2, 3, 4, 6, 8]:
+            per_page = 4
+
     view, tables = _playoff_match_table_rows(playoff_id, selected_round, selected_group)
+
     if not view:
         flash('ไม่พบระบบเพลย์ออฟ', 'danger')
         return redirect(url_for('index'))
+
+    if per_page != "all" and any(t.get("round_type") == "double_knockout" for t in tables if t) and per_page > 4:
+        per_page = 4
+
     source_event = Event.query.get(view['competition']['source_event_id']) if view.get('competition') else None
+
     return render_template(
         'playoff_match_tables.html',
         view=view,
@@ -4147,6 +4288,20 @@ def public_playoff_scorecard_finish(token):
     return redirect(url_for('public_playoff_scorecard', token=token))
 
 
+
+def _playoff_source_status_map(view, source_team_ids=None):
+    """คืนสถานะรายงาน Swiss เดิม: direct = ตัวแทนคนที่ n, playoff teams = จัดแข่งต่อ."""
+    config = _safe_json_loads((view.get('competition') or {}).get('config_json'), {}) if view else {}
+    status_map = {}
+    for idx, row in enumerate(config.get('direct_qualified') or [], start=1):
+        tid = row.get('team_id')
+        if tid is not None:
+            status_map[int(tid)] = f'ตัวแทนคนที่ {idx}'
+    for tid in (source_team_ids or []):
+        if tid is not None and int(tid) not in status_map:
+            status_map[int(tid)] = 'เข้ารอบ'
+    return status_map
+
 @app.route('/playoff/<int:playoff_id>')
 @login_required
 def playoff_detail(playoff_id):
@@ -4164,7 +4319,8 @@ def playoff_detail(playoff_id):
         next_participants = _participants_from_round(latest) if latest and latest_complete else []
     source_teams = _playoff_source_teams(playoff_id)
     qualified_ids = [t.get('id') for t in source_teams]
-    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids)
+    source_status_map = _playoff_source_status_map(view, qualified_ids)
+    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids, source_status_map)
     latest_losers = _latest_knockout_losers(latest) if latest and latest_complete else []
     return render_template(
         'playoff_detail.html',
@@ -4192,7 +4348,8 @@ def playoff_print_report(playoff_id):
     source_event = Event.query.get(view['competition']['source_event_id'])
     source_teams = _playoff_source_teams(playoff_id)
     qualified_ids = [t.get('id') for t in source_teams]
-    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids)
+    source_status_map = _playoff_source_status_map(view, qualified_ids)
+    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids, source_status_map)
     return render_template(
         'playoff_print_report.html',
         view=view,
@@ -4613,9 +4770,9 @@ def setup():
         db.session.commit()
 
 
-
 if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
+
     setup()
-    socketio.run(app, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5001, debug=True)
