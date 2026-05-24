@@ -59,16 +59,16 @@
     {% endfor %}
 
     <section class="report-page">
-      <h2>รอบชิง / ผลการแข่งขัน</h2>
-      <table class="report-table final-rank-table"><thead><tr><th>อันดับ</th><th>ทีม</th></tr></thead><tbody>
+      <h2>{% if view.competition.competition_type == 'ab_ladder' %}ผลเข้ารอบ A/B{% else %}รอบชิง / ผลการแข่งขัน{% endif %}</h2>
+      <table class="report-table final-rank-table"><thead><tr><th>{% if view.competition.competition_type == 'ab_ladder' %}ลำดับเข้ารอบ{% else %}อันดับ{% endif %}</th><th>ทีม</th>{% if view.competition.competition_type == 'ab_ladder' %}<th>เลขสาย</th>{% endif %}</tr></thead><tbody>
       {% if final_ranking_preview %}
-        {% for row in final_ranking_preview %}<tr><td>อันดับ {{ row.rank }}</td><td><b>{{ row.team_name }}</b></td></tr>{% endfor %}
-        {% for n in range(final_ranking_preview|length + 1, 5) %}<tr><td>อันดับ {{ n }}</td><td class="editable-blank">........................................................</td></tr>{% endfor %}
+        {% for row in final_ranking_preview %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td><td><b>{{ row.team_name }}</b></td>{% if view.competition.competition_type == 'ab_ladder' %}<td>สาย {{ row.group_no or '-' }}</td>{% endif %}</tr>{% endfor %}
+        {% if view.competition.competition_type != 'ab_ladder' %}{% for n in range(final_ranking_preview|length + 1, 5) %}<tr><td>อันดับ {{ n }}</td><td class="editable-blank">........................................................</td></tr>{% endfor %}{% endif %}
       {% else %}
-        <tr><td>อันดับ 1</td><td class="editable-blank">........................................................</td></tr>
-        <tr><td>อันดับ 2</td><td class="editable-blank">........................................................</td></tr>
-        <tr><td>อันดับ 3</td><td class="editable-blank">........................................................</td></tr>
-        <tr><td>อันดับ 4</td><td class="editable-blank">........................................................</td></tr>
+        <tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 1{% else %}อันดับ 1{% endif %}</td><td class="editable-blank">........................................................</td>{% if view.competition.competition_type == 'ab_ladder' %}<td></td>{% endif %}</tr>
+        <tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 2{% else %}อันดับ 2{% endif %}</td><td class="editable-blank">........................................................</td>{% if view.competition.competition_type == 'ab_ladder' %}<td></td>{% endif %}</tr>
+        <tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 3{% else %}อันดับ 3{% endif %}</td><td class="editable-blank">........................................................</td>{% if view.competition.competition_type == 'ab_ladder' %}<td></td>{% endif %}</tr>
+        <tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 4{% else %}อันดับ 4{% endif %}</td><td class="editable-blank">........................................................</td>{% if view.competition.competition_type == 'ab_ladder' %}<td></td>{% endif %}</tr>
       {% endif %}
       </tbody></table>
     </section>

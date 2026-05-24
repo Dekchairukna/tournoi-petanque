@@ -239,6 +239,7 @@
             <select class="form-select" name="competition_type" id="competitionType" required>
               <option value="knockout">น็อคเอาท์ — ลำดับแรกพบลำดับท้ายสุด</option>
               <option value="double_knockout">ดับเบิ้ลน็อคเอ้าท์ — เปิดหน้าจัดสายของตัวเอง</option>
+              <option value="ab_ladder">A/B หลัง Swiss — A แพ้ลง B, B แพ้ตกรอบ</option>
               <option value="swiss">Swiss — สร้างอีเว้นท์ใหม่ ล้างคะแนน/แมตช์เดิม</option>
               <option value="round_robin" disabled>Round Robin — พบกันหมด (ติดไว้ก่อน)</option>
             </select>
@@ -262,6 +263,26 @@
               
               <label class="form-check-label fw-bold" for="addByeOption">ใช้ X/BYE / สูตร X พิเศษเมื่อจำเป็น</label>
               <div class="form-text"></div>
+            </div>
+          </div>
+          <div id="abSettingsBox" class="border rounded p-2 bg-light">
+            <label class="form-label fw-bold">ตั้งค่าระบบ A/B</label>
+            <div class="row g-2">
+              <div class="col-12">
+                <small class="text-muted">ตัวอย่าง: เลือกเข้ารอบ 20 ทีม → ตั้งเข้า A 10 ทีม → ที่เหลือเข้า B</small>
+              </div>
+              <div class="col-4">
+                <label class="form-label small">เข้า A กี่ทีม</label>
+                <input type="number" class="form-control" name="ab_a_team_count" min="1" max="{{ num_qualified_teams }}" value="{{ (num_qualified_teams // 2) if num_qualified_teams > 1 else 1 }}">
+              </div>
+              <div class="col-4">
+                <label class="form-label small">ประกาศผล A เข้ากี่ทีม</label>
+                <input type="number" class="form-control" name="ab_advance_a" min="0" max="{{ num_qualified_teams }}" value="4">
+              </div>
+              <div class="col-4">
+                <label class="form-label small">ประกาศผล B เข้ากี่ทีม</label>
+                <input type="number" class="form-control" name="ab_advance_b" min="0" max="{{ num_qualified_teams }}" value="4">
+              </div>
             </div>
           </div>
           <div id="swissRoundsBox">
@@ -351,6 +372,19 @@
         }
       });
     });
+
+    const competitionType = document.getElementById('competitionType');
+    const abSettingsBox = document.getElementById('abSettingsBox');
+    const swissRoundsBox = document.getElementById('swissRoundsBox');
+    function refreshSystemOptionBoxes() {
+      if (!competitionType) return;
+      if (abSettingsBox) abSettingsBox.style.display = competitionType.value === 'ab_ladder' ? '' : 'none';
+      if (swissRoundsBox) swissRoundsBox.style.display = competitionType.value === 'swiss' ? '' : 'none';
+    }
+    if (competitionType) {
+      competitionType.addEventListener('change', refreshSystemOptionBoxes);
+      refreshSystemOptionBoxes();
+    }
 
     const downloadExcelButton = document.getElementById('downloadExcel');
     if (downloadExcelButton) {

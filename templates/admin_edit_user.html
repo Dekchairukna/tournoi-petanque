@@ -3,15 +3,26 @@
 <div class="container mt-5">
   <h2 class="mb-4">แก้ไขผู้ใช้</h2>
 
+  <div class="alert alert-info">
+    วันหมดอายุปัจจุบัน:
+    {% if user.end_time %}
+      <strong>{{ user.end_time.strftime('%Y-%m-%d %H:%M:%S') }}</strong>
+    {% else %}
+      <strong>ถาวร</strong>
+    {% endif %}
+  </div>
+
   <form method="POST">
     <div class="mb-3">
       <label for="username" class="form-label">ชื่อผู้ใช้</label>
       <input type="text" class="form-control" name="username" id="username" value="{{ user.username }}" required>
     </div>
+
     <div class="mb-3">
       <label for="password" class="form-label">รหัสผ่านใหม่</label>
-      <input type="password" class="form-control" name="password" id="password" placeholder="กรอกเฉพาะถ้าต้องการเปลี่ยนรหัสผ่าน">
+      <input type="password" class="form-control" name="password" id="password" placeholder="เว้นว่างไว้ถ้าไม่ต้องการเปลี่ยนรหัสผ่าน">
     </div>
+
     <div class="mb-3">
       <label for="role" class="form-label">สิทธิ์</label>
       <select name="role" id="role" class="form-select" required>
@@ -20,16 +31,24 @@
         <option value="superadmin" {% if user.role == 'superadmin' %}selected{% endif %}>superadmin</option>
       </select>
     </div>
+
     <div class="mb-3">
-      <label for="duration" class="form-label">ระยะเวลาใช้งาน</label>
+      <label for="duration" class="form-label">เปลี่ยนระยะเวลาใช้งาน</label>
       <select name="duration" id="duration" class="form-select">
-        <option value="1m" {% if user.duration == '1m' %}selected{% endif %}>1 เดือน</option>
-        <option value="3m" {% if user.duration == '3m' %}selected{% endif %}>3 เดือน</option>
-        <option value="6m" {% if user.duration == '6m' %}selected{% endif %}>6 เดือน</option>
-        <option value="1y" {% if user.duration == '1y' %}selected{% endif %}>1 ปี</option>
-        <option value="forever" {% if user.duration == 'forever' %}selected{% endif %}>ถาวร</option>
+        <option value="" selected>ไม่เปลี่ยนวันหมดอายุเดิม</option>
+        <option value="1d">ต่ออายุ 1 วันจากตอนนี้</option>
+        <option value="1w">ต่ออายุ 1 สัปดาห์จากตอนนี้</option>
+        <option value="1m">ต่ออายุ 1 เดือนจากตอนนี้</option>
+        <option value="3m">ต่ออายุ 3 เดือนจากตอนนี้</option>
+        <option value="6m">ต่ออายุ 6 เดือนจากตอนนี้</option>
+        <option value="1y">ต่ออายุ 1 ปีจากตอนนี้</option>
+        <option value="forever">ตั้งเป็นถาวร</option>
       </select>
+      <div class="form-text text-danger">
+        ถ้าไม่ต้องการเปลี่ยนวันหมดอายุ ให้เลือก “ไม่เปลี่ยนวันหมดอายุเดิม” เพื่อป้องกันบัญชีกลายเป็นถาวรโดยไม่ตั้งใจ
+      </div>
     </div>
+
     <button type="submit" class="btn btn-yellow btn-custom">บันทึกการแก้ไข</button>
   </form>
 

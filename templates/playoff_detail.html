@@ -62,7 +62,7 @@
       <div style="text-align:center; margin-bottom:18px;">
         <span class="badge"
           style="background:#2f2f2f; color:#ffd900; font-size:24px; padding:10px 22px; font-weight:700;">
-          {% if view.competition.competition_type == 'double_knockout' %}Double knockout{% else %}Knockout{% endif %}
+          {% if view.competition.competition_type == 'double_knockout' %}Double knockout{% elif view.competition.competition_type == 'ab_ladder' %}A/B หลัง Swiss{% else %}Knockout{% endif %}
         </span>
       </div>
       <div class="muted-text" style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center;">
@@ -70,6 +70,17 @@
         <span>จับคู่: {{ {'seed':'ตาม seed','random':'สุ่ม','manual':'แอดมินกำหนด','bracket':'Bracket / สายติดกัน'}[view.competition.pairing_method] if
           view.competition.pairing_method in ['seed','random','manual','bracket'] else view.competition.pairing_method }}</span>
       </div>
+      {% if ab_status %}
+      <div class="alert alert-info" style="max-width:900px; margin:14px auto 0; text-align:left;">
+        <b>กติกา A/B:</b> กลุ่ม A แพ้ตกลงกลุ่ม B · กลุ่ม B แพ้ตกรอบทันที<br>
+        เริ่มต้น A {{ ab_status.config.initial_a_count }} ทีม / B {{ ab_status.config.initial_b_count }} ทีม
+        · เป้าประกาศผล A {{ ab_status.target_a or '-' }} ทีม / B {{ ab_status.target_b or '-' }} ทีม
+        {% if ab_status.latest %}<br>หลังรอบล่าสุด: A คงเหลือ {{ ab_status.current_a_count }} ทีม / B คงเหลือ {{ ab_status.current_b_count }} ทีม{% endif %}
+        {% if ab_status.a_finished %}<div class="fw-bold text-success mt-1">สาย A ถึงจำนวนตามกำหนดแล้ว ระบบจบสาย A และรายงานเป็นผู้เข้ารอบตามเลขสาย</div>{% endif %}
+        {% if ab_status.b_finished %}<div class="fw-bold text-success mt-1">สาย B ถึงจำนวนตามกำหนดแล้ว ระบบจบสาย B และรายงานเป็นผู้เข้ารอบตามเลขสาย</div>{% endif %}
+        {% if ab_status.all_finished %}<div class="fw-bold text-success mt-1">A/B ถึงจำนวนครบตามเป้าแล้ว ไม่ต้องสร้างรอบต่อไป</div>{% endif %}
+      </div>
+      {% endif %}
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:16px;">
         {% if source_event %}<a href="{{ url_for('event_standings', event_id=source_event.id) }}"
           class="btn action-btn btn-pool">← กลับ Standing</a>{% endif %}
@@ -150,7 +161,14 @@
           </div>
           <div
             style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-            <b style="font-size:28px;">สายที่ {{ group.group_no }}</b>
+            <b style="font-size:28px;">
+              {% if rv.round.round_type == 'ab_ladder' %}
+                {% set a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
+                กลุ่ม {{ 'A' if group.group_no <= a_pair_count else 'B' }} · สายที่ {{ group.group_no }}
+              {% else %}
+                สายที่ {{ group.group_no }}
+              {% endif %}
+            </b>
             <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
               <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}" target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
               <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=4) }}" target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งสายนี้</a>
@@ -236,7 +254,11 @@
 
           <div class="group-result-box" data-round="{{ rv.round.id }}" data-group="{{ group.group_no }}"
             style="margin-top:14px; font-size:22px; font-weight:800; line-height:1.8;">
-            {% if rv.round.round_type == 'double_knockout' %}
+            {% if rv.round.round_type == 'ab_ladder' %}
+            {% set a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
+            <div>🥇 ผู้ชนะ: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner else '...' }}</span></div>
+            <div style="font-size:16px; color:#64748b;">{{ 'ผู้แพ้ตกลงกลุ่ม B' if group.group_no <= a_pair_count else 'ผู้แพ้ตกรอบทันที' }}</div>
+            {% elif rv.round.round_type == 'double_knockout' %}
             <div>🥇 อันดับ 1: <span class="result-winner">{{ group.result.winner.team_name if group.result.winner else
                 '...' }}</span> {% if group.result.manual %}<span class="manual-badge">กำหนดเอง</span>{% endif %}</div>
             <div>🥈 อันดับ 2: <span class="result-second">{{ group.result.second.team_name if group.result.second else
@@ -287,6 +309,7 @@
         <div>
           <h2 style="margin:0 0 8px 0;">จับสลาก / สร้างรอบถัดไป</h2>
           <div class="muted-text">อยู่ด้านล่างตามคำขอ: กรอกผลรอบล่าสุดให้ครบ แล้วสร้างรอบต่อไปจากผู้ผ่านเข้ารอบล่าสุด
+            {% if view.competition.competition_type == 'ab_ladder' %}<br><b>A/B:</b> ระบบจะส่งผู้ชนะกลุ่ม A ไป A, ผู้แพ้กลุ่ม A ลง B, ผู้ชนะกลุ่ม B อยู่ B และผู้แพ้กลุ่ม B ตกรอบ{% endif %}
           </div>
         </div>
         <div class="top-action-buttons">
@@ -294,7 +317,9 @@
         </div>
       </div>
       {% if latest_complete %}
-      {% if next_participants|length >= 2 %}
+      {% if view.competition.competition_type == 'ab_ladder' and ab_status and ab_status.all_finished %}
+      <div class="alert alert-success" style="margin-top:14px;">A/B ถึงจำนวนตามกำหนดแล้ว จบการแข่งขันและดูผลเข้ารอบได้ในรายงานด้านล่าง</div>
+      {% elif next_participants|length >= 2 %}
       <form method="post" action="{{ url_for('create_playoff_next_round', playoff_id=view.competition.id) }}"
         style="margin-top:16px; display:grid;  gap:12px; align-items:end; ">
         <div>
@@ -322,8 +347,12 @@
         <div>
           <label style="display:block; font-weight:700; margin-bottom:6px;">รอบถัดไปเป็น</label>
           <select name="next_type" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px;">
+            {% if view.competition.competition_type == 'ab_ladder' %}
+            <option value="ab_ladder">A/B ต่อเนื่อง</option>
+            {% else %}
             <option value="double_knockout">Double knockout</option>
             <option value="knockout">Knockout</option>
+            {% endif %}
             <option value="swiss">Swiss</option>
             <option value="round_robin" disabled>Round Robin ติดไว้ก่อน</option>
           </select>
@@ -369,8 +398,7 @@
         </div>
       </form>
       {% else %}
-      <div class="alert alert-success" style="margin-top:14px;">การแข่งขันจบแล้ว ผู้ชนะ: <strong>{{
-          next_participants[0].team_name if next_participants else '-' }}</strong></div>
+      <div class="alert alert-success" style="margin-top:14px;">การแข่งขันจบแล้ว ดูผลสรุปได้ในรายงานด้านล่าง</div>
       {% endif %}
       {% else %}
       <div class="alert alert-warning" style="margin-top:14px;">กรุณากรอก/บันทึกผลรอบล่าสุดให้ครบก่อนสร้างรอบต่อไป</div>
@@ -505,48 +533,52 @@
       {% endfor %}
 
       <section class="report-page">
-        <h2>รอบชิง / ผลการแข่งขัน</h2>
+        <h2>{% if view.competition.competition_type == 'ab_ladder' %}ผลเข้ารอบ A/B{% else %}รอบชิง / ผลการแข่งขัน{% endif %}</h2>
         {% if final_ranking_preview %}
         <table class="report-table final-rank-table">
           <thead>
             <tr>
-              <th>อันดับ</th>
+              <th>{% if view.competition.competition_type == 'ab_ladder' %}ลำดับเข้ารอบ{% else %}อันดับ{% endif %}</th>
               <th>ทีม</th>
+              {% if view.competition.competition_type == 'ab_ladder' %}<th>เลขสาย</th>{% endif %}
             </tr>
           </thead>
           <tbody>
             {% for row in final_ranking_preview %}
             <tr>
-              <td>อันดับ {{ row.rank }}</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td>
               <td><b>{{ row.team_name }}</b></td>
+              {% if view.competition.competition_type == 'ab_ladder' %}<td>สาย {{ row.group_no or '-' }}</td>{% endif %}
             </tr>
             {% endfor %}
+            {% if view.competition.competition_type != 'ab_ladder' %}
             {% for n in range(final_ranking_preview|length + 1, 5) %}
             <tr>
               <td>อันดับ {{ n }}</td>
               <td class="editable-blank">........................................................</td>
             </tr>
             {% endfor %}
+            {% endif %}
           </tbody>
         </table>
         {% else %}
-        <div class="report-meta">ยังไม่จบรอบชิง หรือยังบันทึกผลไม่ครบ</div>
+        <div class="report-meta">{% if view.competition.competition_type == 'ab_ladder' %}ยังไม่ถึงจำนวนทีมที่กำหนด หรือยังบันทึกผลไม่ครบ{% else %}ยังไม่จบรอบชิง หรือยังบันทึกผลไม่ครบ{% endif %}</div>
         <table class="report-table final-rank-table">
           <tbody>
             <tr>
-              <td>อันดับ 1</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 1{% else %}อันดับ 1{% endif %}</td>
               <td class="editable-blank">........................................................</td>
             </tr>
             <tr>
-              <td>อันดับ 2</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 2{% else %}อันดับ 2{% endif %}</td>
               <td class="editable-blank">........................................................</td>
             </tr>
             <tr>
-              <td>อันดับ 3</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 3{% else %}อันดับ 3{% endif %}</td>
               <td class="editable-blank">........................................................</td>
             </tr>
             <tr>
-              <td>อันดับ 4</td>
+              <td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ 4{% else %}อันดับ 4{% endif %}</td>
               <td class="editable-blank">........................................................</td>
             </tr>
           </tbody>

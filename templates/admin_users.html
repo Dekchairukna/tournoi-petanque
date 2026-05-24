@@ -115,6 +115,11 @@
           <td>
             {% if u.end_time %}
               {{ u.end_time.strftime('%Y-%m-%d %H:%M:%S') }}
+              {% if u.end_time <= now %}
+                <span class="badge bg-danger ms-1">หมดอายุแล้ว</span>
+              {% else %}
+                <span class="badge bg-primary ms-1">ใช้งานได้</span>
+              {% endif %}
             {% else %}
               <span class="badge bg-success">ถาวร</span>
             {% endif %}
