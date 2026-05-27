@@ -390,6 +390,7 @@
           <label style="display:block; font-weight:700; margin-bottom:6px;">ประกบคู่แบบไหน</label>
           <select name="pairing_method" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px;">
             <option value="seed">SEED</option>
+            <option value="national_qualifier">ประกบคู่คัดตัวแทนทีมชาติ</option>
             <option value="random">RANDOM</option>
             <option value="manual">MANUAL</option>
             <option value="bracket">Bracket / สายติดกัน</option>
@@ -512,8 +513,7 @@
           </thead>
           <tbody>
             {% for row in source_report.standings %}
-            <tr
-              class="{% if row.status and row.status.startswith('ตัวแทน') %}report-direct{% elif row.status == 'จัดแข่งต่อ' %}report-qualified{% else %}report-eliminated{% endif %}">
+            <tr class="{% set st = (row.status or '')|trim %}{% if st.startswith('ตัวแทน') %}report-direct{% elif 'เข้ารอบ' in st or 'จัดแข่งต่อ' in st or 'อยู่ในสาย' in st %}report-qualified{% else %}report-eliminated{% endif %}">
               <td>{{ row.rank }}</td>
               <td>{{ row.team_name }}</td>
               <td>{{ row.score }}</td>
@@ -1464,19 +1464,19 @@
   .report-direct td {
     background: #fff3cd !important;
     color: #664d03 !important;
-    font-weight: 800
+    font-weight: 700;
   }
 
   .report-qualified td {
     background: #dcfce7 !important;
     color: #14532d !important;
-    font-weight: 700
+    font-weight: 700;
   }
 
   .report-eliminated td {
     background: #fee2e2 !important;
     color: #7f1d1d !important;
-    font-weight: 700
+    font-weight: 700;
   }
 
   .final-rank-table td:first-child {

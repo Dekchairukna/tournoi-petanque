@@ -276,6 +276,7 @@
             <label class="form-label">วิธีประกบคู่</label>
             <select class="form-select" name="pairing_method" required>
               <option value="seed">SEED</option>
+              <option value="national_qualifier">ประกบคู่คัดตัวแทนทีมชาติ</option>
               <option value="random">Random</option>
               <option value="manual">Manual</option>
               <option value="bracket">Bracket / สายติดกัน</option>
@@ -404,7 +405,7 @@
     const swissRoundsBox = document.getElementById('swissRoundsBox');
     function refreshSystemOptionBoxes() {
       if (!competitionType) return;
-      if (abSettingsBox) abSettingsBox.style.display = competitionType.value === 'ab_ladder' ? '' : 'none';
+      if (abSettingsBox) abSettingsBox.style.display = (competitionType.value === 'ab_ladder' || competitionType.value === 'regional64_ladder') ? '' : 'none';
       if (swissRoundsBox) swissRoundsBox.style.display = competitionType.value === 'swiss' ? '' : 'none';
     }
     if (competitionType) {

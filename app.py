@@ -2549,7 +2549,7 @@ def create_next_competition(event_id):
     next_stage_name = (request.form.get('next_stage_name') or '').strip() or 'รอบถัดไป'
     swiss_rounds = max(1, _as_int(request.form.get('swiss_rounds'), 3))
     pairing_method = (request.form.get('pairing_method') or 'seed').strip()
-    if pairing_method not in {'seed', 'random', 'manual', 'bracket'}:
+    if pairing_method not in {'seed', 'random', 'manual', 'bracket', 'national_qualifier'}:
         pairing_method = 'seed'
     add_bye = request.form.get('add_bye') == '1'
 
@@ -2596,14 +2596,31 @@ def create_next_competition(event_id):
         flash('สร้างอีเว้นท์ Swiss ใหม่แล้ว ข้อมูลคะแนน/แมตช์เดิมไม่ถูกนำมาด้วย ให้เริ่มจับคู่รอบแรกใหม่', 'success')
         return redirect(url_for('event_detail', event_id=new_event.id))
 
-    if competition_type == 'ab_ladder':
+    national_qualifier_mode = (competition_type == 'regional64_ladder' or pairing_method == 'national_qualifier')
+    if competition_type in {'ab_ladder', 'regional64_ladder'} or national_qualifier_mode:
         try:
-            a_team_count = _as_int(request.form.get('ab_a_team_count'), max(1, len(selected_rows)//2))
-            advance_a = _as_int(request.form.get('ab_advance_a'), 0)
-            advance_b = _as_int(request.form.get('ab_advance_b'), 0)
-            playoff_id = _create_ab_ladder_competition(source_event, selected_rows, next_stage_name, pairing_method,
-                                                       a_team_count, advance_a, advance_b,
-                                                       direct_rows=direct_rows_for_report)
+            if national_qualifier_mode:
+                if len(selected_rows) not in (48, 64):
+                    raise ValueError('ประกบคู่คัดตัวแทนทีมชาติ ต้องเลือกทีมเข้าเพลย์ออฟ 64 ทีม หรือ 48 ทีมเท่านั้น')
+                a_team_count = 32
+                if len(selected_rows) == 64:
+                    advance_a = 8
+                    advance_b = 12
+                else:
+                    advance_a = 8
+                    advance_b = 10
+                # ใช้ seed เป็นฐานในการวางรอบแรก แต่ล็อกโหมดพิเศษด้วย config_json
+                playoff_id = _create_ab_ladder_competition(source_event, selected_rows, next_stage_name, 'national_qualifier',
+                                                           a_team_count, advance_a, advance_b,
+                                                           direct_rows=direct_rows_for_report,
+                                                           special_mode='regional64_ladder')
+            else:
+                a_team_count = _as_int(request.form.get('ab_a_team_count'), max(1, len(selected_rows)//2))
+                advance_a = _as_int(request.form.get('ab_advance_a'), 0)
+                advance_b = _as_int(request.form.get('ab_advance_b'), 0)
+                playoff_id = _create_ab_ladder_competition(source_event, selected_rows, next_stage_name, pairing_method,
+                                                           a_team_count, advance_a, advance_b,
+                                                           direct_rows=direct_rows_for_report)
         except ValueError as exc:
             flash(str(exc), 'warning')
             return redirect(url_for('event_standings', event_id=event_id,
@@ -3073,7 +3090,398 @@ def _ab_make_round_groups(a_rows, b_rows, pairing_method='seed'):
     return a_groups + b_groups, {'a_pair_count': len(a_groups), 'b_pair_count': len(b_groups)}
 
 
-def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_method, a_team_count, advance_a, advance_b, direct_rows=None):
+def _regional64_enabled(view):
+    """True เฉพาะเมื่อผู้ใช้เลือกโหมด/วิธีประกบคู่คัดทีมชาติเท่านั้น
+
+    สำคัญ: ไม่เดาจากจำนวนทีม 64 หรือจำนวนเข้ารอบเอง
+    เพื่อไม่ให้รายการอื่นที่จำนวนทีมบังเอิญเท่ากันโดนลอจิกพิเศษนี้
+    """
+    if not view or (view.get('competition') or {}).get('competition_type') != 'ab_ladder':
+        return False
+    config = _safe_json_loads((view.get('competition') or {}).get('config_json'), {})
+    return (config.get('mode') == 'regional64_ladder'
+            or config.get('regional64_ladder') is True
+            or config.get('regional64') is True
+            or config.get('pairing_method') == 'national_qualifier')
+
+
+def _playoff_initial_team_count(view):
+    # นับจำนวนทีมจริงในรอบเพลย์ออฟแรก ใช้กันกรณีผู้ใช้มาเลือกคัดตัวแทนทีมชาติในหน้าสร้างรอบถัดไป
+    if not view or not view.get('round_views'):
+        return 0
+    first = view['round_views'][0]
+    count = 0
+    seen = set()
+    for g in first.get('group_views', []):
+        for slot in g.get('slots', []):
+            if slot.get('is_bye'):
+                continue
+            key = slot.get('team_id') if slot.get('team_id') is not None else slot.get('team_name')
+            if key in seen:
+                continue
+            seen.add(key)
+            count += 1
+    return count
+
+
+def _national_qualifier_size(view, force=False):
+    # คืนจำนวนทีมเพลย์ออฟเริ่มต้นของโหมดคัดตัวแทนทีมชาติ: 64 หรือ 48
+    # force=True ใช้ตอนผู้ใช้เลือก "ประกบคู่คัดตัวแทนทีมชาติ" ในหน้าสร้างรอบถัดไป
+    if not force and not _regional64_enabled(view):
+        return 0
+    config = _safe_json_loads((view.get('competition') or {}).get('config_json'), {}) if view else {}
+    try:
+        total = int(config.get('initial_total') or 0)
+    except Exception:
+        total = 0
+    if total in (48, 64):
+        return total
+    total = _playoff_initial_team_count(view)
+    return total if total in (48, 64) else 0
+
+
+def _regional64_round4_created(view):
+    """กันไม่ให้สร้างลอจิกรอบที่ 4 แบบตัวแทนทีมชาติ ซ้ำ"""
+    for rv in (view or {}).get('round_views', []):
+        meta = (rv.get('round') or {}).get('round_meta') or _safe_json_loads((rv.get('round') or {}).get('round_meta_json'), {})
+        if meta.get('regional64_round4'):
+            return True
+    return False
+
+
+def _national48_round4_created(view):
+    """กันไม่ให้สร้างลอจิกรอบที่ 4 แบบคัดตัวแทนทีมชาติ 48 ทีม ซ้ำ"""
+    for rv in (view or {}).get('round_views', []):
+        meta = (rv.get('round') or {}).get('round_meta') or _safe_json_loads((rv.get('round') or {}).get('round_meta_json'), {})
+        if meta.get('national48_round4'):
+            return True
+    return False
+
+
+
+def _make_national48_round3_groups(latest_round_view):
+    """สร้างรอบที่ 3 สำหรับคัดตัวแทนทีมชาติแบบ 48 ทีมหลัง Swiss
+
+    หลังจบรอบ 2:
+    - กลุ่ม A: ผู้ชนะรอบ 2 แข่งต่อกันตาม bracket เดิม 8 คู่
+    - กลุ่ม B: A1:A2, A3:A4, A5:B1 ... A12:B8, A13:A14, A15:A16
+    """
+    if not latest_round_view:
+        raise ValueError('ยังไม่มีรอบก่อนหน้าให้สร้างรอบที่ 3')
+    a_winners, a_losers, b_winners = [], [], []
+    for g in sorted(latest_round_view.get('group_views', []), key=lambda x: int(x.get('group_no') or 0)):
+        zone = _ab_group_zone(latest_round_view, g.get('group_no'))
+        res = g.get('result') or {}
+        winner = res.get('winner')
+        slots = [st for st in g.get('slots', []) if not st.get('is_bye')]
+        loser = None
+        if winner:
+            for st in slots:
+                if st.get('team_id') != winner.get('team_id') or st.get('team_name') != winner.get('team_name'):
+                    loser = _slot_payload(st)
+                    break
+        if zone == 'A':
+            if winner:
+                a_winners.append(winner)
+            if loser:
+                a_losers.append(loser)
+        else:
+            if winner:
+                b_winners.append(winner)
+
+    if len(a_winners) < 16:
+        raise ValueError(f'รอบที่ 3 แบบคัดตัวแทนทีมชาติ 48 ทีม ต้องมีผู้ชนะกลุ่ม A 16 ทีม แต่พบ {len(a_winners)} ทีม')
+    if len(a_losers) < 16:
+        raise ValueError(f'รอบที่ 3 แบบคัดตัวแทนทีมชาติ 48 ทีม ต้องมีผู้แพ้กลุ่ม A 16 ทีม แต่พบ {len(a_losers)} ทีม')
+    if len(b_winners) < 8:
+        raise ValueError(f'รอบที่ 3 แบบคัดตัวแทนทีมชาติ 48 ทีม ต้องมีผู้ชนะกลุ่ม B 8 ทีม แต่พบ {len(b_winners)} ทีม')
+
+    a_rows = []
+    for idx, p in enumerate(a_winners[:16], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = idx
+        a_rows.append(row)
+    a_groups = _adjacent_bracket_pairs(a_rows)
+
+    al = []
+    for idx, p in enumerate(a_losers[:16], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = idx
+        row['national_label'] = f'A{idx}'
+        al.append(row)
+
+    bw = []
+    for idx, p in enumerate(b_winners[:8], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = 100 + idx
+        row['national_label'] = f'B{idx}'
+        bw.append(row)
+
+    b_groups = [
+        [al[0], al[1]],    # A1 : A2
+        [al[2], al[3]],    # A3 : A4
+        [al[4], bw[0]],    # A5 : B1
+        [al[5], bw[1]],    # A6 : B2
+        [al[6], bw[2]],    # A7 : B3
+        [al[7], bw[3]],    # A8 : B4
+        [al[8], bw[4]],    # A9 : B5
+        [al[9], bw[5]],    # A10 : B6
+        [al[10], bw[6]],   # A11 : B7
+        [al[11], bw[7]],   # A12 : B8
+        [al[12], al[13]],  # A13 : A14
+        [al[14], al[15]],  # A15 : A16
+    ]
+
+    meta = {
+        'a_pair_count': len(a_groups),
+        'b_pair_count': len(b_groups),
+        'round_kind': 'national48_round3',
+        'national48_round3': True,
+        'regional64_round3': True,
+        'note': 'รอบที่ 3 คัดตัวแทนทีมชาติ 48 ทีม: กลุ่ม A bracket เดิม, กลุ่ม B A1:A2, A3:A4, A5:B1 ... A12:B8, A13:A14, A15:A16',
+    }
+    return a_groups + b_groups, meta
+
+
+
+def _regional64_round3_created(view):
+    """กันไม่ให้สร้างรอบ 3 แบบ A1-B1 ซ้ำ"""
+    for rv in (view or {}).get('round_views', []):
+        meta = (rv.get('round') or {}).get('round_meta') or _safe_json_loads((rv.get('round') or {}).get('round_meta_json'), {})
+        if meta.get('regional64_round3'):
+            return True
+    return False
+
+
+def _make_regional64_round3_groups(latest_round_view):
+    """สร้างรอบที่ 3 ตามผังคัดตัวแทนทีมชาติ 64 ทีม
+
+    หลังจบรอบ 2:
+    - กลุ่ม A: ผู้ชนะรอบ 2 แข่งต่อกันตาม bracket เดิม 8 คู่
+    - กลุ่ม B: ผู้แพ้รอบ 2 กลุ่ม A (A1-A16) เจอผู้ชนะรอบ 2 กลุ่ม B (B1-B16) แบบตรงตัว
+    """
+    if not latest_round_view:
+        raise ValueError('ยังไม่มีรอบก่อนหน้าให้สร้างรอบที่ 3')
+    a_winners, a_losers, b_winners = [], [], []
+    for g in sorted(latest_round_view.get('group_views', []), key=lambda x: int(x.get('group_no') or 0)):
+        zone = _ab_group_zone(latest_round_view, g.get('group_no'))
+        res = g.get('result') or {}
+        winner = res.get('winner')
+        slots = [s for s in g.get('slots', []) if not s.get('is_bye')]
+        loser = None
+        if winner:
+            for st in slots:
+                if st.get('team_id') != winner.get('team_id') or st.get('team_name') != winner.get('team_name'):
+                    loser = _slot_payload(st)
+                    break
+        if zone == 'A':
+            if winner:
+                a_winners.append(winner)
+            if loser:
+                a_losers.append(loser)
+        else:
+            if winner:
+                b_winners.append(winner)
+
+    if len(a_winners) < 16:
+        raise ValueError(f'รอบที่ 3 แบบตัวแทนทีมชาติ ต้องมีผู้ชนะกลุ่ม A 16 ทีม แต่พบ {len(a_winners)} ทีม')
+    if len(a_losers) < 16:
+        raise ValueError(f'รอบที่ 3 แบบตัวแทนทีมชาติ ต้องมีผู้แพ้กลุ่ม A 16 ทีม แต่พบ {len(a_losers)} ทีม')
+    if len(b_winners) < 16:
+        raise ValueError(f'รอบที่ 3 แบบตัวแทนทีมชาติ ต้องมีผู้ชนะกลุ่ม B 16 ทีม แต่พบ {len(b_winners)} ทีม')
+
+    # กลุ่ม A รอบ 3: ผู้ชนะรอบ 2 แข่งต่อแบบ bracket ติดกัน
+    a_rows = []
+    for idx, p in enumerate(a_winners[:16], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = idx
+        a_rows.append(row)
+    a_groups = _adjacent_bracket_pairs(a_rows)
+
+    # กลุ่ม B รอบ 3: A1-B1 ถึง A16-B16
+    b_groups = []
+    for idx in range(16):
+        a_loss = dict(a_losers[idx])
+        b_win = dict(b_winners[idx])
+        a_loss['rank'] = idx + 1
+        a_loss['seed'] = idx + 1
+        a_loss['regional64_label'] = f'A{idx + 1}'
+        b_win['rank'] = idx + 1
+        b_win['seed'] = 100 + idx + 1
+        b_win['regional64_label'] = f'B{idx + 1}'
+        b_groups.append([a_loss, b_win])
+
+    meta = {
+        'a_pair_count': len(a_groups),
+        'b_pair_count': len(b_groups),
+        'round_kind': 'regional64_round3',
+        'regional64_round3': True,
+        'note': 'รอบที่ 3 ตามผังคัดตัวแทนทีมชาติ 64 ทีม: กลุ่ม A ผู้ชนะรอบ 2 ต่อ bracket, กลุ่ม B A1-B1 ถึง A16-B16',
+    }
+    return a_groups + b_groups, meta
+
+
+
+def _make_national48_round4_groups(latest_round_view):
+    """สร้างรอบที่ 4 สำหรับคัดตัวแทนทีมชาติแบบ 48 ทีม
+
+    ทำแบบรอบ 4 ของ 64 ทีม แต่ 48 ทีมมี B1-B12 และ I A - VIII A:
+      B1:B2,
+      B3:I A, B4:II A, B5:III A, B6:IV A,
+      B7:V A, B8:VI A, B9:VII A, B10:VIII A,
+      B11:B12
+    """
+    if not latest_round_view:
+        raise ValueError('ยังไม่มีรอบก่อนหน้าให้สร้างรอบที่ 4')
+    a_losers, b_winners = [], []
+    for g in sorted(latest_round_view.get('group_views', []), key=lambda x: int(x.get('group_no') or 0)):
+        zone = _ab_group_zone(latest_round_view, g.get('group_no'))
+        res = g.get('result') or {}
+        winner = res.get('winner')
+        slots = [s for s in g.get('slots', []) if not s.get('is_bye')]
+        loser = None
+        if winner:
+            for s in slots:
+                if s.get('team_id') != winner.get('team_id') or s.get('team_name') != winner.get('team_name'):
+                    loser = _slot_payload(s)
+                    break
+        if zone == 'A':
+            if loser:
+                a_losers.append(loser)
+        else:
+            if winner:
+                b_winners.append(winner)
+
+    if len(b_winners) < 12:
+        raise ValueError(f'รอบที่ 4 แบบคัดตัวแทนทีมชาติ 48 ทีม ต้องมีผู้ชนะกลุ่ม B 12 ทีม แต่พบ {len(b_winners)} ทีม')
+    if len(a_losers) < 8:
+        raise ValueError(f'รอบที่ 4 แบบคัดตัวแทนทีมชาติ 48 ทีม ต้องมีผู้แพ้รอบ 3 กลุ่ม A 8 ทีม แต่พบ {len(a_losers)} ทีม')
+
+    b_rows = []
+    for idx, p in enumerate(b_winners[:12], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = idx
+        row['national_label'] = f'B{idx}'
+        b_rows.append(row)
+
+    roman = ['I A', 'II A', 'III A', 'IV A', 'V A', 'VI A', 'VII A', 'VIII A']
+    a_rows = []
+    for idx, p in enumerate(a_losers[:8], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = 100 + idx
+        row['national_label'] = roman[idx - 1]
+        a_rows.append(row)
+
+    groups = [
+        [b_rows[0], b_rows[1]],    # B1 : B2
+        [b_rows[2], a_rows[0]],    # B3 : I A
+        [b_rows[3], a_rows[1]],    # B4 : II A
+        [b_rows[4], a_rows[2]],    # B5 : III A
+        [b_rows[5], a_rows[3]],    # B6 : IV A
+        [b_rows[6], a_rows[4]],    # B7 : V A
+        [b_rows[7], a_rows[5]],    # B8 : VI A
+        [b_rows[8], a_rows[6]],    # B9 : VII A
+        [b_rows[9], a_rows[7]],    # B10 : VIII A
+        [b_rows[10], b_rows[11]],  # B11 : B12
+    ]
+    meta = {
+        'a_pair_count': 0,
+        'b_pair_count': len(groups),
+        'round_kind': 'national48_round4',
+        'national48_round4': True,
+        'note': 'รอบที่ 4 คัดตัวแทนทีมชาติ 48 ทีม: B1:B2, B3:I A, B4:II A, B5:III A ... B10:VIII A, B11:B12',
+    }
+    return groups, meta
+
+
+
+def _make_regional64_round4_groups(latest_round_view):
+    """สร้างรอบที่ 4 ตามผังคัดตัวแทนทีมชาติ 64 ทีม
+
+    รอบก่อนหน้าให้ระบบทำงานตาม seed/bracket เดิมทั้งหมด
+    เฉพาะตอนสร้าง "รอบที่ 4" ให้เอา:
+    - ผู้ชนะรอบ 3 กลุ่ม B เรียงเป็น B1-B16
+    - ผู้แพ้รอบ 3 กลุ่ม A เรียงเป็น I A - VIII A
+    แล้วจัด 12 คู่:
+      B1:B2, B3:B4,
+      B5:I A, B6:II A, ... B12:VIII A,
+      B13:B14, B15:B16
+    """
+    if not latest_round_view:
+        raise ValueError('ยังไม่มีรอบก่อนหน้าให้สร้างรอบที่ 4')
+    a_losers, b_winners = [], []
+    for g in sorted(latest_round_view.get('group_views', []), key=lambda x: int(x.get('group_no') or 0)):
+        zone = _ab_group_zone(latest_round_view, g.get('group_no'))
+        res = g.get('result') or {}
+        winner = res.get('winner')
+        slots = [s for s in g.get('slots', []) if not s.get('is_bye')]
+        loser = None
+        if winner:
+            for s in slots:
+                if s.get('team_id') != winner.get('team_id') or s.get('team_name') != winner.get('team_name'):
+                    loser = _slot_payload(s)
+                    break
+        if zone == 'A':
+            if loser:
+                a_losers.append(loser)
+        else:
+            if winner:
+                b_winners.append(winner)
+
+    if len(b_winners) < 16:
+        raise ValueError(f'รอบที่ 4 แบบตัวแทนทีมชาติ ต้องมีผู้ชนะกลุ่ม B 16 ทีม แต่พบ {len(b_winners)} ทีม')
+    if len(a_losers) < 8:
+        raise ValueError(f'รอบที่ 4 แบบตัวแทนทีมชาติ ต้องมีผู้แพ้รอบ 3 กลุ่ม A 8 ทีม แต่พบ {len(a_losers)} ทีม')
+
+    # ติดป้าย seed/label ใหม่เพื่อให้เรียงและดูง่ายตามผัง
+    b_rows = []
+    for idx, p in enumerate(b_winners[:16], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = idx
+        row['regional64_label'] = f'B{idx}'
+        b_rows.append(row)
+
+    a_rows = []
+    roman = ['I A', 'II A', 'III A', 'IV A', 'V A', 'VI A', 'VII A', 'VIII A']
+    for idx, p in enumerate(a_losers[:8], start=1):
+        row = dict(p)
+        row['rank'] = idx
+        row['seed'] = 100 + idx
+        row['regional64_label'] = roman[idx - 1]
+        a_rows.append(row)
+
+    groups = [
+        [b_rows[0], b_rows[1]],    # B1 : B2
+        [b_rows[2], b_rows[3]],    # B3 : B4
+        [b_rows[4], a_rows[0]],    # B5 : I A
+        [b_rows[5], a_rows[1]],    # B6 : II A
+        [b_rows[6], a_rows[2]],    # B7 : III A
+        [b_rows[7], a_rows[3]],    # B8 : IV A
+        [b_rows[8], a_rows[4]],    # B9 : V A
+        [b_rows[9], a_rows[5]],    # B10 : VI A
+        [b_rows[10], a_rows[6]],   # B11 : VII A
+        [b_rows[11], a_rows[7]],   # B12 : VIII A
+        [b_rows[12], b_rows[13]],  # B13 : B14
+        [b_rows[14], b_rows[15]],  # B15 : B16
+    ]
+    meta = {
+        'a_pair_count': 0,
+        'b_pair_count': len(groups),
+        'round_kind': 'regional64_round4',
+        'regional64_round4': True,
+        'note': 'รอบที่ 4 ตามผังคัดตัวแทนทีมชาติ 64 ทีม: B1:B2, B3:B4, B5:I A ... B12:VIII A, B13:B14, B15:B16',
+    }
+    return groups, meta
+
+
+def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_method, a_team_count, advance_a, advance_b, direct_rows=None, special_mode=None):
     """สร้างระบบ A/B ต่อจาก Standing:
     - ทีมบนตาม Standing เข้า A ตามจำนวนที่กำหนด
     - ทีมที่เหลือเข้า B
@@ -3091,7 +3499,7 @@ def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_me
     b_rows = [_row_to_seed_payload(row, idx + a_team_count) for idx, row in enumerate(selected_rows[a_team_count:], start=1)]
     groups, meta = _ab_make_round_groups(a_rows, b_rows, pairing_method)
     config = {
-        'mode': 'ab_ladder',
+        'mode': special_mode or 'ab_ladder',
         'initial_total': total,
         'initial_a_count': a_team_count,
         'initial_b_count': len(b_rows),
@@ -3099,6 +3507,7 @@ def _create_ab_ladder_competition(source_event, selected_rows, title, pairing_me
         'advance_b': advance_b,
         'pairing_method': pairing_method,
         # ทีมที่ไม่ต้องแข่งต่อหลัง Swiss เช่น อันดับ 1-2 ให้ถือว่าเข้ารอบ/ได้ลำดับก่อน A/B
+        'regional64_ladder': bool(special_mode == 'regional64_ladder'),
         'direct_qualified': [
             {
                 'rank': idx,
@@ -4581,7 +4990,7 @@ def create_playoff_next_round(playoff_id):
     if view['competition'].get('competition_type') == 'ab_ladder':
         next_type = 'ab_ladder'
     pairing_method = (request.form.get('pairing_method') or 'seed').strip()
-    if pairing_method not in {'seed', 'random', 'manual', 'bracket'}:
+    if pairing_method not in {'seed', 'random', 'manual', 'bracket', 'national_qualifier'}:
         pairing_method = 'seed'
     add_bye = request.form.get('add_bye') == '1'
     round_name = (request.form.get('round_name') or f"รอบที่ {_next_playoff_round_no(playoff_id)}").strip()
@@ -4591,19 +5000,45 @@ def create_playoff_next_round(playoff_id):
         if ab_state.get('all_finished'):
             flash('ระบบ A/B ถึงจำนวนตามกำหนดแล้ว จบการแข่งขันและใช้รายงานผลได้เลย', 'success')
             return redirect(url_for('playoff_detail', playoff_id=playoff_id) + '#report')
-        a_rows, b_rows = _ab_next_rows_for_creation(view, latest, pairing_method)
-        if len(a_rows) + len(b_rows) < 2:
-            flash('ระบบ A/B เหลือทีมไม่พอสร้างรอบต่อไปแล้ว ให้ดูผลเข้ารอบในรายงาน', 'info')
-            return redirect(url_for('playoff_detail', playoff_id=playoff_id) + '#report')
+        next_round_no = _next_playoff_round_no(playoff_id)
         try:
-            groups, meta = _ab_make_round_groups(a_rows, b_rows, pairing_method)
+            # ใช้ลอจิกคัดตัวแทนทีมชาติได้ 2 กรณี:
+            # 1) ถูกเลือกไว้ตั้งแต่สร้างเพลย์ออฟครั้งแรก
+            # 2) ผู้ใช้มาเลือก "ประกบคู่คัดตัวแทนทีมชาติ" ในหน้าสร้างรอบถัดไป
+            national_mode_now = _regional64_enabled(view) or pairing_method == 'national_qualifier'
+            national_size = _national_qualifier_size(view, force=national_mode_now)
+            if national_mode_now and national_size not in (48, 64):
+                raise ValueError('ประกบคู่คัดตัวแทนทีมชาติใช้ได้กับเพลย์ออฟ 64 ทีม หรือ 48 ทีมเท่านั้น')
+
+            if national_mode_now and not _regional64_round3_created(view) and next_round_no >= 2:
+                if national_size == 48:
+                    groups, meta = _make_national48_round3_groups(latest)
+                    round_name = 'รอบที่ 3 — คัดตัวแทนทีมชาติ 48 ทีม'
+                else:
+                    groups, meta = _make_regional64_round3_groups(latest)
+                    round_name = 'รอบที่ 3 — คัดตัวแทนทีมชาติ 64 ทีม'
+                a_rows, b_rows = [], [item for pair in groups for item in pair if item]
+            elif national_mode_now and national_size == 48 and not _national48_round4_created(view) and next_round_no >= 3:
+                groups, meta = _make_national48_round4_groups(latest)
+                a_rows, b_rows = [], [item for pair in groups for item in pair if item]
+                round_name = 'รอบที่ 4 — คัดตัวแทนทีมชาติ 48 ทีม'
+            elif national_mode_now and national_size == 64 and not _regional64_round4_created(view) and next_round_no >= 3:
+                groups, meta = _make_regional64_round4_groups(latest)
+                a_rows, b_rows = [], [item for pair in groups for item in pair if item]
+                round_name = 'รอบที่ 4 — คัดตัวแทนทีมชาติ 64 ทีม'
+            else:
+                a_rows, b_rows = _ab_next_rows_for_creation(view, latest, pairing_method)
+                if len(a_rows) + len(b_rows) < 2:
+                    flash('ระบบ A/B เหลือทีมไม่พอสร้างรอบต่อไปแล้ว ให้ดูผลเข้ารอบในรายงาน', 'info')
+                    return redirect(url_for('playoff_detail', playoff_id=playoff_id) + '#report')
+                groups, meta = _ab_make_round_groups(a_rows, b_rows, pairing_method)
+                meta.update({'a_team_count': len(a_rows), 'b_team_count': len(b_rows), 'round_kind': 'ab_ladder'})
+                if not round_name or round_name.startswith('รอบ '):
+                    round_name = f"A/B รอบที่ {next_round_no} — A {len(a_rows)} ทีม / B {len(b_rows)} ทีม"
         except ValueError as exc:
             flash(str(exc), 'warning')
             return redirect(url_for('playoff_detail', playoff_id=playoff_id))
-        meta.update({'a_team_count': len(a_rows), 'b_team_count': len(b_rows), 'round_kind': 'ab_ladder'})
-        if not round_name or round_name.startswith('รอบ '):
-            round_name = f"A/B รอบที่ {_next_playoff_round_no(playoff_id)} — A {len(a_rows)} ทีม / B {len(b_rows)} ทีม"
-        _create_playoff_round(playoff_id, _next_playoff_round_no(playoff_id), round_name, 'ab_ladder', groups, round_meta=meta)
+        _create_playoff_round(playoff_id, next_round_no, round_name, 'ab_ladder', groups, round_meta=meta)
         db.session.commit()
         socketio.emit('playoff_reload', {'playoff_id': playoff_id}, to=f'playoff_{playoff_id}')
         flash('สร้างรอบ A/B ต่อไปแล้ว', 'success')
