@@ -561,34 +561,68 @@ def manual_pairing(event_id, round_num):
                                unpaired=unpaired)
         
 
+
+def _ensure_speed_indexes():
+    """สร้าง index สำคัญแบบเร็วสำหรับฐานข้อมูลเดิม ช่วยหน้าแรก/หน้ารายการโหลดเร็วขึ้น"""
+    try:
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_events_date_id ON events(date, id)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches(event_id, round)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_locked ON matches(event_id, is_locked)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round_locked ON matches(event_id, round, is_locked)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+
 @app.route("/")
 def index():
+    """หน้าแรกแบบเร็ว: ไม่วน query match ทีละ event และไม่ render รายการทั้งหมดในหน้าเดียว"""
+    if not app.config.get("SPEED_INDEXES_READY"):
+        _ensure_speed_indexes()
+        app.config["SPEED_INDEXES_READY"] = True
     today = date.today()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = min(max(request.args.get("per_page", 20, type=int), 5), 50)
 
-    all_events = Event.query.order_by(Event.date.desc()).all()
+    # subquery หา event ที่ยังมี match ไม่ล็อกอยู่ = ยังแข่งขัน/ยังกรอกผลไม่ครบ
+    unfinished_event_ids = (
+        db.session.query(Match.event_id)
+        .filter(Match.is_locked.is_(False))
+        .distinct()
+        .subquery()
+    )
 
-    upcoming_events = []
+    upcoming_events = (
+        Event.query
+        .filter(Event.id.in_(db.session.query(unfinished_event_ids.c.event_id)))
+        .order_by(Event.date.asc(), Event.id.desc())
+        .limit(12)
+        .all()
+    )
+
+    # รายการที่จบแล้ว/ไม่มี match ค้าง แสดงแบบแบ่งหน้า
+    finished_query = (
+        Event.query
+        .filter(~Event.id.in_(db.session.query(unfinished_event_ids.c.event_id)))
+        .order_by(Event.date.desc(), Event.id.desc())
+    )
+    finished_pagination = finished_query.paginate(page=page, per_page=per_page, error_out=False)
+    finished_events = finished_pagination.items
+
     finished_events_by_year = defaultdict(list)
-
-    for event in all_events:
-        latest_round = db.session.query(db.func.max(Match.round)).filter(Match.event_id == event.id).scalar()
-        matches = Match.query.filter_by(event_id=event.id, round=latest_round).all()
-
-        is_finished = all(m.is_locked for m in matches) if matches else False
-
-        if not is_finished:
-            upcoming_events.append(event)
-        else:
-            finished_events_by_year[event.date.year].append(event)
-
-    # เรียงปีจากใหม่ -> เก่า
+    for event in finished_events:
+        year = event.date.year if event.date else "-"
+        finished_events_by_year[year].append(event)
     finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
 
     return render_template(
         "index.html",
-        upcoming_events=sorted(upcoming_events, key=lambda e: e.date),
+        upcoming_events=upcoming_events,
         finished_events_by_year=finished_events_by_year,
-        events=upcoming_events + [e for year in finished_events_by_year.values() for e in year]  # รวมรายการทั้งหมด
+        finished_pagination=finished_pagination,
+        per_page=per_page,
+        events=upcoming_events + finished_events
     )
 
     

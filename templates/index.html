@@ -258,7 +258,26 @@
     </table>
   </div>
 
-  <h5 class="mb-3">รายการแข่งขันที่จบแล้ว</h5>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="mb-1">รายการแข่งขันที่จบแล้ว</h5>
+      {% if finished_pagination %}
+      <div class="text-muted small">
+        แสดง {{ finished_pagination.items|length }} รายการในหน้านี้ จากทั้งหมด {{ finished_pagination.total }} รายการ
+      </div>
+      {% endif %}
+    </div>
+    {% if finished_pagination and finished_pagination.pages > 1 %}
+    <form method="get" class="d-flex align-items-center gap-2">
+      <label class="text-muted small mb-0">ต่อหน้า</label>
+      <select name="per_page" class="form-select form-select-sm" style="width:90px" onchange="this.form.submit()">
+        {% for n in [10, 20, 30, 50] %}
+        <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
   {% if finished_events_by_year %}
   {% for year, events_in_year in finished_events_by_year.items() %}
   <h6 class="mt-4">{{ year }}</h6>
@@ -305,6 +324,30 @@
   {% endfor %}
   {% else %}
   <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
+  {% endif %}
+
+  {% if finished_pagination and finished_pagination.pages > 1 %}
+  <nav aria-label="finished events pagination" class="my-4">
+    <ul class="pagination justify-content-center flex-wrap">
+      <li class="page-item {% if not finished_pagination.has_prev %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('index', page=finished_pagination.prev_num, per_page=per_page) if finished_pagination.has_prev else '#' }}">ก่อนหน้า</a>
+      </li>
+
+      {% for p in finished_pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+        <li class="page-item {% if p == finished_pagination.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('index', page=p, per_page=per_page) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+
+      <li class="page-item {% if not finished_pagination.has_next %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('index', page=finished_pagination.next_num, per_page=per_page) if finished_pagination.has_next else '#' }}">ถัดไป</a>
+      </li>
+    </ul>
+  </nav>
   {% endif %}
 
   <!-- Modal เพิ่มรายการใหม่ -->

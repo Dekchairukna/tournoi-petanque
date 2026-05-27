@@ -3,7 +3,7 @@ from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import text
+from sqlalchemy import text, Index
 
 db = SQLAlchemy()
 
@@ -43,6 +43,10 @@ class User(UserMixin, db.Model):
     
 class Event(db.Model):
     __tablename__ = "events"
+    __table_args__ = (
+        Index("ix_events_date_id", "date", "id"),
+        Index("ix_events_created_at", "created_at"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -80,6 +84,11 @@ class Team(db.Model):
 
 class Match(db.Model):
     __tablename__ = "matches"
+    __table_args__ = (
+        Index("ix_matches_event_round", "event_id", "round"),
+        Index("ix_matches_event_locked", "event_id", "is_locked"),
+        Index("ix_matches_event_round_locked", "event_id", "round", "is_locked"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False)
