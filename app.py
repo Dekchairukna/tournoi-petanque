@@ -2353,7 +2353,8 @@ def download_standings_excel(event_id):
     # ใช้ฟิลด์ category และ age_group ตามที่เราได้ตกลงกันไว้ใน models.py
     event_type_str = current_event.category if hasattr(current_event, 'category') and current_event.category else 'ไม่ระบุประเภท'
     event_category_str = current_event.age_group if hasattr(current_event, 'age_group') and current_event.age_group else 'ไม่ระบุรุ่น'
-    ws['A2'] = f"ประเภท: {event_type_str} | รุ่น: {event_category_str}"
+    event_sex_str = current_event.sex if hasattr(current_event, 'sex') and current_event.sex else 'ไม่ระบุเพศ'
+    ws['A2'] = f"ประเภท: {event_type_str}{event_sex_str} | รุ่น: {event_category_str}"
     ws['A2'].font = Font(size=12)
     ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
 
