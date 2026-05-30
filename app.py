@@ -561,68 +561,34 @@ def manual_pairing(event_id, round_num):
                                unpaired=unpaired)
         
 
-
-def _ensure_speed_indexes():
-    """สร้าง index สำคัญแบบเร็วสำหรับฐานข้อมูลเดิม ช่วยหน้าแรก/หน้ารายการโหลดเร็วขึ้น"""
-    try:
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_events_date_id ON events(date, id)"))
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches(event_id, round)"))
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_locked ON matches(event_id, is_locked)"))
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round_locked ON matches(event_id, round, is_locked)"))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-
-
-
 @app.route("/")
 def index():
-    """หน้าแรกแบบเร็ว: ไม่วน query match ทีละ event และไม่ render รายการทั้งหมดในหน้าเดียว"""
-    if not app.config.get("SPEED_INDEXES_READY"):
-        _ensure_speed_indexes()
-        app.config["SPEED_INDEXES_READY"] = True
     today = date.today()
-    page = max(1, request.args.get("page", 1, type=int))
-    per_page = min(max(request.args.get("per_page", 20, type=int), 5), 50)
 
-    # subquery หา event ที่ยังมี match ไม่ล็อกอยู่ = ยังแข่งขัน/ยังกรอกผลไม่ครบ
-    unfinished_event_ids = (
-        db.session.query(Match.event_id)
-        .filter(Match.is_locked.is_(False))
-        .distinct()
-        .subquery()
-    )
+    all_events = Event.query.order_by(Event.date.desc()).all()
 
-    upcoming_events = (
-        Event.query
-        .filter(Event.id.in_(db.session.query(unfinished_event_ids.c.event_id)))
-        .order_by(Event.date.asc(), Event.id.desc())
-        .limit(12)
-        .all()
-    )
-
-    # รายการที่จบแล้ว/ไม่มี match ค้าง แสดงแบบแบ่งหน้า
-    finished_query = (
-        Event.query
-        .filter(~Event.id.in_(db.session.query(unfinished_event_ids.c.event_id)))
-        .order_by(Event.date.desc(), Event.id.desc())
-    )
-    finished_pagination = finished_query.paginate(page=page, per_page=per_page, error_out=False)
-    finished_events = finished_pagination.items
-
+    upcoming_events = []
     finished_events_by_year = defaultdict(list)
-    for event in finished_events:
-        year = event.date.year if event.date else "-"
-        finished_events_by_year[year].append(event)
+
+    for event in all_events:
+        latest_round = db.session.query(db.func.max(Match.round)).filter(Match.event_id == event.id).scalar()
+        matches = Match.query.filter_by(event_id=event.id, round=latest_round).all()
+
+        is_finished = all(m.is_locked for m in matches) if matches else False
+
+        if not is_finished:
+            upcoming_events.append(event)
+        else:
+            finished_events_by_year[event.date.year].append(event)
+
+    # เรียงปีจากใหม่ -> เก่า
     finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
 
     return render_template(
         "index.html",
-        upcoming_events=upcoming_events,
+        upcoming_events=sorted(upcoming_events, key=lambda e: e.date),
         finished_events_by_year=finished_events_by_year,
-        finished_pagination=finished_pagination,
-        per_page=per_page,
-        events=upcoming_events + finished_events
+        events=upcoming_events + [e for year in finished_events_by_year.values() for e in year]  # รวมรายการทั้งหมด
     )
 
     
@@ -2319,6 +2285,10 @@ def event_standings(event_id):
     direct_rows = standings_data[:direct_advance_count]
     qualified_rows = standings_data[direct_advance_count:num_qualified_teams]
     eliminated_rows = standings_data[num_qualified_teams:]
+    ab_a_team_count = request.args.get('ab_a_team_count', type=int)
+    if ab_a_team_count is None:
+        ab_a_team_count = (continue_count // 2) if continue_count > 1 else min(1, continue_count)
+    ab_a_team_count = max(0, min(len(qualified_rows), int(ab_a_team_count or 0)))
 
     return render_template(
         'event_standings.html',
@@ -2330,6 +2300,7 @@ def event_standings(event_id):
         direct_advance_count=direct_advance_count,
         continue_count=continue_count,
         num_qualified_teams=num_qualified_teams,
+        ab_a_team_count=ab_a_team_count,
         active_playoffs=_active_playoffs_for_event(event_id),
     )
 
@@ -2344,6 +2315,9 @@ def download_standings_excel(event_id):
     legacy_qualified = request.args.get('num_qualified_teams', type=int, default=8)
     direct_advance_count = request.args.get('direct_advance_count', type=int, default=0)
     continue_count = request.args.get('continue_count', type=int, default=legacy_qualified)
+    ab_a_team_count = request.args.get('ab_a_team_count', type=int)
+    competition_type = request.args.get('competition_type', '')
+    show_ab_status = competition_type in ('ab_ladder', 'regional64_ladder')
     
     # ดึงข้อมูล Round ที่อาจจะส่งมา (ถ้ามี)
     # ถ้า 'round' ไม่ได้ถูกส่งมา, อาจจะถือว่าเป็นการดาวน์โหลดตารางคะแนนรวม
@@ -2354,6 +2328,9 @@ def download_standings_excel(event_id):
     direct_advance_count = max(0, min(total_rows, int(direct_advance_count or 0)))
     continue_count = max(0, min(total_rows - direct_advance_count, int(continue_count or 0)))
     num_qualified_teams = direct_advance_count + continue_count
+    if ab_a_team_count is None:
+        ab_a_team_count = (continue_count // 2) if continue_count > 1 else min(1, continue_count)
+    ab_a_team_count = max(0, min(continue_count, int(ab_a_team_count or 0)))
     
     # ถ้ามีการระบุ round ให้กรองข้อมูล (สำหรับตอนนี้ ยังคง pass ไว้)
     if requested_round:
@@ -2417,8 +2394,17 @@ def download_standings_excel(event_id):
             row_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
             status_text = f"ตัวแทนคนที่ {i}"
         elif i <= num_qualified_teams:
-            row_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
-            status_text = "เข้ารอบ"
+            ab_order = i - direct_advance_count
+            ab_zone = 'A' if ab_order <= ab_a_team_count else 'B'
+            if show_ab_status:
+                if ab_zone == 'A':
+                    row_fill = PatternFill(start_color="D7ECFF", end_color="D7ECFF", fill_type="solid")
+                else:
+                    row_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
+                status_text = f"เข้ารอบ กลุ่ม {ab_zone}"
+            else:
+                row_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
+                status_text = "เข้ารอบ"
         else:
             row_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
             status_text = "ตกรอบ"
@@ -2923,12 +2909,16 @@ def _row_to_seed_payload(row, seed=None):
 
 
 def _rows_for_pairing(selected_rows, pairing_method):
-    rows = [_row_to_seed_payload(row, idx) for idx, row in enumerate(selected_rows, start=1)]
+    # ถ้า row มี seed อยู่แล้ว (เช่น A/B ที่ B ต้องเริ่มต่อจาก A) ให้รักษา seed เดิมไว้
+    # ถ้าไม่มี seed ให้เริ่มนับ 1..N ตามลำดับที่ส่งเข้ามา
+    rows = []
+    for idx, row in enumerate(selected_rows, start=1):
+        existing_seed = _as_int(row.get('seed'), 0) if isinstance(row, dict) else 0
+        rows.append(_row_to_seed_payload(row, existing_seed or idx))
+
     if pairing_method == 'random':
+        # สุ่มตำแหน่ง แต่ไม่รีเซ็ตเลข seed เพื่อให้เลขลำดับบนใบพิมพ์ยังต่อเนื่อง
         random.shuffle(rows)
-        for idx, row in enumerate(rows, start=1):
-            row['seed'] = idx
-            row['rank'] = idx
     return rows
 
 
@@ -3105,17 +3095,39 @@ def _safe_json_loads(raw, default=None):
 
 
 def _ab_pair_groups(rows, pairing_method='seed'):
-    """จับคู่ในกลุ่ม A หรือ B แยกกัน: seed = ดีสุดพบท้ายสุด, random = สุ่ม, bracket = ติดกัน"""
-    rows = list(rows or [])
+    """จับคู่ในกลุ่ม A หรือ B โดยไม่รีเซ็ตเลข seed.
+
+    สำคัญสำหรับ A/B หลัง Swiss:
+    - A ใช้เลข 1..N
+    - B ต้องใช้เลขต่อจาก A เช่น 9..16, 17..32
+    ฟังก์ชันเดิมไปเรียก _playoff_knockout_groups() แล้วถูกนับใหม่เป็น 1..N
+    จึงทำให้ B ออกเป็น 1 vs 8 ซ้ำกับ A; ฟังก์ชันนี้จะรักษา seed เดิมไว้เสมอ
+    """
+    rows = [dict(r) for r in (rows or [])]
     if not rows:
         return []
-    if len(rows) == 1:
-        return [[rows[0], None]]
+
     method = pairing_method if pairing_method in {'seed', 'random', 'bracket'} else 'seed'
-    try:
-        return _playoff_knockout_groups(rows, method, add_bye=(len(rows) % 2 == 1))
-    except ValueError:
-        return _playoff_knockout_groups(rows, method, add_bye=True)
+    if method == 'random':
+        random.shuffle(rows)
+    else:
+        rows.sort(key=lambda r: (_as_int(r.get('seed'), 0), _as_int(r.get('rank'), 0), r.get('team_name') or ''))
+
+    if len(rows) % 2 == 1:
+        rows.append(None)
+
+    if method == 'bracket' or method == 'random':
+        return _adjacent_bracket_pairs(rows)
+
+    # seed: ดีสุดพบลำดับท้ายสุดภายในกลุ่ม โดยเลข seed ยังเป็นเลขต่อเนื่องจริง
+    raw_pairs = []
+    n = len(rows)
+    for i in range(n // 2):
+        raw_pairs.append([rows[i], rows[n - 1 - i]])
+
+    order = _pair_order_for_bracket(len(raw_pairs))
+    by_no = {idx + 1: pair for idx, pair in enumerate(raw_pairs)}
+    return [by_no[i] for i in order if i in by_no]
 
 
 def _ab_make_round_groups(a_rows, b_rows, pairing_method='seed'):
@@ -4519,15 +4531,26 @@ def _playoff_match_table_rows(playoff_id, round_id=None, group_no=None):
             if round_type == 'ab_ladder':
                 group_label = _ab_group_zone(rv, this_group_no)
 
+            # เลขผู้เข้ารอบบนใบพิมพ์ต้องเดินต่อกันทั้งระบบ
+            # - knockout / ab_ladder: 1 สาย = ผู้เข้ารอบ 1 ทีม จึงใช้เลขเดียวกับเลขสายรวม
+            # - double_knockout: 1 สาย = ผู้เข้ารอบ 2 ทีม จึงใช้เลขคู่ต่อเนื่อง 1-2, 3-4, ...
+            if round_type == 'double_knockout':
+                qualified_numbers = [((this_group_no - 1) * 2) + 1, ((this_group_no - 1) * 2) + 2]
+            else:
+                qualified_numbers = [this_group_no]
+
             tables.append({
                 'round_id': int(rnd['id']),
                 'round_name': rnd.get('round_name') or '',
                 'round_type': round_type,
                 'system_label': _playoff_system_label(round_type),
+                # ใช้เลขสายจริงแบบต่อเนื่อง ไม่รีเซ็ตเมื่อเปลี่ยน A/B
                 'group_no': this_group_no,
 
-                # ✅ ส่งไปให้ playoff_match_tables.html ใช้แสดง กลุ่ม A / กลุ่ม B
+                # ส่งไปให้ playoff_match_tables.html ใช้แสดง กลุ่ม A / กลุ่ม B
                 'group_label': group_label,
+                # ใช้เลขทีมที่เข้ารอบแบบต่อเนื่อง ไม่ให้กลุ่ม B กลับไปเริ่ม 1
+                'qualified_numbers': qualified_numbers,
 
                 'max_stage': max_stage,
                 'slots': slots,

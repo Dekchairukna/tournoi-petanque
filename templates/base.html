@@ -103,16 +103,6 @@
   border-radius: 999px;
   font-weight: 600;
 }
-
-.app-global-footer {
-  margin-top: 2.5rem;
-  padding: 1rem 0.75rem;
-  text-align: center;
-  font-size: clamp(0.72rem, 1vw, 0.9rem);
-  color: #6b7280;
-  border-top: 1px solid #e5e7eb;
-  background: rgba(255, 255, 255, 0.85);
-}
   </style>
 </head>
 
@@ -213,11 +203,6 @@
     <!-- Content from other templates will be inserted here -->
     {% endblock %}
   </div>
-
-  <footer class="app-global-footer">
-    © Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT JARUPARNITKUL(M.D.)
-  </footer>
-
 <script>
     window.APP_LANG = {{ current_lang|tojson }};
     window.APP_TEXT_TRANSLATIONS = {{ text_translations|tojson }};

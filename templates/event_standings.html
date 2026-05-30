@@ -27,6 +27,20 @@
     background-color: #d4edda !important;
     color: #155724 !important;
   }
+  .table tr.team-ab-a, .table tr.team-ab-a > th, .table tr.team-ab-a > td,
+  .table td.team-ab-a, .table th.team-ab-a {
+    --bs-table-bg: #d7ecff !important;
+    --bs-table-color: #084298 !important;
+    background-color: #d7ecff !important;
+    color: #084298 !important;
+  }
+  .table tr.team-ab-b, .table tr.team-ab-b > th, .table tr.team-ab-b > td,
+  .table td.team-ab-b, .table th.team-ab-b {
+    --bs-table-bg: #d4edda !important;
+    --bs-table-color: #155724 !important;
+    background-color: #d4edda !important;
+    color: #155724 !important;
+  }
   .table tr.team-eliminated, .table tr.team-eliminated > th, .table tr.team-eliminated > td,
   .table td.team-eliminated, .table th.team-eliminated {
     --bs-table-bg: #f8d7da !important;
@@ -40,6 +54,7 @@
   .status-direct { background:#ffe08a; color:#664d03; }
   .status-qualified { background:#bfe8ca; color:#0f5132; }
   .status-eliminated { background:#f1b8bd; color:#842029; }
+  .status-plain { font-weight:800; white-space:nowrap; background:transparent !important; color:inherit !important; padding:0; border-radius:0; }
   .team-group-card { border-radius:16px; overflow:hidden; border:1px solid #dee2e6; }
   .team-group-card .card-header { font-weight:800; }
   .team-check-row { cursor:pointer; }
@@ -76,14 +91,14 @@
           <input type="number" id="direct_advance_count" name="direct_advance_count" class="form-control" min="0" max="{{ standings|length }}" value="{{ direct_advance_count }}" style="width: 120px;">
         </div>
         <div class="col-auto">
-          <label for="continue_count" class="form-label">อันดับถัดไปจัดแข่งต่อ</label>
+          <label for="continue_count" class="form-label">อันดับถัดไปเข้ารอบ</label>
           <input type="number" id="continue_count" name="continue_count" class="form-control" min="0" max="{{ standings|length }}" value="{{ continue_count }}" style="width: 120px;">
         </div>
         <div class="col-auto">
           <button type="submit" class="btn btn-secondary">แบ่งกลุ่มตามอันดับ</button>
         </div>
         <div class="col-auto text-muted small">
-          สีเหลือง = เข้ารอบอัตโนมัติ, สีเขียว = เอาไปจัดแข่งต่อ, สีแดง = ตกรอบ
+          สีพื้นตาราง: กลุ่ม A = ฟ้า, กลุ่ม B = เขียว, ตกรอบ = แดง (แสดง A/B เฉพาะเมื่อเลือกระบบ A/B)
         </div>
       </form>
     </div>
@@ -93,7 +108,7 @@
   <div id="standingsTable" class="standing-report-box p-3 mb-4 text-center">
     <h3 class="mb-1">{{ event.name }}</h3>
     <h5 class="mb-1">ประเภท: {{ event.category }} | เพศ: {{ event.sex }} | รุ่นอายุ: {{ event.age_group }}</h5>
-    <p class="mb-3">เข้ารอบอัตโนมัติ: <strong>{{ direct_advance_count }}</strong> ทีม | จัดแข่งต่อ: <strong>{{ continue_count }}</strong> ทีม | ตกรอบ: <strong>{{ eliminated_rows|length }}</strong> ทีม</p>
+    <p class="mb-3">เข้ารอบอัตโนมัติ: <strong>{{ direct_advance_count }}</strong> ทีม | เข้ารอบ: <strong>{{ continue_count }}</strong> ทีม | ตกรอบ: <strong>{{ eliminated_rows|length }}</strong> ทีม</p>
     <div class="table-responsive">
       <table class="table table-bordered table-sm align-middle text-center mb-0">
         <thead class="table-light">
@@ -110,7 +125,7 @@
         <tbody>
                             {% for team in standings %}
                             {% set row_class = 'team-direct' if loop.index <= direct_advance_count|int else ('team-qualified' if loop.index <= num_qualified_teams|int else 'team-eliminated') %}
-                            <tr class="{{ row_class }}" style="font-weight: bold">
+                            <tr class="standing-row {{ row_class }}" data-rank="{{ loop.index }}" data-ab-order="{% if loop.index > direct_advance_count|int and loop.index <= num_qualified_teams|int %}{{ loop.index - direct_advance_count }}{% endif %}" style="font-weight: bold">
                                 <td>{{ loop.index }}</td>
                                 <td class="{{ row_class }}" style="font-weight: bold">{{ team.team_name }}</td>
                                 <td class="{{ row_class }}" style="font-weight: bold">{{ team.score }}</td>
@@ -119,11 +134,11 @@
                                 <td class="{{ row_class }}" style="font-weight: bold">{{ team.point_for }} : {{ team.point_against }}</td>
                                 <td class="{{ row_class }}">
                                   {% if loop.index <= direct_advance_count|int %}
-                                    <span class="status-badge status-direct">ตัวแทนคนที่ {{ loop.index }}</span>
+                                    <span class="status-plain">ตัวแทนคนที่ {{ loop.index }}</span>
                                   {% elif loop.index <= num_qualified_teams|int %}
-                                    <span class="status-badge status-qualified">จัดแข่งต่อ</span>
+                                    <span class="status-plain standing-status" data-ab-order="{{ loop.index - direct_advance_count }}">เข้ารอบ</span>
                                   {% else %}
-                                    <span class="status-badge status-eliminated">ตกรอบ</span>
+                                    <span class="status-plain">ตกรอบ</span>
                                   {% endif %}
                                 </td>
                             </tr>
@@ -137,7 +152,7 @@
     <input type="hidden" name="num_qualified_teams" value="{{ num_qualified_teams }}">
     <input type="hidden" name="direct_advance_count" value="{{ direct_advance_count }}">
     <input type="hidden" name="continue_count" value="{{ continue_count }}">
-    <div class="card-header bg-success text-white fw-bold">2) เลือกทีมที่จะนำไปจัดแข่งต่อ</div>
+    <div class="card-header bg-success text-white fw-bold">2) เลือกทีมเข้ารอบ</div>
     <div class="card-body">
       <div class="row g-3">
         <div class="col-lg-4">
@@ -170,7 +185,7 @@
         <div class="col-lg-4">
           <div class="card team-group-card h-100">
             <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-              <span>กลุ่มจัดแข่งต่อ {{ qualified_rows|length }} ทีม</span>
+              <span>กลุ่มเข้ารอบ {{ qualified_rows|length }} ทีม</span>
               <div>
                 <button type="button" class="btn btn-light btn-sm" onclick="toggleGroup('qualified', true)">เลือกทั้งหมด</button>
                 <button type="button" class="btn btn-outline-light btn-sm" onclick="toggleGroup('qualified', false)">ล้าง</button>
@@ -178,17 +193,18 @@
             </div>
             <div class="table-responsive">
               <table class="table table-sm table-hover mb-0">
-                <thead><tr><th width="55">เลือก</th><th width="80">อันดับ</th><th>ทีม</th><th width="80">score</th></tr></thead>
+                <thead><tr><th width="55">เลือก</th><th width="80">อันดับ</th><th width="90">กลุ่ม</th><th>ทีม</th><th width="80">score</th></tr></thead>
                 <tbody>
                   {% for team in qualified_rows %}
                   <tr class="team-qualified team-check-row" onclick="toggleRowCheckbox(this)">
                     <td><input class="form-check-input team-check qualified-check" type="checkbox" name="team_ids" value="{{ team.team_id }}" checked onclick="event.stopPropagation()"></td>
                     <td>{{ loop.index + direct_advance_count }}</td>
+                    <td><span class="status-plain ab-preview-badge" data-ab-order="{{ loop.index }}">เข้ารอบ</span></td>
                     <td class="fw-bold">{{ team.team_name }}</td>
                     <td>{{ team.score }}</td>
                   </tr>
                   {% else %}
-                  <tr><td colspan="4" class="text-muted">ไม่มีทีมเข้ารอบ</td></tr>
+                  <tr><td colspan="5" class="text-muted">ไม่มีทีมเข้ารอบ</td></tr>
                   {% endfor %}
                 </tbody>
               </table>
@@ -296,11 +312,11 @@
             <label class="form-label fw-bold">ตั้งค่าระบบ A/B</label>
             <div class="row g-2">
               <div class="col-12">
-                <small class="text-muted">ตัวอย่าง: เลือกเข้ารอบ 20 ทีม → ตั้งเข้า A 10 ทีม → ที่เหลือเข้า B</small>
+                <small class="text-muted">ตัวอย่าง: เลือกเข้ารอบ 20 ทีม → ตั้งเข้า A 10 ทีม → ที่เหลือเข้า B ระบบจะแสดงกลุ่ม A/B ให้เห็นทันทีและส่งต่อไปใบพิมพ์</small>
               </div>
               <div class="col-4">
                 <label class="form-label small">เข้า A กี่ทีม</label>
-                <input type="number" class="form-control" name="ab_a_team_count" min="1" max="{{ standings|length }}" value="{{ (continue_count // 2) if continue_count > 1 else 1 }}">
+                <input type="number" class="form-control" id="abATeamCount" name="ab_a_team_count" min="0" max="{{ continue_count }}" value="{{ ab_a_team_count }}">
               </div>
               <div class="col-4">
                 <label class="form-label small">ประกาศผล A เข้ากี่ทีม</label>
@@ -321,7 +337,7 @@
       </div>
     </div>
     <div class="sticky-action-box d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="text-muted">ระบบจะใช้ทีมสีเขียวที่ติ๊กเลือก และจะรวมทีมสีเหลืองด้วยเฉพาะเมื่อเลือก “เอาทีมที่เข้ารอบอัตโนมัติไปจัดแข่งเพลย์ออฟต่อด้วย”</div>
+      <div class="text-muted">ระบบจะใช้ทีมสีเขียวที่ติ๊กเลือกเป็นทีมเข้ารอบ และจะรวมทีมสีเหลืองด้วยเฉพาะเมื่อเลือก “เอาทีมที่เข้ารอบอัตโนมัติไปจัดแข่งเพลย์ออฟต่อด้วย”</div>
       <button type="submit" class="btn btn-success btn-lg" onclick="return confirm('ยืนยันสร้างรอบ/ระบบแข่งขันถัดไปจากทีมที่เลือกใช่หรือไม่?')">สร้างรอบถัดไป</button>
     </div>
   </form>
@@ -407,10 +423,48 @@
       if (!competitionType) return;
       if (abSettingsBox) abSettingsBox.style.display = (competitionType.value === 'ab_ladder' || competitionType.value === 'regional64_ladder') ? '' : 'none';
       if (swissRoundsBox) swissRoundsBox.style.display = competitionType.value === 'swiss' ? '' : 'none';
+      updateAbPreviewBadges();
     }
     if (competitionType) {
       competitionType.addEventListener('change', refreshSystemOptionBoxes);
       refreshSystemOptionBoxes();
+    }
+
+    function isAbCompetitionSelected() {
+      const value = competitionType?.value || '';
+      return value === 'ab_ladder' || value === 'regional64_ladder';
+    }
+
+    function updateAbPreviewBadges() {
+      const input = document.getElementById('abATeamCount');
+      const aCount = Math.max(0, parseInt(input?.value || '{{ ab_a_team_count }}', 10) || 0);
+      const showAb = isAbCompetitionSelected();
+
+      document.querySelectorAll('.standing-row[data-ab-order]').forEach(row => {
+        const order = parseInt(row.dataset.abOrder || '0', 10) || 0;
+        row.classList.remove('team-ab-a', 'team-ab-b');
+        if (showAb && order > 0) {
+          row.classList.remove('team-qualified');
+          row.classList.add(order <= aCount ? 'team-ab-a' : 'team-ab-b');
+        } else if (order > 0) {
+          row.classList.add('team-qualified');
+        }
+      });
+
+      document.querySelectorAll('.standing-status[data-ab-order], .ab-preview-badge[data-ab-order]').forEach(el => {
+        const order = parseInt(el.dataset.abOrder || '0', 10) || 0;
+        if (!order) return;
+        if (showAb) {
+          el.textContent = order <= aCount ? 'เข้ารอบ กลุ่ม A' : 'เข้ารอบ กลุ่ม B';
+        } else {
+          el.textContent = 'เข้ารอบ';
+        }
+      });
+    }
+    const abATeamCountInput = document.getElementById('abATeamCount');
+    if (abATeamCountInput) {
+      abATeamCountInput.addEventListener('input', updateAbPreviewBadges);
+      updateAbPreviewBadges();
     }
 
     const downloadExcelButton = document.getElementById('downloadExcel');
@@ -418,7 +472,9 @@
       downloadExcelButton.addEventListener('click', function () {
         const direct = document.getElementById('direct_advance_count')?.value || {{ direct_advance_count }};
         const cont = document.getElementById('continue_count')?.value || {{ continue_count }};
-        window.location.href = "{{ url_for('download_standings_excel', event_id=event.id) }}" + `?direct_advance_count=${direct}&continue_count=${cont}`;
+        const abA = document.getElementById('abATeamCount')?.value || {{ ab_a_team_count }};
+        const compType = document.getElementById('competitionType')?.value || '';
+        window.location.href = "{{ url_for('download_standings_excel', event_id=event.id) }}" + `?direct_advance_count=${direct}&continue_count=${cont}&ab_a_team_count=${abA}&competition_type=${encodeURIComponent(compType)}`;
       });
     }
   });

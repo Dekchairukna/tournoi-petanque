@@ -747,13 +747,12 @@
 
         <div class="qualified-row">
           <span>{% if tbl.round_type == 'ab_ladder' %}ทีมที่เข้ารอบ{% if ab_group %}กลุ่ม {{ ab_group }}{% endif %}{% else %}ทีมที่เข้ารอบ{% endif %}</span>
-          <span>1.</span>
-          <span class="dot-line"></span>
 
-          {% if tbl.round_type == 'double_knockout' %}
-            <span>2.</span>
+          {% set qnums = tbl.qualified_numbers if tbl.qualified_numbers is defined and tbl.qualified_numbers else [1] %}
+          {% for qno in qnums %}
+            <span>{{ qno }}.</span>
             <span class="dot-line"></span>
-          {% endif %}
+          {% endfor %}
         </div>
       </div>
     {% else %}
