@@ -4882,6 +4882,10 @@ def playoff_print_report(playoff_id):
     qualified_ids = [t.get('id') for t in source_teams]
     source_status_map = _playoff_source_status_map(view, qualified_ids)
     source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids, source_status_map)
+    report_type = (request.args.get('section') or 'all').strip().lower()
+    allowed_report_types = {'all', 'summary', 'standings', 'swiss', 'playoff', 'final'}
+    if report_type not in allowed_report_types:
+        report_type = 'all'
     return render_template(
         'playoff_print_report.html',
         view=view,
@@ -4890,6 +4894,7 @@ def playoff_print_report(playoff_id):
         source_report=source_report,
         playoff_report_pages=_playoff_round_report_pages(view),
         final_ranking_preview=_final_ranking_preview(view),
+        report_type=report_type,
     )
 
 

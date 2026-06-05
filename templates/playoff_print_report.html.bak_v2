@@ -6,9 +6,9 @@
   <style>
     :root{
       --ink:#111827;--muted:#64748b;--line:#111827;--soft:#f8fafc;
-      --green:#5f9f74;--green-soft:#e8f6ec;--yellow-soft:#fff4cf;
-      --red:#cf6f6f;--red-soft:#fdecec;--blue:#6f91d8;--blue-soft:#edf3ff;
-      --purple:#9b7ad1;--purple-soft:#f4effc;
+      --green:#15803d;--green-soft:#dcfce7;--yellow-soft:#fef3c7;
+      --red:#b91c1c;--red-soft:#fee2e2;--blue:#1d4ed8;--blue-soft:#dbeafe;
+      --purple:#7e22ce;--purple-soft:#f3e8ff;
     }
     *{box-sizing:border-box}
     body{margin:0;background:#eef2f7;color:var(--ink);font-family:Tahoma,"Sarabun","TH Sarabun New",Arial,sans-serif}
@@ -22,27 +22,22 @@
     .report-page:last-child{page-break-after:auto;break-after:auto}
     .report-header{text-align:center;margin-bottom:14px}.report-header h1{font-size:25px;line-height:1.12;margin:0;font-weight:900}.report-header h2{font-size:19px;line-height:1.2;margin:5px 0 0;font-weight:900}.report-header .meta{font-size:14px;font-weight:700;margin-top:6px;color:#334155}
     .section-title{font-size:21px;font-weight:900;text-align:center;margin:10px 0 12px}.sub-title{font-size:16px;font-weight:900;margin:12px 0 7px}.note{font-size:12px;color:#475569}.report-note{white-space:pre-wrap;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin:10px 0}
-    .summary-banner{margin:16px auto 14px;max-width:680px;padding:9px 16px;border-radius:999px;background:linear-gradient(90deg,#7eb98e,#5f9f74);color:#fff;text-align:center;font-size:20px;font-weight:900}
+    .summary-banner{margin:16px auto 14px;max-width:680px;padding:9px 16px;border-radius:999px;background:linear-gradient(90deg,#166534,#15803d);color:#fff;text-align:center;font-size:20px;font-weight:900}
     .team-list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 18px;font-size:15px;line-height:1.28}.team-list-grid .no{display:inline-block;width:28px;font-weight:900;text-align:right;margin-right:7px}
-    .report-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:8px 0 15px}.report-table th,.report-table td{border:1px solid #111827;padding:5px 7px;font-size:12px;vertical-align:middle}.report-table th{background:#7eb98e;color:#fff;text-align:center;font-weight:900}.report-table td{text-align:center}.report-table td.team{text-align:left;font-weight:700}.standing-table th:nth-child(1){width:8%}.standing-table th:nth-child(2){width:31%}.standing-table th:nth-child(3){width:8%}.standing-table th:nth-child(4),.standing-table th:nth-child(5){width:9%}.standing-table th:nth-child(6){width:13%}.standing-table th:nth-child(7){width:22%}
+    .report-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:8px 0 15px}.report-table th,.report-table td{border:1px solid #111827;padding:5px 7px;font-size:12px;vertical-align:middle}.report-table th{background:#16a34a;color:#fff;text-align:center;font-weight:900}.report-table td{text-align:center}.report-table td.team{text-align:left;font-weight:700}.standing-table th:nth-child(1){width:8%}.standing-table th:nth-child(2){width:31%}.standing-table th:nth-child(3){width:8%}.standing-table th:nth-child(4),.standing-table th:nth-child(5){width:9%}.standing-table th:nth-child(6){width:13%}.standing-table th:nth-child(7){width:22%}
     .report-direct td{background:var(--yellow-soft)!important}.report-qualified td{background:var(--green-soft)!important}.report-eliminated td{background:var(--red-soft)!important}
-    .swiss-table th{background:#7aaeb2}.swiss-table th:nth-child(1){width:10%}.swiss-table th:nth-child(2),.swiss-table th:nth-child(3){width:27%}.swiss-table th:nth-child(4){width:14%}.swiss-table th:nth-child(5){width:22%}
+    .swiss-table th{background:#0f766e}.swiss-table th:nth-child(1){width:10%}.swiss-table th:nth-child(2),.swiss-table th:nth-child(3){width:27%}.swiss-table th:nth-child(4){width:14%}.swiss-table th:nth-child(5){width:22%}
     .round-page .round-meta{text-align:center;font-size:13px;color:#475569;font-weight:700;margin:-5px 0 12px}
-    .match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;align-items:start}
-    .match-card{border:1.2px solid #64748b;background:#fff;break-inside:avoid;page-break-inside:avoid;overflow:hidden}
-    .match-card.ab-a{border-top:5px solid #7eb98e}.match-card.ab-b{border-top:5px solid #df9a9a}.match-card.double{border-top:5px solid #b49add}.match-card.knockout{border-top:5px solid #93afe8}
-    .match-head{display:grid;grid-template-columns:25% 53% 22%;gap:0;border-bottom:1px solid #94a3b8;background:#f8fafc;font-size:12px;font-weight:900}
-    .match-head div{padding:6px 7px;min-width:0}.match-head div+div{border-left:1px solid #94a3b8}.match-head-result{text-align:center;display:flex;align-items:center;justify-content:center}
-    .match-card.ab-a .match-head{background:#eef8f0}.match-card.ab-b .match-head{background:#fff1f1}.match-card.double .match-head{background:#f7f2fd}.match-card.knockout .match-head{background:#f1f5ff}
-    .match-label{font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .match-body{display:grid;grid-template-columns:78% 22%}.match-team{padding:7px 8px;font-size:12px;font-weight:800;border-bottom:1px solid #cbd5e1;background:#fff}.match-score{padding:7px 4px;text-align:center;font-size:15px;font-weight:900;border-left:1px solid #94a3b8;border-bottom:1px solid #cbd5e1;background:#fbfdff}.match-body>:nth-last-child(-n+2){border-bottom:0}.winner{color:#d84f4f;background:#fff2f2}.match-result{padding:6px 8px;border-top:1px solid #94a3b8;background:#f8fafc;font-size:11px}.match-result b{color:#4c8b61}
-    .final-card{max-width:760px;margin:20px auto;border:1.5px solid #8da7d8;border-radius:8px;overflow:hidden}.final-card table{margin:0}.final-card th{background:#8eaaf3}.final-card td{font-size:15px;padding:10px;background:#f8fbff}.final-card tbody tr:nth-child(even) td{background:#eef4ff}.final-card td:first-child{width:38%;font-weight:900}.final-card td:last-child{text-align:left;font-weight:900}
+    .match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;align-items:start}.match-card{border:1.4px solid #111827;background:#fff;break-inside:avoid;page-break-inside:avoid}.match-card.ab-a{border-top:5px solid #15803d}.match-card.ab-b{border-top:5px solid #b91c1c}.match-card.double{border-top:5px solid #7e22ce}.match-card.knockout{border-top:5px solid #1d4ed8}
+    .match-head{display:grid;grid-template-columns:26% 1fr;gap:0;border-bottom:1px solid #111827;background:#f8fafc;font-size:12px;font-weight:900}.match-head div{padding:5px 7px}.match-head div+div{border-left:1px solid #111827}.match-label{font-size:11px;color:#475569;margin-top:2px}
+    .match-body{display:grid;grid-template-columns:1fr 58px}.match-team{padding:6px 8px;font-size:12px;font-weight:800;border-bottom:1px solid #111827}.match-score{padding:6px 4px;text-align:center;font-size:15px;font-weight:900;border-left:1px solid #111827;border-bottom:1px solid #111827}.match-body>:nth-last-child(-n+2){border-bottom:0}.winner{color:#dc2626}.match-result{padding:5px 7px;border-top:1px solid #111827;background:#f8fafc;font-size:11px}.match-result b{color:#166534}
+    .final-card{max-width:760px;margin:20px auto;border:2px solid #111827}.final-card table{margin:0}.final-card th{background:#1d4ed8}.final-card td{font-size:15px;padding:9px}.final-card td:first-child{width:28%;font-weight:900}.final-card td:last-child{text-align:left;font-weight:900}
     .page-footer{margin-top:12px;padding-top:6px;border-top:1px solid #cbd5e1;font-size:10px;color:#64748b;text-align:right}
     .empty{padding:18px;border:1px dashed #94a3b8;text-align:center;color:#64748b}
     @media print{
       @page{size:A4 portrait;margin:8mm}
       body{background:#fff}.toolbar{display:none!important}.print-wrap{max-width:none;margin:0}.report-page{box-shadow:none;margin:0;padding:0;min-height:auto}
-      .report-table th,.report-table td,.report-direct td,.report-qualified td,.report-eliminated td,.summary-banner,.match-card,.match-head,.match-score,.match-result,.final-card td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .report-table th,.report-table td,.report-direct td,.report-qualified td,.report-eliminated td,.summary-banner,.match-card,.match-result{-webkit-print-color-adjust:exact;print-color-adjust:exact}
     }
   </style>
 </head>
@@ -55,7 +50,7 @@
     <div class="toolbar-actions">
       <select id="section-select" onchange="window.location.href=this.value">
         <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='all') }}" {% if report_type == 'all' %}selected{% endif %}>รายงานทั้งหมด</option>
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='summary') }}" {% if report_type == 'summary' %}selected{% endif %}>รายชื่อนักกีฬา / ทีมทั้งหมด</option>
+        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='summary') }}" {% if report_type == 'summary' %}selected{% endif %}>รายชื่อผู้ผ่านการคัดเลือก</option>
         <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='standings') }}" {% if report_type == 'standings' %}selected{% endif %}>ตาราง Standing</option>
         <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='swiss') }}" {% if report_type == 'swiss' %}selected{% endif %}>ผลรอบแรก Swiss</option>
         <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='playoff') }}" {% if report_type == 'playoff' %}selected{% endif %}>รายงาน A/B หรือเพลย์ออฟ</option>
@@ -77,16 +72,16 @@
   <main class="print-wrap">
     {% if report_type in ['all','summary'] %}
     <section class="report-page">
-      {{ header('รายชื่อนักกีฬา / ทีมทั้งหมด') }}
+      {{ header('รายชื่อผู้ได้รับคัดเลือกเป็นตัวแทน') }}
       {% if view.competition.report_note %}<div class="report-note">{{ view.competition.report_note }}</div>{% endif %}
-      {% set summary_rows = source_report.teams if source_report and source_report.teams else source_teams %}
-      <div class="summary-banner">รายชื่อนักกีฬา / ทีมทั้งหมด {{ summary_rows|length }} คน / ทีม</div>
+      {% set summary_rows = final_ranking_preview if final_ranking_preview else source_teams %}
+      <div class="summary-banner">รายชื่อผู้ได้รับคัดเลือก {{ summary_rows|length }} คน / ทีม</div>
       <div class="team-list-grid">
         {% for team in summary_rows %}
           <div><span class="no">{{ loop.index }}.</span>{{ team.team_name if team.team_name is defined else team.name }}</div>
-        {% else %}<div class="empty">ยังไม่มีรายชื่อนักกีฬา / ทีม</div>{% endfor %}
+        {% else %}<div class="empty">ยังไม่มีรายชื่อผู้ผ่านการคัดเลือก</div>{% endfor %}
       </div>
-      <div class="page-footer">รายชื่อนักกีฬา / ทีมทั้งหมด</div>
+      <div class="page-footer">รายงานรายชื่อผู้ผ่านการคัดเลือก</div>
     </section>
     {% endif %}
 
@@ -135,7 +130,6 @@
             <div class="match-head">
               <div>สาย {{ row.group_no }}</div>
               <div>{% if row.court %}สนาม {{ row.court }}{% else %}สนาม ........{% endif %}<div class="match-label">{{ row.label }}</div></div>
-              <div class="match-head-result">ผลการแข่งขัน</div>
             </div>
             {% set score_parts = row.score.split(' - ') %}
             <div class="match-body">
@@ -156,12 +150,12 @@
       {{ header('สรุปผลการแข่งขัน Final') }}
       <div class="final-card">
         <table class="report-table">
-          <thead><tr><th>{% if view.competition.competition_type == 'ab_ladder' %}ลำดับผู้ผ่านการคัดเลือก{% else %}อันดับ{% endif %}</th><th>ชื่อทีม / นักกีฬา</th></tr></thead>
+          <thead><tr><th>{% if view.competition.competition_type == 'ab_ladder' %}ลำดับผู้ผ่านการคัดเลือก{% else %}อันดับ{% endif %}</th><th>ชื่อทีม / นักกีฬา</th>{% if view.competition.competition_type == 'ab_ladder' %}<th>สาย</th>{% endif %}</tr></thead>
           <tbody>
           {% if final_ranking_preview %}
-            {% for row in final_ranking_preview %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td><td>{{ row.team_name }}</td></tr>{% endfor %}
+            {% for row in final_ranking_preview %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td><td>{{ row.team_name }}</td>{% if view.competition.competition_type == 'ab_ladder' %}<td>สาย {{ row.group_no or '-' }}</td>{% endif %}</tr>{% endfor %}
           {% else %}
-            {% for n in range(1,5) %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ {{ n }}{% else %}อันดับ {{ n }}{% endif %}</td><td>................................................................................</td></tr>{% endfor %}
+            {% for n in range(1,5) %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ {{ n }}{% else %}อันดับ {{ n }}{% endif %}</td><td>................................................................................</td>{% if view.competition.competition_type == 'ab_ladder' %}<td></td>{% endif %}</tr>{% endfor %}
           {% endif %}
           </tbody>
         </table>
