@@ -13,6 +13,9 @@
   {% endfor %}
 
   <style>
+    /* =========================================================
+       1) PAGE & BASE STYLES
+       ========================================================= */
     @page {
       size: A4 {{ 'landscape' if ns.is_double and per_page != 2 else 'portrait' }};
       margin: 4mm;
@@ -68,7 +71,7 @@
       page-break-after: always;
       break-after: page;
       display: grid;
-      gap: {{ '1.5mm' if ns.is_double else '2mm' }};
+      gap: {{ '1.5mm' if ns.is_double else '1.6mm' }};
       padding: 0;
       align-content: start;
     }
@@ -102,28 +105,35 @@
     .page-title-once {
       grid-column: 1 / -1;
       text-align: center;
-      padding: 2px 4px 4px;
+      padding: 1px 4px 3px;
       border-bottom: 2px solid #000;
-      margin-bottom: 1mm;
+      margin-bottom: .6mm;
     }
 
     .page-title-main {
-      font-size: 24px;
+      font-size: 18px;
       font-weight: 900;
-      line-height: 1.1;
+      line-height: 1.08;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .page-title-sub {
-      font-size: 19px;
+      font-size: 15px;
       font-weight: 900;
-      line-height: 1.15;
+      line-height: 1.12;
       margin-top: 1px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .page-title-detail {
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.12;
+      margin-top: 1px;
     }
 
     .per-1,
@@ -134,14 +144,20 @@
 
     .per-4,
     .per-6,
-    .per-8 {
-      grid-template-columns: 1fr 1fr;
+    .per-8,
+    .per-10,
+    .per-12,
+    .per-14 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-auto-rows: auto;
     }
     {% endif %}
 
+    /* =========================================================
+       2) MATCH CARD
+       ========================================================= */
     .table-card {
-      border: 3px solid #ffffff;
+      border: 1.4px solid #000;
       padding: 0;
       overflow: hidden;
       display: flex;
@@ -149,7 +165,23 @@
       min-height: 0;
       background: #fff;
       align-self: start;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      position: relative;
+      width: 100%;
+      min-width: 0;
     }
+
+    .table-card::before {
+      content: "";
+      display: block;
+      height: 4px;
+      background: #111;
+      flex: 0 0 4px;
+    }
+
+    .ab-a-card::before { background: #166534; }
+    .ab-b-card::before { background: #991b1b; }
 
     .event-head {
       display: grid;
@@ -157,23 +189,21 @@
       align-items: center;
       gap: 6px;
       text-align: center;
-      border-bottom: 1.5px solid #ffffff;
+      border-bottom: 1.3px solid #000;
       padding: 3px 7px 5px;
       min-height: 42px;
     }
 
-    .event-title-wrap {
-      min-width: 0;
-    }
+    .event-title-wrap { min-width: 0; }
 
     .main-title {
-      font-size: 19px;
+      font-size: 18px;
       font-weight: 900;
-      line-height: 1.1;
+      line-height: 1.08;
     }
 
     .sub-title {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 800;
       margin-top: 2px;
       white-space: nowrap;
@@ -189,30 +219,52 @@
     }
 
     .logo-on-sheet {
-      height: 39px;
-      width: 39px;
+      height: 36px;
+      width: 36px;
       object-fit: contain;
       display: block;
     }
 
     .meta-row {
       display: grid;
-      grid-template-columns: 1.15fr .9fr .45fr .35fr;
-      border-bottom: 1.5px solid #ffffff;
-      font-size: 18px;
+      grid-template-columns: 32fr 47fr 21fr;
+      border-bottom: 1.4px solid #000;
+      background: #f8fafc;
+      font-size: 14px;
       font-weight: 900;
     }
 
     .meta-row > div {
-      border-right: 1.5px solid #ffffff;
+      border-right: 1.2px solid #000;
       padding: 4px 5px;
-      min-height: 26px;
+      min-height: 25px;
+      min-width: 0;
+      display: flex;
+      align-items: center;
     }
 
     .meta-row > div:last-child {
       border-right: 0;
+      justify-content: center;
+      align-content: center;
+      gap: 3px;
+      flex-wrap: wrap;
       text-align: center;
-      font-size: 15px;
+      font-size: 13px;
+      padding: 4px 6px;
+    }
+
+
+    /* จัดแนวหัวตารางให้ตรงกับตารางด้านล่าง เฉพาะ A/B Ladder และ Double Knockout */
+    .meta-row.meta-row-aligned {
+      grid-template-columns: 32fr 50fr 18fr !important;
+    }
+
+    .lane-label {
+      display: block;
+      width: 100%;
+      text-align: center;
+      white-space: nowrap;
     }
 
     table.match-table {
@@ -224,7 +276,7 @@
 
     .match-table th,
     .match-table td {
-      border: 1.5px solid #000;
+      border: 1.15px solid #000;
       text-align: center;
       vertical-align: middle;
       padding: 2px 3px;
@@ -233,85 +285,87 @@
     }
 
     .match-table thead th {
-      height: 34px;
+      height: 31px;
+      background: #f1f5f9;
     }
 
-    .match-table .court-col {
-      width: 20%;
-    }
-
-    .match-table .seed-col {
-      width: 16%;
-    }
-
-    .match-table .name-col {
-      width: 40%;
-    }
-
+    .match-table .court-col { width: 14%; }
+    .match-table .seed-col { width: 18%; }
+    .match-table .name-col { width: 50%; }
     .match-table .stage-col,
-    .match-table .result-col {
-      width: 24%;
+    .match-table .result-col { width: 18%; }
+
+    .match-table tbody td { height: 30px; }
+
+    .entry-label-cell {
+      white-space: nowrap;
+      word-break: keep-all;
+      letter-spacing: -.1px;
     }
 
-    .match-table tbody td {
-      height: 30px;
-    }
+    .entry-label-win { color: #166534; background: #f0fdf4; }
+    .entry-label-loss { color: #991b1b; background: #fef2f2; }
+    .entry-label-flow { color: #1d4ed8; background: #eff6ff; }
 
     .team-name {
+      min-width: 0;
+      max-width: 0;
       text-align: left !important;
       padding-left: 6px !important;
       white-space: nowrap;
       overflow: hidden;
-      text-overflow: ellipsis;
+      text-overflow: clip;
       font-weight: 800 !important;
+      font-size: 11.5px;
+      letter-spacing: -0.1px;
     }
 
     .qualified-row {
-      border-top: 1.5px solid #ffffff;
-      padding: 5px 4px 6px;
-      font-size: 13px;
+      border-top: 1.4px solid #000;
+      padding: 4px 6px 5px;
+      font-size: 12px;
       font-weight: 900;
       display: flex;
-      gap: 8px;
+      gap: 7px;
       align-items: center;
+      background: #f8fafc;
     }
+
+    .ab-a-card .qualified-row { background: #f0fdf4; }
+    .ab-b-card .qualified-row { background: #fef2f2; }
+
+    .qualified-icon {
+      display: none !important;
+    }
+
+    .ab-b-card .qualified-icon { background: #991b1b; }
+
+    .flow-note,
+    .flow-note-title,
+    .flow-note-line { display: none; }
 
     .dot-line {
       flex: 1;
       border-bottom: 2px dotted #111;
-      height: 16px;
+      height: 14px;
     }
 
-    .empty-card {
-      border: 0;
-    }
+    .empty-card { border: 0; }
 
     .ab-group-badge {
       display: inline-block;
-      min-width: 54px;
-      padding: 2px 8px;
-      border: 1.5px solid #000;
+      min-width: 62px;
+      padding: 2px 10px;
+      border: 1.2px solid #000;
       border-radius: 999px;
       font-weight: 900;
       text-align: center;
-      margin-right: 4px;
+      color: #000;
+      white-space: nowrap;
     }
 
-    .ab-a-card .ab-group-badge {
-      background: #dcfce7;
-    }
-
-    .ab-b-card .ab-group-badge {
-      background: #fee2e2;
-    }
-
-    .ab-a-card .meta-row {
-      border-top: 2px solid #166534;
-    }
-
-    .ab-b-card .meta-row {
-      border-top: 2px solid #991b1b;
-    }
+    .ab-a-card .ab-group-badge { background: #dcfce7; }
+    .ab-b-card .ab-group-badge { background: #fee2e2; }
 
     .per-1 .event-head {
       min-height: 20px;
@@ -403,15 +457,24 @@
     }
 
     {% if not ns.is_double %}
-    .per-1 .page-title-main { font-size: 32px; }
-    .per-1 .page-title-sub { font-size: 26px; }
+    .per-1 .page-title-main { font-size: 24px; }
+    .per-1 .page-title-sub { font-size: 20px; }
 
-    .per-2 .page-title-main { font-size: 28px; }
-    .per-2 .page-title-sub { font-size: 22px; }
+    .per-2 .page-title-main { font-size: 22px; }
+    .per-2 .page-title-sub { font-size: 18px; }
+    .per-10 .page-title-main,
+    .per-12 .page-title-main,
+    .per-14 .page-title-main { font-size: 16px; }
+    .per-10 .page-title-sub,
+    .per-12 .page-title-sub,
+    .per-14 .page-title-sub { font-size: 14px; }
 
     .per-4 .event-head,
     .per-6 .event-head,
-    .per-8 .event-head {
+    .per-8 .event-head,
+    .per-10 .event-head,
+    .per-12 .event-head,
+    .per-14 .event-head {
       display: none;
     }
 
@@ -422,20 +485,29 @@
 
     .per-4 .table-card,
     .per-6 .table-card,
-    .per-8 .table-card {
-      border-width: 2px;
+    .per-8 .table-card,
+    .per-10 .table-card,
+    .per-12 .table-card,
+    .per-14 .table-card {
+      border-width: 1.6px;
     }
 
     .per-4 .meta-row,
     .per-6 .meta-row,
-    .per-8 .meta-row {
+    .per-8 .meta-row,
+    .per-10 .meta-row,
+    .per-12 .meta-row,
+    .per-14 .meta-row {
       font-size: 12px;
-      grid-template-columns: .85fr .95fr .25fr .45fr;
+      grid-template-columns: 32fr 47fr 21fr;
     }
 
     .per-4 .meta-row > div,
     .per-6 .meta-row > div,
-    .per-8 .meta-row > div {
+    .per-8 .meta-row > div,
+    .per-10 .meta-row > div,
+    .per-12 .meta-row > div,
+    .per-14 .meta-row > div {
       padding: 3px 4px;
       min-height: 19px;
       font-size: 12px;
@@ -443,7 +515,10 @@
 
     .per-4 .meta-row > div:last-child,
     .per-6 .meta-row > div:last-child,
-    .per-8 .meta-row > div:last-child {
+    .per-8 .meta-row > div:last-child,
+    .per-10 .meta-row > div:last-child,
+    .per-12 .meta-row > div:last-child,
+    .per-14 .meta-row > div:last-child {
       font-size: 12px;
     }
 
@@ -452,42 +527,147 @@
     .per-6 .match-table th,
     .per-6 .match-table td,
     .per-8 .match-table th,
-    .per-8 .match-table td {
+    .per-8 .match-table td,
+    .per-10 .match-table th,
+    .per-10 .match-table td,
+    .per-12 .match-table th,
+    .per-12 .match-table td,
+    .per-14 .match-table th,
+    .per-14 .match-table td {
       font-size: 12px;
       padding: 2px 3px;
     }
 
     .per-4 .match-table thead th,
     .per-6 .match-table thead th,
-    .per-8 .match-table thead th {
+    .per-8 .match-table thead th,
+    .per-10 .match-table thead th,
+    .per-12 .match-table thead th,
+    .per-14 .match-table thead th {
       height: 22px;
     }
 
     .per-4 .match-table tbody td,
     .per-6 .match-table tbody td,
-    .per-8 .match-table tbody td {
+    .per-8 .match-table tbody td,
+    .per-10 .match-table tbody td,
+    .per-12 .match-table tbody td,
+    .per-14 .match-table tbody td {
       height: 23px;
     }
 
     .per-4 .team-name,
     .per-6 .team-name,
-    .per-8 .team-name {
+    .per-8 .team-name,
+    .per-10 .team-name,
+    .per-12 .team-name,
+    .per-14 .team-name {
       padding-left: 4px !important;
     }
 
     .per-4 .qualified-row,
     .per-6 .qualified-row,
-    .per-8 .qualified-row {
+    .per-8 .qualified-row,
+    .per-10 .qualified-row,
+    .per-12 .qualified-row,
+    .per-14 .qualified-row {
       font-size: 12px;
       padding: 4px 4px;
       gap: 5px;
     }
 
+    .per-4 .flow-note,
+    .per-6 .flow-note,
+    .per-8 .flow-note,
+    .per-10 .flow-note,
+    .per-12 .flow-note,
+    .per-14 .flow-note {
+      font-size: 8.5px;
+      padding: 2px 4px 3px;
+      line-height: 1.12;
+    }
+
     .per-4 .dot-line,
     .per-6 .dot-line,
-    .per-8 .dot-line {
+    .per-8 .dot-line,
+    .per-10 .dot-line,
+    .per-12 .dot-line,
+    .per-14 .dot-line {
       height: 14px;
     }
+
+
+    .per-10 .meta-row,
+    .per-12 .meta-row,
+    .per-14 .meta-row {
+      font-size: 11px;
+      grid-template-columns: 32fr 47fr 21fr;
+    }
+
+    .per-10 .meta-row > div,
+    .per-12 .meta-row > div,
+    .per-14 .meta-row > div {
+      padding: 2px 3px;
+      min-height: 18px;
+      font-size: 11px;
+    }
+
+    .per-10 .match-table th,
+    .per-10 .match-table td,
+    .per-12 .match-table th,
+    .per-12 .match-table td,
+    .per-14 .match-table th,
+    .per-14 .match-table td {
+      font-size: 10px;
+      padding: 1px 2px;
+    }
+
+    .per-10 .match-table thead th,
+    .per-12 .match-table thead th,
+    .per-14 .match-table thead th {
+      height: 20px;
+    }
+
+    .per-10 .match-table tbody td,
+    .per-12 .match-table tbody td,
+    .per-14 .match-table tbody td {
+      height: 19px;
+    }
+
+    .per-10 .team-name,
+    .per-12 .team-name,
+    .per-14 .team-name {
+      font-size: 9.25px;
+      padding-left: 3px !important;
+    }
+
+    .per-10 .qualified-row,
+    .per-12 .qualified-row,
+    .per-14 .qualified-row {
+      font-size: 9.5px;
+      padding: 2px 3px 3px;
+      gap: 4px;
+    }
+
+    .per-10 .table-card::before,
+    .per-12 .table-card::before,
+    .per-14 .table-card::before {
+      height: 3px;
+      flex-basis: 3px;
+    }
+
+    .per-10 .match-table .court-col,
+    .per-12 .match-table .court-col,
+    .per-14 .match-table .court-col { width: 13%; }
+    .per-10 .match-table .seed-col,
+    .per-12 .match-table .seed-col,
+    .per-14 .match-table .seed-col { width: 18%; }
+    .per-10 .match-table .name-col,
+    .per-12 .match-table .name-col,
+    .per-14 .match-table .name-col { width: 51%; }
+    .per-10 .match-table .result-col,
+    .per-12 .match-table .result-col,
+    .per-14 .match-table .result-col { width: 18%; }
     {% else %}
     .per-6 .event-head,
     .per-8 .event-head {
@@ -514,7 +694,7 @@
     .per-6 .meta-row,
     .per-8 .meta-row {
       font-size: 11px;
-      grid-template-columns: 1.05fr .8fr .2fr .35fr;
+      grid-template-columns: 32fr 47fr 21fr;
     }
 
     .per-6 .meta-row > div,
@@ -565,6 +745,78 @@
     }
     {% endif %}
 
+
+    /* =========================================================
+       3) PRINT FILTER CONTROLS
+       ========================================================= */
+    .nav-picker {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .nav-picker-head {
+      padding: 10px 12px;
+      font-weight: 900;
+      color: #0f172a;
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .nav-picker-body {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+      padding: 10px 12px 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .nav-picker-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .nav-picker-field label {
+      font-size: 12px;
+      font-weight: 900;
+      color: #334155;
+    }
+
+    .nav-picker select {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid #94a3b8;
+      border-radius: 8px;
+      background: #fff;
+      color: #0f172a;
+      font-weight: 800;
+      padding: 7px 9px;
+    }
+
+    .selected-mode {
+      display: inline-block;
+      margin-left: 0;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .nav-picker-body {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media print {
       .no-print {
         display: none !important;
@@ -572,6 +824,14 @@
 
       body {
         background: #fff;
+      }
+
+      .print-page {
+        overflow: hidden;
+      }
+
+      .table-card {
+        min-width: 0;
       }
     }
   </style>
@@ -581,9 +841,12 @@
   {% if ns.is_double %}
     {% set per_page_options = [1, 2, 3, 4] %}
   {% else %}
-    {% set per_page_options = [1, 2, 4, 6, 8] %}
+    {% set per_page_options = [1, 2, 4, 6, 8, 10, 12, 14] %}
   {% endif %}
 
+  <!-- =======================================================
+       PRINT TOOLBAR
+       ======================================================= -->
   <div class="no-print">
     <a class="btn btn-primary" href="javascript:window.print()">พิมพ์ตารางแข่งขัน</a>
 
@@ -611,7 +874,7 @@
 
     <span style="font-weight:800;">
       {% if per_page == 'all' %}
-        โหมดตารางทั้งหมด = แยกแผ่นตามรอบ
+        โหมดตารางทั้งหมด = แยกแผ่นตามรอบ/กลุ่ม และจัดตารางแบบสมส่วน
       {% elif ns.is_double and per_page != 2 %}
         โหมด {{ per_page }} ตาราง/แผ่น = แนวนอน
       {% else %}
@@ -620,41 +883,69 @@
     </span>
   </div>
 
+  {% set selected_ns = namespace(round_name='ทุกรอบ') %}
+  {% for rv in view.round_views %}
+    {% if selected_round and rv.round.id == selected_round %}
+      {% set selected_ns.round_name = rv.round.round_name %}
+    {% endif %}
+  {% endfor %}
+
   <div class="no-print">
-    <strong>เลือกรอบ/สาย:</strong>
+    <div class="nav-picker">
+      <div class="nav-picker-head">
+        เลือกรอบ/สายสำหรับพิมพ์
+        <span class="selected-mode">
+          {{ selected_ns.round_name }}{% if selected_group %} · สาย {{ selected_group }}{% endif %}
+        </span>
+      </div>
 
-    {% for rv in view.round_views %}
-      <a class="btn" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=per_page) }}">
-        {{ rv.round.round_name }}
-      </a>
+      <div class="nav-picker-body">
+        <div class="nav-picker-field">
+          <label for="print-round-select">รอบการแข่งขัน</label>
+          <select id="print-round-select" onchange="if(this.value){ window.location.href=this.value; }">
+            <option value="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, per_page=per_page) }}" {% if not selected_round %}selected{% endif %}>
+              ทุกรอบ
+            </option>
+            {% for rv in view.round_views %}
+              <option value="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=per_page) }}"
+                {% if selected_round == rv.round.id and not selected_group %}selected{% endif %}>
+                {{ rv.round.round_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
 
-      {% for group in rv.group_views %}
-        <a class="btn" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=per_page) }}">
-          {{ rv.round.round_name }} / สาย {{ group.group_no }}
+        <div class="nav-picker-field">
+          <label for="print-lane-select">สายการแข่งขัน</label>
+          <select id="print-lane-select" onchange="if(this.value){ window.location.href=this.value; }">
+            <option value="">เลือกสายที่ต้องการพิมพ์</option>
+            {% for rv in view.round_views %}
+              <optgroup label="{{ rv.round.round_name }}">
+                {% for group in rv.group_views %}
+                  <option value="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=per_page) }}"
+                    {% if selected_round == rv.round.id and selected_group == group.group_no %}selected{% endif %}>
+                    {{ rv.round.round_name }} / สาย {{ group.group_no }}
+                  </option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+
+        <a class="btn" href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, per_page=per_page) }}">
+          แสดงทุกรอบ
         </a>
-      {% endfor %}
-    {% endfor %}
-  </div>
-
-  {% if selected_round or selected_group %}
-    <div class="no-print" style="font-weight:900;">
-      โหมดที่เลือก:
-      {% if selected_round %}
-        รอบ ID {{ selected_round }}
-      {% else %}
-        ทุกรอบ
-      {% endif %}
-
-      {% if selected_group %}
-        · สาย {{ selected_group }}
-      {% endif %}
+      </div>
     </div>
-  {% endif %}
+  </div>
 
   {% if not tables %}
     <div style="padding:24px; font-weight:900;">ยังไม่มีตารางแข่งขันให้พิมพ์</div>
   {% endif %}
 
+  {# ==========================================================
+     MATCH TABLE CARD
+     ========================================================== #}
   {% macro render_match_table(tbl) %}
     {% if tbl %}
       {% set ab_group = tbl.group_label if tbl.group_label is defined and tbl.group_label else '' %}
@@ -662,7 +953,7 @@
         {% if ns.is_double %}
           <div class="event-head">
             <div class="event-title-wrap">
-              <div class="main-title">ตารางแข่งขันรายการแข่งขัน</div>
+              <div class="main-title">ตารางการแข่งขัน</div>
               <div class="sub-title">{{ source_event.name if source_event else view.competition.title }}</div>
             </div>
 
@@ -676,17 +967,20 @@
           </div>
         {% endif %}
 
-        <div class="meta-row">
+        <div class="meta-row{% if tbl.round_type in ['ab_ladder', 'double_knockout'] %} meta-row-aligned{% endif %}">
           <div>
             ประเภท {{ source_event.category if source_event and source_event.category else 'คู่ทั่วไป' }}{{ source_event.sex if source_event and source_event.sex else '' }}
           </div>
-          <div class="center">รอบ {{ tbl.round_name }}</div>
-          <div></div>
+
+          <div class="center">
+            รอบ {{ tbl.round_name }}
+          </div>
+
           <div>
-            {% if tbl.round_type == 'ab_ladder' %}
-              {% if ab_group %}<span class="ab-group-badge">กลุ่ม {{ ab_group }}</span>{% endif %}
+            {% if tbl.round_type == 'ab_ladder' and ab_group %}
+              <span class="ab-group-badge">กลุ่ม {{ ab_group }}</span>
             {% endif %}
-            สายที่ {{ tbl.group_no }}
+            <span class="lane-label">สายที่ {{ tbl.group_no }}</span>
           </div>
         </div>
 
@@ -723,7 +1017,11 @@
                   </td>
                 {% endif %}
 
-                <td>{{ slot.seed or slot.slot_no }}</td>
+                {% set shown_entry_label = slot.entry_label %}
+                {% if slot.entry_label and not slot.entry_label.startswith('W-') and not slot.entry_label.startswith('L-') %}
+                  {% if slot.source_label and slot.source_label.startswith('ชนะ') %}{% set shown_entry_label = 'W-' ~ slot.entry_label %}{% elif slot.source_label and slot.source_label.startswith('แพ้') %}{% set shown_entry_label = 'L-' ~ slot.entry_label %}{% endif %}
+                {% endif %}
+                <td class="entry-label-cell{% if shown_entry_label %}{% if shown_entry_label.startswith('W-') %} entry-label-win{% elif shown_entry_label.startswith('L-') %} entry-label-loss{% else %} entry-label-flow{% endif %}{% endif %}">{% if shown_entry_label %}{{ shown_entry_label }}{% else %}{{ slot.seed or slot.slot_no }}{% endif %}</td>
 
                 <td class="team-name">
                   {% if slot.is_bye %}
@@ -746,7 +1044,7 @@
         </table>
 
         <div class="qualified-row">
-          <span>{% if tbl.round_type == 'ab_ladder' %}ทีมที่เข้ารอบ{% if ab_group %}กลุ่ม {{ ab_group }}{% endif %}{% else %}ทีมที่เข้ารอบ{% endif %}</span>
+          <span>ทีมที่เข้ารอบ{% if tbl.round_type == 'ab_ladder' and ab_group %}กลุ่ม {{ ab_group }}{% endif %}</span>
 
           {% set qnums = tbl.qualified_numbers if tbl.qualified_numbers is defined and tbl.qualified_numbers else [1] %}
           {% for qno in qnums %}
@@ -760,42 +1058,45 @@
     {% endif %}
   {% endmacro %}
 
-  {% if per_page == 'all' %}
-    {% for round_group in tables|groupby('round_id') %}
-      {% set first_tbl = round_group.list[0] %}
-      <section class="print-page per-all {% if ns.is_double %}per-4{% else %}per-8{% endif %}">
-        {% if not ns.is_double %}
-          <div class="page-title-once">
-            <div class="page-title-main">ตารางแข่งขันรายการแข่งขัน</div>
-            <div class="page-title-sub">{{ source_event.name if source_event else view.competition.title }}</div>
-          </div>
-        {% endif %}
+  {# ==========================================================
+     PAGE HEADER
+     ========================================================== #}
+  {% macro render_page_header(first_tbl) %}
+    {% if not ns.is_double %}
+      <div class="page-title-once">
+        <div class="page-title-main">ตารางการแข่งขัน</div>
+        <div class="page-title-sub">{{ source_event.name if source_event else view.competition.title }}</div>
+        <div class="page-title-detail">
+          ประเภท {{ source_event.category if source_event and source_event.category else 'คู่ทั่วไป' }}{{ source_event.sex if source_event and source_event.sex else '' }}
+          · รอบ {{ first_tbl.round_name }}
+          {% if first_tbl.round_type == 'ab_ladder' and first_tbl.group_label %}· กลุ่ม {{ first_tbl.group_label }}{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% endmacro %}
 
-        {% for tbl in round_group.list %}
-          {{ render_match_table(tbl) }}
-        {% endfor %}
-      </section>
+  {#
+    แยกพิมพ์เป็นชุดตามรอบและกลุ่ม A/B ก่อน batch เสมอ
+    เพื่อไม่ให้ปลายกลุ่ม A ไปปนกับต้นกลุ่ม B และไม่ให้ตารางครึ่งหนึ่งค้างข้ามแผ่น
+  #}
+  {% set page_capacity = (4 if ns.is_double else 10) if per_page == 'all' else per_page %}
+  {% for round_group in tables|groupby('round_id') %}
+    {% for zone_group in round_group.list|groupby('group_label') %}
+      {% for page in zone_group.list|batch(page_capacity, none) %}
+        {% set first_tbl = page[0] %}
+        <section class="print-page per-{{ page_capacity }}">
+          {{ render_page_header(first_tbl) }}
+          {% for tbl in page %}
+            {{ render_match_table(tbl) }}
+          {% endfor %}
+        </section>
+      {% endfor %}
     {% endfor %}
-  {% else %}
-    {% for page in tables|batch(per_page, none) %}
-      <section class="print-page per-{{ per_page }}">
-        {% if not ns.is_double %}
-          <div class="page-title-once">
-            <div class="page-title-main">ตารางแข่งขันรายการแข่งขัน</div>
-            <div class="page-title-sub">{{ source_event.name if source_event else view.competition.title }}</div>
-          </div>
-        {% endif %}
-
-        {% for tbl in page %}
-          {{ render_match_table(tbl) }}
-        {% endfor %}
-      </section>
-    {% endfor %}
-  {% endif %}
+  {% endfor %}
 
   <script>
-    function fitTeamNameToCell(cell, minFontSize = 8) {
-      const originalFontSize = parseFloat(window.getComputedStyle(cell).fontSize) || 12;
+    function fitTeamNameToCell(cell, minFontSize = 6.5) {
+      const originalFontSize = parseFloat(window.getComputedStyle(cell).fontSize) || 11.5;
       let fontSize = originalFontSize;
 
       cell.style.whiteSpace = 'nowrap';
@@ -803,7 +1104,7 @@
       cell.style.textOverflow = 'clip';
 
       while (cell.scrollWidth > cell.clientWidth && fontSize > minFontSize) {
-        fontSize -= 0.5;
+        fontSize -= 0.25;
         cell.style.fontSize = fontSize + 'px';
       }
     }

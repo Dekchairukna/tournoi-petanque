@@ -40,7 +40,7 @@
     {% endif %}
     <a href="#top" class="top-pill top-pill-playoff"><span class="side-icon">🎯</span><span>play_off</span></a>
     {% for rv in view.round_views %}
-    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round"><span class="side-icon">▸</span><span>{{
+    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round js-round-tab" data-round-tab="{{ rv.round.id }}"><span class="side-icon">▸</span><span>{{
         rv.round.round_name }}</span></a>
     {% endfor %}
     <a href="#next-round-panel" class="top-pill top-pill-draw"><span
@@ -114,7 +114,7 @@
 
 
     {% for rv in view.round_views %}
-    <div class="card round-card" id="saved-round-{{ rv.round.id }}" style="padding:18px; margin-top:20px;">
+    <div class="card round-card js-round-panel" data-round-panel="{{ rv.round.id }}" id="saved-round-{{ rv.round.id }}" style="padding:18px; margin-top:20px;">
       <div class="round-header no-print">
         <div class="round-title" style="text-align:center; margin-bottom:18px;">
           <span class="badge" style="background:#1a73e8; color:#fff; font-size:22px; padding:8px 18px;">
@@ -166,8 +166,41 @@
           <button type="submit" name="save_all" value="1" formnovalidate
             class="btn btn-success system-btn">บันทึกผลทุกสาย</button>
         </div>
+        {% if rv.group_views %}
+        <div class="round-group-switcher no-print" data-round-group-switcher="{{ rv.round.id }}" id="round-group-switcher-{{ rv.round.id }}">
+          <div class="switcher-row switcher-round-row">
+            <div class="round-switcher-title">เลือกรอบการแข่งขัน</div>
+            <div class="round-switcher-tabs">
+              {% for round_tab in view.round_views %}
+              <button type="button" class="round-switch-btn js-round-tab" data-round-tab="{{ round_tab.round.id }}">
+                {{ round_tab.round.round_name }}
+                {% if round_tab.round.round_type == 'ab_ladder' %}<span class="round-tab-kind">A/B</span>{% endif %}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="switcher-row switcher-group-row">
+            <div class="group-switcher-title">เลือกสาย</div>
+            <div class="group-switcher-tabs">
+              {% for tab_group in rv.group_views %}
+              {% if rv.round.round_type == 'ab_ladder' %}
+                {% set tab_a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
+                {% set tab_zone = 'A' if tab_group.group_no <= tab_a_pair_count else 'B' %}
+              {% else %}
+                {% set tab_zone = '' %}
+              {% endif %}
+              <button type="button" class="group-switch-btn js-group-tab {% if tab_zone == 'A' %}group-tab-a{% elif tab_zone == 'B' %}group-tab-b{% endif %}"
+                data-round-id="{{ rv.round.id }}" data-group-tab="{{ tab_group.group_no }}">
+                {% if tab_zone %}{{ tab_zone }}{% endif %}{{ tab_group.group_no }}
+              </button>
+              {% endfor %}
+              <button type="button" class="group-switch-btn group-switch-all js-group-tab" data-round-id="{{ rv.round.id }}" data-group-tab="all">แสดงทุกสาย</button>
+            </div>
+          </div>
+        </div>
+        {% endif %}
         {% for group in rv.group_views %}
-        <div class="group-box printable-group" id="round-{{ rv.round.id }}-group-{{ group.group_no }}"
+        <div class="group-box printable-group js-group-panel" data-round-id="{{ rv.round.id }}" data-group-panel="{{ group.group_no }}" id="round-{{ rv.round.id }}-group-{{ group.group_no }}"
           style="border:1.5px solid #ccc; padding:15px; margin:18px 0;">
           <div class="print-header only-print" style="display:none; text-align:center; margin-bottom:14px;">
             <div style="font-size:24px; font-weight:800;">{{ view.competition.title }}</div>
@@ -179,8 +212,22 @@
             <b style="font-size:28px;">
               {% if rv.round.round_type == 'ab_ladder' %}
               {% set a_pair_count = rv.round.round_meta.a_pair_count|default(0) %}
-              กลุ่ม {{ 'A' if group.group_no <= a_pair_count else 'B' }} · สายที่ {{ group.group_no }} {% else %} สายที่
-                {{ group.group_no }} {% endif %} </b>
+              กลุ่ม {{ 'A' if group.group_no <= a_pair_count else 'B' }} · สายที่ {{ group.group_no }}
+              {% if group.group_no > a_pair_count %}
+                {% set visible_slots = group.slots|rejectattr('is_bye')|list %}
+                {% if visible_slots|length >= 2 %}
+                  {% set left_label = visible_slots[0].entry_label or visible_slots[0].seed or visible_slots[0].slot_no %}
+                  {% set right_label = visible_slots[1].entry_label or visible_slots[1].seed or visible_slots[1].slot_no %}
+                  {% if visible_slots[0].entry_label and not visible_slots[0].entry_label.startswith('W-') and not visible_slots[0].entry_label.startswith('L-') %}
+                    {% if visible_slots[0].source_label and visible_slots[0].source_label.startswith('ชนะ') %}{% set left_label = 'W-' ~ visible_slots[0].entry_label %}{% elif visible_slots[0].source_label and visible_slots[0].source_label.startswith('แพ้') %}{% set left_label = 'L-' ~ visible_slots[0].entry_label %}{% endif %}
+                  {% endif %}
+                  {% if visible_slots[1].entry_label and not visible_slots[1].entry_label.startswith('W-') and not visible_slots[1].entry_label.startswith('L-') %}
+                    {% if visible_slots[1].source_label and visible_slots[1].source_label.startswith('ชนะ') %}{% set right_label = 'W-' ~ visible_slots[1].entry_label %}{% elif visible_slots[1].source_label and visible_slots[1].source_label.startswith('แพ้') %}{% set right_label = 'L-' ~ visible_slots[1].entry_label %}{% endif %}
+                  {% endif %}
+                  <span class="ab-flow-pair">{{ left_label }} พบ {{ right_label }}</span>
+                {% endif %}
+              {% endif %}
+              {% else %} สายที่ {{ group.group_no }} {% endif %} </b>
                 <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
                   <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}"
                     target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
@@ -194,7 +241,7 @@
             <thead>
               <tr>
                 <th width="110">สนาม</th>
-                <th width="70">ลำดับ</th>
+                <th width="112">ลำดับ</th>
                 <th>ชื่อทีม</th>
                 {% if rv.round.round_type == 'double_knockout' %}
                 <th width="90">1</th>
@@ -219,9 +266,18 @@
                     value="{{ slot.court_name or '' }}" placeholder="สนาม">
                 </td>
                 {% endif %}
-                <td>{{ slot.seed or slot.slot_no }}</td>
+                {% set shown_entry_label = slot.entry_label %}
+                {% if rv.round.round_type == 'ab_ladder' and slot.entry_label and not slot.entry_label.startswith('W-') and not slot.entry_label.startswith('L-') %}
+                  {% if slot.source_label and slot.source_label.startswith('ชนะ') %}{% set shown_entry_label = 'W-' ~ slot.entry_label %}{% elif slot.source_label and slot.source_label.startswith('แพ้') %}{% set shown_entry_label = 'L-' ~ slot.entry_label %}{% endif %}
+                {% endif %}
+                <td class="{% if rv.round.round_type == 'ab_ladder' and shown_entry_label %}{% if shown_entry_label.startswith('W-') %}entry-label-win{% elif shown_entry_label.startswith('L-') %}entry-label-loss{% else %}entry-label-flow{% endif %}{% endif %}">{% if rv.round.round_type == 'ab_ladder' and shown_entry_label %}{{ shown_entry_label }}{% else %}{{ slot.seed or slot.slot_no }}{% endif %}</td>
                 <td>
                   <span class="team-name-text">{% if slot.is_bye %}X{% else %}{{ slot.team_name }}{% endif %}</span>
+                  {% if rv.round.round_type != 'ab_ladder' and not slot.is_bye and (slot.entry_label or slot.source_label) %}
+                  <div style="font-size:12px; color:#64748b; margin-top:3px; line-height:1.25;">
+                    ↳ ที่มา:{% if slot.entry_label %} <b>[{{ slot.entry_label }}]</b>{% endif %}{% if slot.source_label %} {{ slot.source_label }}{% endif %}
+                  </div>
+                  {% endif %}
                   {% if slot.is_bye %}
                   <form method="post"
                     action="{{ url_for('fill_playoff_bye_slot', playoff_id=view.competition.id, slot_id=slot.id) }}"
@@ -1489,6 +1545,159 @@
     color: #6b7280
   }
 
+
+
+
+  .round-group-switcher {
+    position: static;
+    margin: 8px 0 14px;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 16px;
+    background: rgba(255,255,255,.97);
+    box-shadow: 0 8px 22px rgba(15,23,42,.10);
+    backdrop-filter: blur(10px);
+  }
+
+  .switcher-row + .switcher-row {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .ab-flow-pair {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    font-size: 14px;
+    vertical-align: middle;
+  }
+
+  .entry-label-win,
+  .entry-label-loss,
+  .entry-label-flow {
+    min-width: 108px;
+    white-space: nowrap;
+    word-break: keep-all;
+    text-align: center;
+    font-weight: 900;
+  }
+
+  .entry-label-win {
+    color: #166534;
+    background: #dcfce7;
+  }
+
+  .entry-label-loss {
+    color: #991b1b;
+    background: #fee2e2;
+  }
+
+  .entry-label-flow {
+    color: #1d4ed8;
+    background: #dbeafe;
+  }
+
+  .round-switcher {
+    position: sticky;
+    top: 8px;
+    z-index: 35;
+    margin: 16px 0 6px;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 16px;
+    background: rgba(255,255,255,.96);
+    box-shadow: 0 8px 22px rgba(15,23,42,.10);
+    backdrop-filter: blur(10px);
+  }
+
+  .round-switcher-title,
+  .group-switcher-title {
+    font-weight: 900;
+    color: #334155;
+    margin-bottom: 8px;
+  }
+
+  .round-switcher-tabs,
+  .group-switcher-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .round-switch-btn,
+  .group-switch-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: #fff;
+    color: #334155;
+    padding: 8px 14px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: .15s ease;
+  }
+
+  .round-switch-btn:hover,
+  .group-switch-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px rgba(15,23,42,.10);
+  }
+
+  .round-switch-btn.is-active,
+  .top-pill-round.is-active {
+    background: #2563eb !important;
+    color: #fff !important;
+    border-color: #2563eb !important;
+  }
+
+  .round-tab-kind {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.22);
+    font-size: 11px;
+  }
+
+  .group-switcher {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    border: 1px solid #dbeafe;
+    border-radius: 14px;
+    background: #f8fbff;
+  }
+
+  .group-switch-btn.is-active {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+
+  .group-tab-a {
+    border-color: #86efac;
+    background: #dcfce7;
+    color: #14532d;
+  }
+
+  .group-tab-b {
+    border-color: #fecaca;
+    background: #fee2e2;
+    color: #7f1d1d;
+  }
+
+  .group-switch-all {
+    border-style: dashed;
+  }
+
+  .js-round-panel[hidden],
+  .js-group-panel[hidden] {
+    display: none !important;
+  }
+
   @media print {
     @page {
       size: A4 portrait;
@@ -1584,6 +1793,60 @@
 </style>
 
 <script>
+
+  function setActiveGroup(roundId, groupNo, remember = true) {
+    const panels = Array.from(document.querySelectorAll(`.js-group-panel[data-round-id="${roundId}"]`));
+    if (!panels.length) return;
+    const showAll = String(groupNo) === 'all';
+    panels.forEach(panel => {
+      panel.hidden = !showAll && String(panel.dataset.groupPanel) !== String(groupNo);
+    });
+    document.querySelectorAll(`.js-group-tab[data-round-id="${roundId}"]`).forEach(btn => {
+      btn.classList.toggle('is-active', String(btn.dataset.groupTab) === String(groupNo));
+    });
+    if (remember) localStorage.setItem(`playoff-${playoffId}-round-${roundId}-group`, String(groupNo));
+  }
+
+  function setActiveRound(roundId, options = {}) {
+    const { remember = true, updateHash = true, scroll = false } = options;
+    const panels = Array.from(document.querySelectorAll('.js-round-panel'));
+    if (!panels.length) return;
+    let target = panels.find(panel => String(panel.dataset.roundPanel) === String(roundId));
+    if (!target) target = panels[panels.length - 1];
+    const activeRoundId = String(target.dataset.roundPanel);
+    panels.forEach(panel => { panel.hidden = panel !== target; });
+    document.querySelectorAll('.js-round-tab').forEach(tab => {
+      tab.classList.toggle('is-active', String(tab.dataset.roundTab) === activeRoundId);
+    });
+    const groupPanels = Array.from(target.querySelectorAll('.js-group-panel'));
+    if (groupPanels.length) {
+      const savedGroup = localStorage.getItem(`playoff-${playoffId}-round-${activeRoundId}-group`);
+      const validSaved = savedGroup === 'all' || groupPanels.some(panel => String(panel.dataset.groupPanel) === String(savedGroup));
+      setActiveGroup(activeRoundId, validSaved ? savedGroup : groupPanels[0].dataset.groupPanel, false);
+    }
+    if (remember) localStorage.setItem(`playoff-${playoffId}-active-round`, activeRoundId);
+    if (updateHash && history.replaceState) history.replaceState(null, '', `#saved-round-${activeRoundId}`);
+    if (scroll) document.getElementById(`round-group-switcher-${activeRoundId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function initRoundAndGroupTabs() {
+    const roundPanels = Array.from(document.querySelectorAll('.js-round-panel'));
+    if (!roundPanels.length) return;
+    document.querySelectorAll('.js-round-tab').forEach(tab => {
+      tab.addEventListener('click', event => {
+        event.preventDefault();
+        setActiveRound(tab.dataset.roundTab, { scroll: false });
+      });
+    });
+    document.querySelectorAll('.js-group-tab').forEach(tab => {
+      tab.addEventListener('click', () => setActiveGroup(tab.dataset.roundId, tab.dataset.groupTab));
+    });
+    const hashMatch = window.location.hash.match(/^#saved-round-(\d+)$/);
+    const savedRound = localStorage.getItem(`playoff-${playoffId}-active-round`);
+    const initialRound = hashMatch ? hashMatch[1] : (savedRound || roundPanels[roundPanels.length - 1].dataset.roundPanel);
+    setActiveRound(initialRound, { remember: false, updateHash: false, scroll: false });
+  }
+
   function syncNextStageName(selectEl) {
     const hidden = document.getElementById(selectEl.dataset.hidden);
     const custom = document.getElementById(selectEl.dataset.custom);
@@ -1596,6 +1859,7 @@
     }
   }
   document.addEventListener('DOMContentLoaded', () => {
+    initRoundAndGroupTabs();
     document.querySelectorAll('.next-stage-select').forEach(sel => {
       syncNextStageName(sel);
       sel.addEventListener('change', () => syncNextStageName(sel));

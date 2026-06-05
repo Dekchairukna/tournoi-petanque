@@ -226,6 +226,7 @@ def ensure_playoff_tables():
             """CREATE TABLE IF NOT EXISTS playoff_slots (
                 id SERIAL PRIMARY KEY, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL, slot_no INTEGER NOT NULL,
                 seed INTEGER, team_id INTEGER, team_name VARCHAR(255), is_bye BOOLEAN DEFAULT FALSE, court_name VARCHAR(80),
+                entry_label VARCHAR(80), source_label VARCHAR(255),
                 UNIQUE(round_id, group_no, slot_no)
             )""",
             """CREATE TABLE IF NOT EXISTS playoff_scores (
@@ -252,6 +253,7 @@ def ensure_playoff_tables():
             """CREATE TABLE IF NOT EXISTS playoff_slots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, round_id INTEGER NOT NULL, group_no INTEGER NOT NULL, slot_no INTEGER NOT NULL,
                 seed INTEGER, team_id INTEGER, team_name TEXT, is_bye BOOLEAN DEFAULT 0, court_name TEXT,
+                entry_label TEXT, source_label TEXT,
                 UNIQUE(round_id, group_no, slot_no)
             )""",
             """CREATE TABLE IF NOT EXISTS playoff_scores (
@@ -271,13 +273,20 @@ def ensure_playoff_tables():
     if dialect == 'postgresql':
         db.session.execute(text("ALTER TABLE playoff_competitions ADD COLUMN IF NOT EXISTS config_json TEXT"))
         db.session.execute(text("ALTER TABLE playoff_rounds ADD COLUMN IF NOT EXISTS round_meta_json TEXT"))
+        db.session.execute(text("ALTER TABLE playoff_slots ADD COLUMN IF NOT EXISTS entry_label VARCHAR(80)"))
+        db.session.execute(text("ALTER TABLE playoff_slots ADD COLUMN IF NOT EXISTS source_label VARCHAR(255)"))
     else:
         comp_cols = {row[1] for row in db.session.execute(text("PRAGMA table_info(playoff_competitions)"))}
         round_cols = {row[1] for row in db.session.execute(text("PRAGMA table_info(playoff_rounds)"))}
+        slot_cols = {row[1] for row in db.session.execute(text("PRAGMA table_info(playoff_slots)"))}
         if 'config_json' not in comp_cols:
             db.session.execute(text("ALTER TABLE playoff_competitions ADD COLUMN config_json TEXT"))
         if 'round_meta_json' not in round_cols:
             db.session.execute(text("ALTER TABLE playoff_rounds ADD COLUMN round_meta_json TEXT"))
+        if 'entry_label' not in slot_cols:
+            db.session.execute(text("ALTER TABLE playoff_slots ADD COLUMN entry_label TEXT"))
+        if 'source_label' not in slot_cols:
+            db.session.execute(text("ALTER TABLE playoff_slots ADD COLUMN source_label TEXT"))
     db.session.commit()
 
 
@@ -2906,6 +2915,9 @@ def _row_to_seed_payload(row, seed=None):
         'team_name': row.get('team_name') or row.get('name') or '',
         'seed': seed if seed is not None else _as_int(row.get('rank'), 0),
         'rank': _as_int(row.get('rank'), 0),
+        # ป้ายทางเดินทีม: ใช้บอกว่าทีมนี้มาจากชนะ/แพ้สายใดในรอบก่อนหน้า
+        'entry_label': row.get('entry_label') or row.get('national_label') or row.get('regional64_label'),
+        'source_label': row.get('source_label'),
     }
 
 
@@ -3074,14 +3086,16 @@ def _create_playoff_round(playoff_id, round_no, round_name, round_type, grouped_
         for slot_no, item in enumerate(slots, start=1):
             is_bye = item is None
             db.session.execute(text("""
-                INSERT INTO playoff_slots (round_id, group_no, slot_no, seed, team_id, team_name, is_bye)
-                VALUES (:round_id, :group_no, :slot_no, :seed, :team_id, :team_name, :is_bye)
+                INSERT INTO playoff_slots (round_id, group_no, slot_no, seed, team_id, team_name, is_bye, entry_label, source_label)
+                VALUES (:round_id, :group_no, :slot_no, :seed, :team_id, :team_name, :is_bye, :entry_label, :source_label)
             """), {
                 'round_id': round_id, 'group_no': group_no, 'slot_no': slot_no,
                 'seed': None if is_bye else item.get('seed'),
                 'team_id': None if is_bye else item.get('team_id'),
                 'team_name': 'X' if is_bye else item.get('team_name'),
                 'is_bye': bool(is_bye),
+                'entry_label': None if is_bye else (item.get('entry_label') or item.get('national_label') or item.get('regional64_label')),
+                'source_label': None if is_bye else item.get('source_label'),
             })
     return round_id
 
@@ -3248,6 +3262,8 @@ def _make_national48_round3_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = idx
+        row['entry_label'] = f'W-A{idx}'
+        row['source_label'] = f'ชนะรอบ 2 กลุ่ม A สาย {idx}'
         a_rows.append(row)
     a_groups = _adjacent_bracket_pairs(a_rows)
 
@@ -3256,7 +3272,9 @@ def _make_national48_round3_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = idx
-        row['national_label'] = f'A{idx}'
+        row['national_label'] = f'L-A{idx}'
+        row['entry_label'] = f'L-A{idx}'
+        row['source_label'] = f'แพ้รอบ 2 กลุ่ม A สาย {idx}'
         al.append(row)
 
     bw = []
@@ -3264,7 +3282,9 @@ def _make_national48_round3_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = 100 + idx
-        row['national_label'] = f'B{idx}'
+        row['national_label'] = f'W-B{idx}'
+        row['entry_label'] = f'W-B{idx}'
+        row['source_label'] = f'ชนะรอบ 2 กลุ่ม B สาย {idx}'
         bw.append(row)
 
     b_groups = [
@@ -3346,6 +3366,8 @@ def _make_regional64_round3_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = idx
+        row['entry_label'] = f'W-A{idx}'
+        row['source_label'] = f'ชนะรอบ 2 กลุ่ม A สาย {idx}'
         a_rows.append(row)
     a_groups = _adjacent_bracket_pairs(a_rows)
 
@@ -3356,10 +3378,14 @@ def _make_regional64_round3_groups(latest_round_view):
         b_win = dict(b_winners[idx])
         a_loss['rank'] = idx + 1
         a_loss['seed'] = idx + 1
-        a_loss['regional64_label'] = f'A{idx + 1}'
+        a_loss['regional64_label'] = f'L-A{idx + 1}'
+        a_loss['entry_label'] = f'L-A{idx + 1}'
+        a_loss['source_label'] = f'แพ้รอบ 2 กลุ่ม A สาย {idx + 1}'
         b_win['rank'] = idx + 1
         b_win['seed'] = 100 + idx + 1
-        b_win['regional64_label'] = f'B{idx + 1}'
+        b_win['regional64_label'] = f'W-B{idx + 1}'
+        b_win['entry_label'] = f'W-B{idx + 1}'
+        b_win['source_label'] = f'ชนะรอบ 2 กลุ่ม B สาย {idx + 1}'
         b_groups.append([a_loss, b_win])
 
     meta = {
@@ -3413,7 +3439,9 @@ def _make_national48_round4_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = idx
-        row['national_label'] = f'B{idx}'
+        row['national_label'] = f'W-B{idx}'
+        row['entry_label'] = f'W-B{idx}'
+        row['source_label'] = f'ชนะรอบ 3 กลุ่ม B สาย {idx}'
         b_rows.append(row)
 
     roman = ['I A', 'II A', 'III A', 'IV A', 'V A', 'VI A', 'VII A', 'VIII A']
@@ -3422,7 +3450,9 @@ def _make_national48_round4_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = 100 + idx
-        row['national_label'] = roman[idx - 1]
+        row['national_label'] = f"L-{roman[idx - 1]}"
+        row['entry_label'] = f"L-{roman[idx - 1]}"
+        row['source_label'] = f'แพ้รอบ 3 กลุ่ม A สาย {idx}'
         a_rows.append(row)
 
     groups = [
@@ -3492,7 +3522,9 @@ def _make_regional64_round4_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = idx
-        row['regional64_label'] = f'B{idx}'
+        row['regional64_label'] = f'W-B{idx}'
+        row['entry_label'] = f'W-B{idx}'
+        row['source_label'] = f'ชนะรอบ 3 กลุ่ม B สาย {idx}'
         b_rows.append(row)
 
     a_rows = []
@@ -3501,7 +3533,9 @@ def _make_regional64_round4_groups(latest_round_view):
         row = dict(p)
         row['rank'] = idx
         row['seed'] = 100 + idx
-        row['regional64_label'] = roman[idx - 1]
+        row['regional64_label'] = f"L-{roman[idx - 1]}"
+        row['entry_label'] = f"L-{roman[idx - 1]}"
+        row['source_label'] = f'แพ้รอบ 3 กลุ่ม A สาย {idx}'
         a_rows.append(row)
 
     groups = [
@@ -3656,7 +3690,34 @@ def _fetch_playoff(playoff_id):
 def _slot_payload(slot):
     if not slot or slot.get('is_bye'):
         return None
-    return {'team_id': slot.get('team_id'), 'team_name': slot.get('team_name'), 'seed': slot.get('seed') or slot.get('slot_no'), 'rank': slot.get('seed') or slot.get('slot_no')}
+    return {
+        'team_id': slot.get('team_id'),
+        'team_name': slot.get('team_name'),
+        'seed': slot.get('seed') or slot.get('slot_no'),
+        'rank': slot.get('seed') or slot.get('slot_no'),
+        'entry_label': slot.get('entry_label'),
+        'source_label': slot.get('source_label'),
+    }
+
+
+def _ab_local_group_no(round_view, group_no):
+    """เลขสายย่อยภายในกลุ่ม A หรือ B (B ต้องเริ่มนับใหม่จาก 1)"""
+    meta = (round_view.get('round') or {}).get('round_meta') or {}
+    a_pair_count = int(meta.get('a_pair_count') or 0)
+    group_no = int(group_no or 0)
+    return group_no if group_no <= a_pair_count else max(1, group_no - a_pair_count)
+
+
+def _ab_tag_flow(payload, round_view, group_no, zone, result_kind, entry_label=None):
+    """แนบที่มาของทีมแบบอ่านย้อนหลังได้ เช่น ชนะรอบ 3 กลุ่ม B สาย 5"""
+    if not payload:
+        return None
+    row = dict(payload)
+    round_no = int(((round_view.get('round') or {}).get('round_no')) or 0)
+    local_no = _ab_local_group_no(round_view, group_no)
+    row['entry_label'] = entry_label or f"{'W' if result_kind == 'ชนะ' else 'L'}-{zone}{local_no}"
+    row['source_label'] = f'{result_kind}รอบ {round_no} กลุ่ม {zone} สาย {local_no}'
+    return row
 
 
 def _apply_bye_auto_scores_to_map(slots, score_map):
@@ -3853,13 +3914,17 @@ def _ab_participants_from_round(round_view):
                     break
         if zone == 'A':
             if winner:
+                winner = _ab_tag_flow(winner, round_view, g.get('group_no'), 'A', 'ชนะ')
                 a_winners.append(winner); next_a.append(winner)
             if loser:
+                loser = _ab_tag_flow(loser, round_view, g.get('group_no'), 'A', 'แพ้')
                 a_losers.append(loser); next_b.append(loser)
         else:
             if winner:
+                winner = _ab_tag_flow(winner, round_view, g.get('group_no'), 'B', 'ชนะ')
                 b_winners.append(winner); next_b.append(winner)
             if loser:
+                loser = _ab_tag_flow(loser, round_view, g.get('group_no'), 'B', 'แพ้')
                 b_losers.append(loser); eliminated.append(loser)
     return {
         'next_a': next_a, 'next_b': next_b, 'eliminated': eliminated,
@@ -4009,8 +4074,8 @@ def _ab_next_rows_for_creation(view, latest, pairing_method='seed'):
     ab = _ab_participants_from_round(latest)
     next_a = [] if state.get('a_finished') else (ab.get('next_a') or [])
     next_b = [] if state.get('b_finished') else (ab.get('next_b') or [])
-    a_rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx, 'seed': idx} for idx, p in enumerate(next_a, start=1)]
-    b_rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx + len(a_rows), 'seed': idx + len(a_rows)} for idx, p in enumerate(next_b, start=1)]
+    a_rows = [dict(p, rank=idx, seed=idx) for idx, p in enumerate(next_a, start=1)]
+    b_rows = [dict(p, rank=idx + len(a_rows), seed=idx + len(a_rows)) for idx, p in enumerate(next_b, start=1)]
     return a_rows, b_rows
 
 
@@ -4578,7 +4643,7 @@ def playoff_match_tables_print(playoff_id):
         except (TypeError, ValueError):
             per_page = 4
 
-        if per_page not in [1, 2, 3, 4, 6, 8]:
+        if per_page not in [1, 2, 3, 4, 6, 8, 10, 12, 14]:
             per_page = 4
 
     view, tables = _playoff_match_table_rows(playoff_id, selected_round, selected_group)
