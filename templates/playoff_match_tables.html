@@ -11,13 +11,14 @@
       {% set ns.is_double = true %}
     {% endif %}
   {% endfor %}
+  {% set dk_mode = per_page|int if ns.is_double and per_page|string in ['1','2','3','4'] else 1 %}
 
   <style>
     /* =========================================================
        1) PAGE & BASE STYLES
        ========================================================= */
     @page {
-      size: A4 portrait;
+      size: {% if ns.is_double and dk_mode == 2 %}A4 portrait{% elif ns.is_double %}A4 landscape{% else %}A4 portrait{% endif %};
       margin: 4mm;
     }
 
@@ -881,6 +882,33 @@
     .per-12 .qualified-row,
     .per-14 .qualified-row { font-size: 16px !important; padding: 8px 6px !important; gap: 7px !important; }
 
+
+    /* =========================================================
+       DOUBLE KNOCKOUT PAGE MODE
+       1 sheet/lane = landscape, 2 sheets/lane = portrait,
+       3-4 sheets/lane = landscape. Table size stays fixed.
+       ========================================================= */
+    {% if ns.is_double %}
+    .print-page {
+      min-height: {% if dk_mode == 2 %}289mm{% else %}202mm{% endif %};
+      page-break-after: always;
+      break-after: page;
+      grid-template-columns: 1fr;
+      grid-auto-rows: auto;
+    }
+    .dk-page-note {
+      text-align: center;
+      font-size: 15px;
+      font-weight: 900;
+      padding: 3px 6px;
+      border-bottom: 1.5px solid #000;
+      background: #f8fafc;
+    }
+    .dk-split .table-card {
+      width: 100%;
+    }
+    {% endif %}
+
     /* =========================================================
        3) PRINT FILTER CONTROLS
        ========================================================= */
@@ -993,12 +1021,16 @@
       ทั้งหมด
     </a>
 
-    <span style="font-weight:900; margin-left:8px;">จำนวนตาราง/แผ่น:</span>
+    {% if ns.is_double %}<span style="font-weight:900; margin-left:8px;">รูปแบบ Double Knockout:</span>{% else %}<span style="font-weight:900; margin-left:8px;">จำนวนตาราง/แผ่น:</span>{% endif %}
 
     {% for n in per_page_options %}
-      <a class="btn {% if per_page == n %}btn-active{% endif %}"
+      <a class="btn {% if per_page|string == n|string %}btn-active{% endif %}"
         href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=selected_round, group_no=selected_group, per_page=n) }}">
-        {{ n }}
+        {% if ns.is_double %}
+          {% if n == 1 %}1 แผ่นต่อสาย (แนวนอน){% elif n == 2 %}2 แผ่นต่อสาย (แนวตั้ง){% elif n == 3 %}3 แผ่นต่อสาย (แนวนอน){% elif n == 4 %}4 แผ่นต่อสาย (แนวนอน){% endif %}
+        {% else %}
+          {{ n }}
+        {% endif %}
       </a>
     {% endfor %}
 
@@ -1008,10 +1040,10 @@
     </a>
 
     <span style="font-weight:800;">
-      {% if per_page == 'all' %}
+      {% if ns.is_double %}
+        {% if dk_mode == 1 %}Double Knockout: 1 แผ่นต่อสาย แนวนอน{% elif dk_mode == 2 %}Double Knockout: 2 แผ่นต่อสาย แนวตั้ง{% elif dk_mode == 3 %}Double Knockout: 3 แผ่นต่อสาย แนวนอน{% elif dk_mode == 4 %}Double Knockout: 4 แผ่นต่อสาย แนวนอน{% endif %}
+      {% elif per_page == 'all' %}
         โหมดตารางทั้งหมด = ใช้ขนาดตารางมาตรฐาน ไม่ย่อ
-      {% elif ns.is_double and per_page != 2 %}
-        โหมด {{ per_page }} ตาราง/แผ่น = ขนาดมาตรฐาน
       {% else %}
         โหมด {{ per_page }} ตาราง/แผ่น = ขนาดมาตรฐาน ตัวใหญ่
       {% endif %}
@@ -1081,10 +1113,13 @@
   {# ==========================================================
      MATCH TABLE CARD
      ========================================================== #}
-  {% macro render_match_table(tbl) %}
+  {% macro render_match_table(tbl, stage_start=1, stage_end=none, page_no=1, page_total=1) %}
     {% if tbl %}
       {% set ab_group = tbl.group_label if tbl.group_label is defined and tbl.group_label else '' %}
       <div class="table-card {% if tbl.round_type == 'ab_ladder' and ab_group == 'A' %}ab-a-card{% elif tbl.round_type == 'ab_ladder' and ab_group == 'B' %}ab-b-card{% endif %}">
+        {% if tbl.round_type == 'double_knockout' and page_total > 1 %}
+          <div class="dk-page-note">สายที่ {{ tbl.group_no }} · หน้า {{ page_no }}/{{ page_total }} · แข่งขันครั้งที่ {{ stage_start }}{% if stage_end and stage_end != stage_start %}-{{ stage_end }}{% endif %}</div>
+        {% endif %}
         {% if ns.is_double %}
           <div class="event-head">
             <div class="event-title-wrap">
@@ -1126,10 +1161,10 @@
                 <th class="court-col" rowspan="2">สนาม</th>
                 <th class="seed-col" rowspan="2">ลำดับที่</th>
                 <th class="name-col" rowspan="2">รายชื่อทีม</th>
-                <th class="stage-title" colspan="{{ tbl.max_stage }}">แข่งขันครั้งที่</th>
+                <th class="stage-title" colspan="{{ (stage_end or tbl.max_stage) - stage_start + 1 }}">แข่งขันครั้งที่</th>
               </tr>
               <tr class="stage-head">
-                {% for i in range(1, tbl.max_stage + 1) %}
+                {% for i in range(stage_start, (stage_end or tbl.max_stage) + 1) %}
                   <th class="stage-col">{{ i }}</th>
                 {% endfor %}
               </tr>
@@ -1167,7 +1202,7 @@
                 </td>
 
                 {% if tbl.round_type == 'double_knockout' %}
-                  {% for i in range(1, tbl.max_stage + 1) %}
+                  {% for i in range(stage_start, (stage_end or tbl.max_stage) + 1) %}
                     <td></td>
                   {% endfor %}
                 {% else %}
@@ -1214,20 +1249,40 @@
     แยกพิมพ์เป็นชุดตามรอบและกลุ่ม A/B ก่อน batch เสมอ
     เพื่อไม่ให้ปลายกลุ่ม A ไปปนกับต้นกลุ่ม B และไม่ให้ตารางครึ่งหนึ่งค้างข้ามแผ่น
   #}
-  {% set page_capacity = 4 if per_page == 'all' else per_page %}
-  {% for round_group in tables|groupby('round_id') %}
-    {% for zone_group in round_group.list|groupby('group_label') %}
-      {% for page in zone_group.list|batch(page_capacity, none) %}
-        {% set first_tbl = page[0] %}
-        <section class="print-page per-{{ page_capacity }}">
-          {{ render_page_header(first_tbl) }}
-          {% for tbl in page %}
-            {{ render_match_table(tbl) }}
-          {% endfor %}
-        </section>
+  {% if ns.is_double %}
+    {# Double Knockout: per_page means sheets per lane, not tables per sheet. #}
+    {% for tbl in tables %}
+      {% if tbl %}
+        {% set max_stage = tbl.max_stage or 1 %}
+        {% set total_pages = dk_mode %}
+        {% set chunk = ((max_stage + total_pages - 1) // total_pages) if total_pages > 0 else max_stage %}
+        {% for page_no in range(1, total_pages + 1) %}
+          {% set start = ((page_no - 1) * chunk) + 1 %}
+          {% set end = page_no * chunk if page_no * chunk < max_stage else max_stage %}
+          {% if start <= max_stage %}
+            <section class="print-page per-2 dk-split dk-mode-{{ dk_mode }}">
+              {{ render_match_table(tbl, start, end, page_no, total_pages) }}
+            </section>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    {% set page_capacity = 4 if per_page == 'all' else per_page %}
+    {% for round_group in tables|groupby('round_id') %}
+      {% for zone_group in round_group.list|groupby('group_label') %}
+        {% for page in zone_group.list|batch(page_capacity, none) %}
+          {% set first_tbl = page[0] %}
+          <section class="print-page per-{{ page_capacity }}">
+            {{ render_page_header(first_tbl) }}
+            {% for tbl in page %}
+              {{ render_match_table(tbl) }}
+            {% endfor %}
+          </section>
+        {% endfor %}
       {% endfor %}
     {% endfor %}
-  {% endfor %}
+  {% endif %}
 
   <script>
     function fitTeamNameToCell(cell, minFontSize = 6.5) {
