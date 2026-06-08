@@ -9,6 +9,8 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Match, Team, Event, User
 import os
+from urllib.parse import quote
+from urllib.request import urlopen, Request
 import re
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -748,6 +750,7 @@ def upload_teams(event_id):
             return redirect(url_for("event_detail", event_id=event_id))
 
         latest_round = get_latest_round_for_event(event_id)
+        late_pair_mode = request.form.get('late_pair_mode', 'ask')
         new_teams = 0
         late_matches = 0
 
@@ -767,13 +770,23 @@ def upload_teams(event_id):
                     if created:
                         late_matches += 1
 
+        paired = remaining = 0
+        if latest_round and late_pair_mode == 'auto':
+            paired, remaining = auto_pair_late_entries(event_id, latest_round)
+
         db.session.commit()
 
         if latest_round:
-            flash(
-                f"เพิ่มทีม/นักกีฬาสำเร็จ {new_teams} รายการ และสร้างแถวคีย์คะแนนเฉพาะรายชื่อใหม่ในรอบที่ {latest_round} จำนวน {late_matches} แถว โดยไม่กระทบผลจับสลากเดิม",
-                "success"
-            )
+            if late_pair_mode == 'auto':
+                flash(
+                    f"เพิ่มทีม/นักกีฬาสำเร็จ {new_teams} รายการ และระบบประกบทีมใหม่ให้อัตโนมัติ {paired} คู่ เหลือรอคู่ {remaining} รายการ โดยไม่กระทบคู่เดิม",
+                    "success"
+                )
+            else:
+                flash(
+                    f"เพิ่มทีม/นักกีฬาสำเร็จ {new_teams} รายการ และสร้างแถวทีมเพิ่มภายหลังในรอบที่ {latest_round} จำนวน {late_matches} แถว โดยไม่กระทบผลจับสลากเดิม",
+                    "success"
+                )
         else:
             flash(f"เพิ่มทีมสำเร็จ {new_teams} ทีม", "success")
     except Exception as e:
@@ -832,6 +845,61 @@ def create_late_entry_match(event_id, team, target_round=None):
     return late_match
 
 
+
+def _late_entry_matches(event_id, target_round=None):
+    """รายการแถวทีมเพิ่มภายหลังที่ยังไม่มีคู่จริงในรอบที่กำหนด"""
+    if target_round is None:
+        target_round = get_latest_round_for_event(event_id)
+    if not target_round:
+        return []
+    return Match.query.filter_by(
+        event_id=event_id,
+        round=target_round,
+        team2_id=None,
+        is_manual=False
+    ).order_by(Match.id.asc()).all()
+
+
+def _next_available_field(event, round_num):
+    """หาเลขสนามถัดไป โดยไม่ไปแก้เลขสนามเดิม"""
+    prefix = event.field_prefix or ''
+    start = event.field_start or 1
+    max_field = event.field_max or 16
+    exclude = set(x.strip() for x in (event.field_exclude or '').split(',') if x.strip())
+    used = set()
+    for m in Match.query.filter_by(event_id=event.id, round=round_num).all():
+        if m.field is not None and str(m.field).strip():
+            used.add(str(m.field).strip())
+    n = start
+    while n < start + max_field * 20:
+        label = f"{prefix}{n}"
+        if label not in exclude and label not in used:
+            return label
+        n += 1
+    return None
+
+
+def auto_pair_late_entries(event_id, target_round=None):
+    """ประกบเฉพาะทีมที่เพิ่มภายหลัง ไม่แตะคู่เดิม"""
+    event = Event.query.get_or_404(event_id)
+    if target_round is None:
+        target_round = get_latest_round_for_event(event_id)
+    late = _late_entry_matches(event_id, target_round)
+    paired = 0
+    while len(late) >= 2:
+        m1 = late.pop(0)
+        m2 = late.pop(0)
+        m1.team2_id = m2.team1_id
+        m1.team1_score = None
+        m1.team2_score = None
+        m1.is_manual = True
+        if event.auto_field_enabled and not m1.field:
+            m1.field = _next_available_field(event, target_round)
+        db.session.delete(m2)
+        paired += 1
+    return paired, len(late)
+
+
 @app.route('/event/<int:event_id>/add_team', methods=['POST'])
 @login_required
 @roles_required('admin', 'superadmin')
@@ -856,11 +924,21 @@ def add_team_route(event_id):
 
     if latest_round:
         create_late_entry_match(event_id, new_team, latest_round)
+        late_pair_mode = request.form.get('late_pair_mode', 'ask')
+        paired = remaining = 0
+        if late_pair_mode == 'auto':
+            paired, remaining = auto_pair_late_entries(event_id, latest_round)
         db.session.commit()
-        flash(
-            f'เพิ่ม {team_name} เรียบร้อยแล้ว และสร้างแถวคีย์คะแนนเฉพาะชื่อนี้ในรอบที่ {latest_round} โดยไม่กระทบผลจับสลากเดิม',
-            'success'
-        )
+        if late_pair_mode == 'auto' and paired:
+            flash(
+                f'เพิ่ม {team_name} เรียบร้อยแล้ว และระบบประกบทีมเพิ่มใหม่ให้อัตโนมัติ {paired} คู่ โดยไม่กระทบคู่เดิม',
+                'success'
+            )
+        else:
+            flash(
+                f'เพิ่ม {team_name} เรียบร้อยแล้ว และสร้างแถวทีมเพิ่มภายหลังในรอบที่ {latest_round} โดยไม่กระทบผลจับสลากเดิม',
+                'success'
+            )
         return redirect(url_for('round_matches', event_id=event_id, round=latest_round))
 
     db.session.commit()
@@ -1781,6 +1859,80 @@ def round_matches(event_id, round):
         all_current_round_locked=all_current_round_locked,
         is_last_configured_round=is_last_configured_round,
     )
+
+
+@app.route('/event/<int:event_id>/late_pairing', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def late_pairing_route(event_id):
+    event = Event.query.get_or_404(event_id)
+    target_round = request.form.get('round', type=int) or get_latest_round_for_event(event_id)
+    mode = request.form.get('mode', 'auto')
+    late = _late_entry_matches(event_id, target_round)
+    if not late:
+        flash('ไม่มีทีมเพิ่มภายหลังที่รอประกบคู่', 'info')
+        return redirect(url_for('round_matches', event_id=event_id, round=target_round or 1))
+
+    if mode == 'manual':
+        team1_id = request.form.get('team1_id', type=int)
+        team2_id = request.form.get('team2_id', type=int)
+        if not team1_id or not team2_id or team1_id == team2_id:
+            flash('กรุณาเลือกทีมใหม่ 2 ทีมที่ไม่ซ้ำกัน', 'warning')
+            return redirect(url_for('round_matches', event_id=event_id, round=target_round))
+        by_team = {m.team1_id: m for m in late}
+        m1 = by_team.get(team1_id)
+        m2 = by_team.get(team2_id)
+        if not m1 or not m2:
+            flash('เลือกได้เฉพาะทีมที่เพิ่มใหม่และยังไม่ได้ประกบคู่เท่านั้น', 'warning')
+            return redirect(url_for('round_matches', event_id=event_id, round=target_round))
+        m1.team2_id = m2.team1_id
+        m1.team1_score = None
+        m1.team2_score = None
+        m1.is_manual = True
+        if event.auto_field_enabled and not m1.field:
+            m1.field = _next_available_field(event, target_round)
+        db.session.delete(m2)
+        db.session.commit()
+        flash('ประกบคู่ทีมเพิ่มภายหลังแบบแมนนวลเรียบร้อยแล้ว โดยไม่แก้คู่เดิม', 'success')
+    else:
+        paired, remaining = auto_pair_late_entries(event_id, target_round)
+        db.session.commit()
+        flash(f'ระบบประกบทีมเพิ่มภายหลังให้อัตโนมัติ {paired} คู่ เหลือรอคู่ {remaining} รายการ โดยไม่แก้คู่เดิม', 'success')
+
+    return redirect(url_for('round_matches', event_id=event_id, round=target_round))
+
+
+@app.route('/api/abbr_lookup')
+@login_required
+def abbr_lookup_api():
+    """ค้นคำอ่าน/ความหมายคำย่อจากอินเทอร์เน็ตแบบ optional ถ้าค้นไม่ได้ให้ frontend ถามผู้ใช้ต่อ"""
+    q = (request.args.get('q') or '').strip()
+    lang = (request.args.get('lang') or 'th').strip().lower()
+    wiki_lang = 'th' if lang.startswith('th') else 'en'
+    if not q or len(q) > 60:
+        return jsonify({'ok': False, 'reading': '', 'source': ''})
+    local = {
+        'มข': 'มหาวิทยาลัยขอนแก่น', 'รร': 'โรงเรียน', 'ร.ร.': 'โรงเรียน',
+        'อบจ': 'องค์การบริหารส่วนจังหวัด', 'ทม': 'เทศบาลเมือง', 'ทต': 'เทศบาลตำบล',
+        'อบต': 'องค์การบริหารส่วนตำบล', 'กกท': 'การกีฬาแห่งประเทศไทย',
+        'TH': 'Thailand', 'KKU': 'Khon Kaen University'
+    }
+    if q in local:
+        return jsonify({'ok': True, 'reading': local[q], 'source': 'local'})
+    try:
+        url = f'https://{wiki_lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(q)}&format=json&srlimit=1'
+        req = Request(url, headers={'User-Agent': 'TournoiPetanqueVoice/1.0'})
+        with urlopen(req, timeout=4) as res:
+            data = json.loads(res.read().decode('utf-8'))
+        hits = data.get('query', {}).get('search', [])
+        if hits:
+            title = hits[0].get('title') or ''
+            if title:
+                return jsonify({'ok': True, 'reading': title, 'source': 'wikipedia'})
+    except Exception:
+        pass
+    return jsonify({'ok': False, 'reading': '', 'source': ''})
+
 
 @app.route("/users")
 def user_list():
@@ -4634,17 +4786,17 @@ def playoff_match_tables_print(playoff_id):
     selected_round = request.args.get('round_id', type=int)
     selected_group = request.args.get('group_no', type=int)
 
-    per_page_raw = request.args.get("per_page", "4")
+    per_page_raw = request.args.get("per_page", "1")
     if per_page_raw == "all":
         per_page = "all"
     else:
         try:
             per_page = int(per_page_raw)
         except (TypeError, ValueError):
-            per_page = 4
+            per_page = 1
 
         if per_page not in [1, 2, 3, 4, 6, 8, 10, 12, 14]:
-            per_page = 4
+            per_page = 1
 
     view, tables = _playoff_match_table_rows(playoff_id, selected_round, selected_group)
 
@@ -4671,13 +4823,13 @@ def playoff_match_tables_print(playoff_id):
 @app.route('/playoff/<int:playoff_id>/round/<int:round_id>/match-tables')
 @login_required
 def playoff_round_match_tables_print(playoff_id, round_id):
-    return redirect(url_for('playoff_match_tables_print', playoff_id=playoff_id, round_id=round_id, per_page=request.args.get('per_page', 4)))
+    return redirect(url_for('playoff_match_tables_print', playoff_id=playoff_id, round_id=round_id, per_page=request.args.get('per_page', 1)))
 
 
 @app.route('/playoff/<int:playoff_id>/round/<int:round_id>/group/<int:group_no>/match-tables')
 @login_required
 def playoff_group_match_tables_print(playoff_id, round_id, group_no):
-    return redirect(url_for('playoff_match_tables_print', playoff_id=playoff_id, round_id=round_id, group_no=group_no, per_page=request.args.get('per_page', 4)))
+    return redirect(url_for('playoff_match_tables_print', playoff_id=playoff_id, round_id=round_id, group_no=group_no, per_page=request.args.get('per_page', 1)))
 
 
 @app.route('/playoff/<int:playoff_id>/score-sheet')
@@ -4685,12 +4837,14 @@ def playoff_group_match_tables_print(playoff_id, round_id, group_no):
 def playoff_score_sheet(playoff_id):
     selected_round = request.args.get('round_id', type=int)
     selected_group = request.args.get('group_no', type=int)
+    # สกอร์ชีทเพลย์ออฟใช้แพทเทิร์น Swiss: 2 ใบต่อแผ่นคงที่ / ไม่แสดงตัวเลือกจำนวนใบต่อแผ่น
+    per_page = 2
     view, sheets = _playoff_score_sheet_rows(playoff_id, selected_round, selected_group)
     if not view:
         flash('ไม่พบระบบเพลย์ออฟ', 'danger')
         return redirect(url_for('index'))
     source_event = Event.query.get(view['competition']['source_event_id']) if view.get('competition') else None
-    return render_template('playoff_score_sheet.html', view=view, source_event=source_event, sheets=sheets, selected_round=selected_round, selected_group=selected_group)
+    return render_template('playoff_score_sheet.html', view=view, source_event=source_event, sheets=sheets, selected_round=selected_round, selected_group=selected_group, per_page=per_page)
 
 
 @app.route('/playoff/<int:playoff_id>/round/<int:round_id>/score-sheet')
@@ -5121,7 +5275,8 @@ def create_playoff_next_round(playoff_id):
     if pairing_method not in {'seed', 'random', 'manual', 'bracket', 'national_qualifier'}:
         pairing_method = 'seed'
     add_bye = request.form.get('add_bye') == '1'
-    round_name = (request.form.get('round_name') or f"รอบที่ {_next_playoff_round_no(playoff_id)}").strip()
+    user_round_name = (request.form.get('round_name') or '').strip()
+    round_name = user_round_name or f"รอบที่ {_next_playoff_round_no(playoff_id)}"
     final_third_mode = (request.form.get('final_third_mode') or 'joint_third').strip()
     if next_type == 'ab_ladder':
         ab_state = _ab_state_for_view(view) or {}
@@ -5141,19 +5296,27 @@ def create_playoff_next_round(playoff_id):
             if national_mode_now and not _regional64_round3_created(view) and next_round_no >= 2:
                 if national_size == 48:
                     groups, meta = _make_national48_round3_groups(latest)
-                    round_name = 'รอบที่ 3 — คัดตัวแทนทีมชาติ 48 ทีม'
+                    meta['round_description'] = 'คัดตัวแทนทีมชาติ 48 ทีม'
+                    if not user_round_name:
+                        round_name = 'รอบที่ 3'
                 else:
                     groups, meta = _make_regional64_round3_groups(latest)
-                    round_name = 'รอบที่ 3 — คัดตัวแทนทีมชาติ 64 ทีม'
+                    meta['round_description'] = 'คัดตัวแทนทีมชาติ 64 ทีม'
+                    if not user_round_name:
+                        round_name = 'รอบที่ 3'
                 a_rows, b_rows = [], [item for pair in groups for item in pair if item]
             elif national_mode_now and national_size == 48 and not _national48_round4_created(view) and next_round_no >= 3:
                 groups, meta = _make_national48_round4_groups(latest)
                 a_rows, b_rows = [], [item for pair in groups for item in pair if item]
-                round_name = 'รอบที่ 4 — คัดตัวแทนทีมชาติ 48 ทีม'
+                meta['round_description'] = 'คัดตัวแทนทีมชาติ 48 ทีม'
+                if not user_round_name:
+                    round_name = 'รอบที่ 4'
             elif national_mode_now and national_size == 64 and not _regional64_round4_created(view) and next_round_no >= 3:
                 groups, meta = _make_regional64_round4_groups(latest)
                 a_rows, b_rows = [], [item for pair in groups for item in pair if item]
-                round_name = 'รอบที่ 4 — คัดตัวแทนทีมชาติ 64 ทีม'
+                meta['round_description'] = 'คัดตัวแทนทีมชาติ 64 ทีม'
+                if not user_round_name:
+                    round_name = 'รอบที่ 4'
             else:
                 a_rows, b_rows = _ab_next_rows_for_creation(view, latest, pairing_method)
                 if len(a_rows) + len(b_rows) < 2:
@@ -5161,8 +5324,9 @@ def create_playoff_next_round(playoff_id):
                     return redirect(url_for('playoff_detail', playoff_id=playoff_id) + '#report')
                 groups, meta = _ab_make_round_groups(a_rows, b_rows, pairing_method)
                 meta.update({'a_team_count': len(a_rows), 'b_team_count': len(b_rows), 'round_kind': 'ab_ladder'})
-                if not round_name or round_name.startswith('รอบ '):
-                    round_name = f"A/B รอบที่ {next_round_no} — A {len(a_rows)} ทีม / B {len(b_rows)} ทีม"
+                meta['round_description'] = f"A/B รอบที่ {next_round_no} — A {len(a_rows)} ทีม / B {len(b_rows)} ทีม"
+                if not user_round_name and not round_name:
+                    round_name = f"รอบที่ {next_round_no}"
         except ValueError as exc:
             flash(str(exc), 'warning')
             return redirect(url_for('playoff_detail', playoff_id=playoff_id))

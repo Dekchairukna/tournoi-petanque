@@ -40,7 +40,7 @@
     {% endif %}
     <a href="#top" class="top-pill top-pill-playoff"><span class="side-icon">🎯</span><span>play_off</span></a>
     {% for rv in view.round_views %}
-    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round js-round-tab" data-round-tab="{{ rv.round.id }}"><span class="side-icon">▸</span><span>{{
+    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round js-round-tab" data-round-tab="{{ rv.round.id }}" title="{{ rv.round.round_meta.round_description|default('') }}"><span class="side-icon">▸</span><span><i class="mini-status-dot empty" data-round-status-dot="{{ rv.round.id }}"></i>{{
         rv.round.round_name }}</span></a>
     {% endfor %}
     <a href="#next-round-panel" class="top-pill top-pill-draw"><span
@@ -109,6 +109,30 @@
           <button type="submit" class="btn action-btn btn-danger">ลบเพลย์ออฟนี้</button>
         </form>
       </div>
+
+      <details class="voice-console no-print" id="playoffVoiceConsole">
+        <summary>🔊 ระบบเสียงประกาศประกบคู่</summary>
+        <div class="voice-toolbar" aria-label="เครื่องมืออ่านเสียงประกบคู่">
+          <button type="button" class="voice-btn voice-btn-all" onclick="speakAllPlayoffMatches()">🔊 อ่านรอบ/สายที่เปิดอยู่</button>
+          <button type="button" class="voice-btn voice-btn-stop" onclick="stopMatchVoice()">⏹️ หยุด</button>
+          <button type="button" class="voice-btn voice-btn-one" onclick="refreshPlayoffVoiceScript()">↻ สร้างสคริปต์ใหม่</button>
+          <select id="voiceLangSelect" class="voice-control-select" title="เลือกภาษา">
+            <option value="th-TH">ภาษาไทย</option>
+            <option value="en-US">English</option>
+          </select>
+          <select id="voiceNameSelect" class="voice-control-select" title="เลือกเสียง">
+            <option value="">เสียงอัตโนมัติ</option>
+          </select>
+          <span class="voice-small-note">เปิดแล้วแก้สคริปต์ก่อนอ่านได้ ระบบจำภาษา/เสียง/คำอ่านที่ชอบ</span>
+        </div>
+        <textarea id="voiceScriptText" class="voice-script-box" rows="5" placeholder="สคริปต์ที่จะประกาศจะแสดงตรงนี้ แก้ไขก่อนกดอ่านได้"></textarea>
+      </details>
+
+      <div class="playoff-status-summary no-print" id="playoff-status-summary">
+        <span class="playoff-status-badge playoff-status-done">🟢 กรอกแล้ว <b data-status-count="done">0</b></span>
+        <span class="playoff-status-badge playoff-status-partial">🟡 ระหว่างกรอก <b data-status-count="partial">0</b></span>
+        <span class="playoff-status-badge playoff-status-empty">⚪ ยังไม่กรอก <b data-status-count="empty">0</b></span>
+      </div>
     </div>
 
 
@@ -134,7 +158,7 @@
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
           <a href="{{ url_for('playoff_round_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}"
             target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทรอบนี้ / QR ออนไลน์</a>
-          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=4) }}"
+          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=1) }}"
             target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งรอบนี้</a>
         </div>
         <form method="post" action="{{ url_for('renumber_playoff_courts', playoff_id=view.competition.id) }}"
@@ -172,8 +196,8 @@
             <div class="round-switcher-title">เลือกรอบการแข่งขัน</div>
             <div class="round-switcher-tabs">
               {% for round_tab in view.round_views %}
-              <button type="button" class="round-switch-btn js-round-tab" data-round-tab="{{ round_tab.round.id }}">
-                {{ round_tab.round.round_name }}
+              <button type="button" class="round-switch-btn js-round-tab" data-round-tab="{{ round_tab.round.id }}" title="{{ round_tab.round.round_meta.round_description|default('') }}">
+                <i class="mini-status-dot empty" data-round-status-dot="{{ round_tab.round.id }}"></i>{{ round_tab.round.round_name }}
                 {% if round_tab.round.round_type == 'ab_ladder' %}<span class="round-tab-kind">A/B</span>{% endif %}
               </button>
               {% endfor %}
@@ -191,7 +215,7 @@
               {% endif %}
               <button type="button" class="group-switch-btn js-group-tab {% if tab_zone == 'A' %}group-tab-a{% elif tab_zone == 'B' %}group-tab-b{% endif %}"
                 data-round-id="{{ rv.round.id }}" data-group-tab="{{ tab_group.group_no }}">
-                {% if tab_zone %}{{ tab_zone }}{% endif %}{{ tab_group.group_no }}
+                <i class="mini-status-dot empty" data-group-status-dot="{{ rv.round.id }}-{{ tab_group.group_no }}"></i>{% if tab_zone %}{{ tab_zone }}{% endif %}{{ tab_group.group_no }}
               </button>
               {% endfor %}
               <button type="button" class="group-switch-btn group-switch-all js-group-tab" data-round-id="{{ rv.round.id }}" data-group-tab="all">แสดงทุกสาย</button>
@@ -200,7 +224,7 @@
         </div>
         {% endif %}
         {% for group in rv.group_views %}
-        <div class="group-box printable-group js-group-panel" data-round-id="{{ rv.round.id }}" data-group-panel="{{ group.group_no }}" id="round-{{ rv.round.id }}-group-{{ group.group_no }}"
+        <div class="group-box printable-group js-group-panel" data-round-id="{{ rv.round.id }}" data-round-name="{{ rv.round.round_name }}" data-group-panel="{{ group.group_no }}" id="round-{{ rv.round.id }}-group-{{ group.group_no }}"
           style="border:1.5px solid #ccc; padding:15px; margin:18px 0;">
           <div class="print-header only-print" style="display:none; text-align:center; margin-bottom:14px;">
             <div style="font-size:24px; font-weight:800;">{{ view.competition.title }}</div>
@@ -228,10 +252,12 @@
                 {% endif %}
               {% endif %}
               {% else %} สายที่ {{ group.group_no }} {% endif %} </b>
+                <span class="playoff-status-badge playoff-status-empty js-group-status" data-round="{{ rv.round.id }}" data-group="{{ group.group_no }}">⚪ ยังไม่กรอก</span>
                 <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                  <button type="button" class="voice-btn voice-btn-one" onclick="speakPlayoffGroup('{{ rv.round.id }}', '{{ group.group_no }}')">🔈 อ่านสายนี้</button>
                   <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}"
                     target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
-                  <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=4) }}"
+                  <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=1) }}"
                     target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งสายนี้</a>
                   <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
                     class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
@@ -432,12 +458,9 @@
         <div>
           <label style="display:block; font-weight:700; margin-bottom:6px;">รอบถัดไปเป็น</label>
           <select name="next_type" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px;">
-            {% if view.competition.competition_type == 'ab_ladder' %}
-            <option value="ab_ladder">A/B ต่อเนื่อง</option>
-            {% else %}
-            <option value="double_knockout">Double knockout</option>
-            <option value="knockout">Knockout</option>
-            {% endif %}
+            <option value="ab_ladder" {% if view.competition.competition_type == 'ab_ladder' %}selected{% endif %}>A/B ต่อเนื่อง</option>
+            <option value="double_knockout" {% if view.competition.competition_type == 'double_knockout' %}selected{% endif %}>Double knockout</option>
+            <option value="knockout" {% if view.competition.competition_type == 'knockout' %}selected{% endif %}>Knockout</option>
             <option value="swiss">Swiss</option>
             <option value="round_robin" disabled>Round Robin ติดไว้ก่อน</option>
           </select>
@@ -1790,6 +1813,108 @@
       print-color-adjust: exact
     }
   }
+
+  .playoff-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 14px;
+    font-weight: 900;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .playoff-status-empty { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  .playoff-status-partial { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+  .playoff-status-done { background: #dcfce7; color: #166534; border-color: #86efac; }
+
+  .playoff-status-summary {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 12px 0 8px;
+  }
+
+  .group-switch-btn .mini-status-dot,
+  .js-round-tab .mini-status-dot {
+    display: inline-flex;
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    margin-right: 5px;
+    background: #94a3b8;
+    box-shadow: 0 0 0 2px rgba(148, 163, 184, .22);
+  }
+
+  .mini-status-dot.done { background: #22c55e; }
+  .mini-status-dot.partial { background: #f59e0b; }
+  .mini-status-dot.empty { background: #94a3b8; }
+
+
+  .voice-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: linear-gradient(135deg, #eef2ff, #ecfeff);
+    border: 1px solid #c7d2fe;
+    border-radius: 18px;
+    padding: 12px;
+    margin: 12px 0 14px;
+  }
+  .voice-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-weight: 800;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, .12);
+    cursor: pointer;
+  }
+  .voice-btn-all { background: #dbeafe; color: #1e3a8a; }
+  .voice-btn-stop { background: #fee2e2; color: #991b1b; }
+  .voice-btn-one { background: #fef3c7; color: #92400e; padding: 6px 10px; }
+  .voice-control-select {
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 7px 12px;
+    background: #fff;
+    font-weight: 700;
+    min-width: 145px;
+  }
+  .voice-small-note { color: #64748b; font-size: 13px; font-weight: 700; }
+
+
+  .voice-console {
+    margin: 14px auto 0;
+    max-width: 1100px;
+    border: 1px solid #cbd5e1;
+    border-radius: 18px;
+    background: #f8fafc;
+    overflow: hidden;
+  }
+  .voice-console summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 900;
+    color: #0f172a;
+    list-style: none;
+  }
+  .voice-console summary::-webkit-details-marker { display: none; }
+  .voice-script-box {
+    width: calc(100% - 28px);
+    margin: 0 14px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-family: Tahoma, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    resize: vertical;
+  }
+
 </style>
 
 <script>
@@ -1886,6 +2011,13 @@
     });
   });
 
+</script>
+<script>
+  window.playoffVoiceTitle = {{ view.competition.title|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
+
+<script>
   const playoffId = {{ view.competition.id| tojson }};
   let socket = null;
   function getClientSid() { return socket && socket.id ? socket.id : ""; }
@@ -1987,6 +2119,7 @@
     const hasDouble = !!q(roundId, groupNo, 1, 2) || !!q(roundId, groupNo, 3, 2);
     if (!hasDouble) {
       setResultText(roundId, groupNo, teamName(r1a && r1a.winner), '');
+      refreshPlayoffStatus();
       return;
     }
     // สีรอบ 2/3 จะคำนวณได้ครบหลัง autosave/reload เหมือนต้นฉบับ แต่ให้แสดงสีทันทีถ้ามีช่องที่เปิดอยู่
@@ -1996,7 +2129,53 @@
     let final2 = null;
     if (s3s.length >= 2) final2 = markPair(s3s[0], s3s[1]);
     setResultText(roundId, groupNo, teamName(wf && wf.winner), teamName(final2 && final2.winner));
+    refreshPlayoffStatus();
   }
+
+  function updateStatusDot(el, status) {
+    if (!el) return;
+    el.classList.remove('done', 'partial', 'empty');
+    el.classList.add(status);
+  }
+  function getGroupStatus(roundId, groupNo) {
+    const inputs = Array.from(document.querySelectorAll(`.autosave-score[data-round="${roundId}"][data-group="${groupNo}"]`)).filter(el => !el.disabled);
+    if (!inputs.length) return 'empty';
+    const filled = inputs.filter(el => el.value !== '').length;
+    const winnerText = (document.querySelector(`.group-result-box[data-round="${roundId}"][data-group="${groupNo}"] .result-winner`)?.textContent || '').trim();
+    if (filled === 0) return 'empty';
+    if (winnerText && winnerText !== '...') return 'done';
+    return 'partial';
+  }
+  function statusLabel(status) {
+    if (status === 'done') return '🟢 กรอกแล้ว';
+    if (status === 'partial') return '🟡 ระหว่างกรอก';
+    return '⚪ ยังไม่กรอก';
+  }
+  function refreshPlayoffStatus() {
+    const badges = Array.from(document.querySelectorAll('.js-group-status'));
+    const counts = { done: 0, partial: 0, empty: 0 };
+    const roundMap = {};
+    badges.forEach(badge => {
+      const roundId = badge.dataset.round;
+      const groupNo = badge.dataset.group;
+      const status = getGroupStatus(roundId, groupNo);
+      counts[status] += 1;
+      if (!roundMap[roundId]) roundMap[roundId] = [];
+      roundMap[roundId].push(status);
+      badge.classList.remove('playoff-status-done', 'playoff-status-partial', 'playoff-status-empty');
+      badge.classList.add(`playoff-status-${status}`);
+      badge.textContent = statusLabel(status);
+      document.querySelectorAll(`[data-group-status-dot="${roundId}-${groupNo}"]`).forEach(dot => updateStatusDot(dot, status));
+    });
+    Object.entries(counts).forEach(([key, value]) => {
+      document.querySelectorAll(`[data-status-count="${key}"]`).forEach(el => { el.textContent = value; });
+    });
+    Object.entries(roundMap).forEach(([roundId, statuses]) => {
+      const roundStatus = statuses.every(x => x === 'done') ? 'done' : (statuses.some(x => x !== 'empty') ? 'partial' : 'empty');
+      document.querySelectorAll(`[data-round-status-dot="${roundId}"]`).forEach(dot => updateStatusDot(dot, roundStatus));
+    });
+  }
+
   document.querySelectorAll('.autosave-score').forEach(input => {
     input.addEventListener('input', () => {
       const n = input.value === '' ? null : Number(input.value);
@@ -2015,6 +2194,7 @@
   document.querySelectorAll('.autosave-court').forEach(input => { input.addEventListener('input', () => { const key = 'court-' + input.dataset.slot; clearTimeout(timers[key]); timers[key] = setTimeout(() => postJSON(`/playoff/${input.dataset.playoff}/autosave-court`, { slot_id: input.dataset.slot, court: input.value }), 350); }); });
   document.addEventListener('DOMContentLoaded', () => {
     const seenGroups = new Set(); document.querySelectorAll('.autosave-score').forEach(input => { const k = input.dataset.round + '-' + input.dataset.group; if (!seenGroups.has(k)) { seenGroups.add(k); refreshGroupColors(input.dataset.round, input.dataset.group); } });
+    refreshPlayoffStatus();
   });
 </script>
 {% endblock %}

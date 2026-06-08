@@ -17,7 +17,7 @@
        1) PAGE & BASE STYLES
        ========================================================= */
     @page {
-      size: A4 {{ 'landscape' if ns.is_double and per_page != 2 else 'portrait' }};
+      size: A4 portrait;
       margin: 4mm;
     }
 
@@ -67,11 +67,11 @@
 
     .print-page {
       width: 100%;
-      min-height: {{ '202mm' if ns.is_double and per_page != 2 else '289mm' }};
+      min-height: 289mm;
       page-break-after: always;
       break-after: page;
       display: grid;
-      gap: {{ '1.5mm' if ns.is_double else '1.6mm' }};
+      gap: 2mm;
       padding: 0;
       align-content: start;
     }
@@ -81,37 +81,34 @@
       break-after: auto;
     }
 
-    {% if ns.is_double %}
-    .per-1 {
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr;
-    }
-
-    .per-2 {
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr;
-    }
-
-    .per-3,
-    .per-4 {
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
-    }
-    {% else %}
     .print-page {
-      grid-template-rows: auto;
+      grid-template-columns: 1fr;
+      grid-auto-rows: auto;
+    }
+
+    .per-1,
+    .per-2,
+    .per-3,
+    .per-4,
+    .per-6,
+    .per-8,
+    .per-10,
+    .per-12,
+    .per-14 {
+      grid-template-columns: 1fr;
+      grid-auto-rows: auto;
     }
 
     .page-title-once {
       grid-column: 1 / -1;
       text-align: center;
-      padding: 1px 4px 3px;
+      padding: 2px 4px 5px;
       border-bottom: 2px solid #000;
-      margin-bottom: .6mm;
+      margin-bottom: .8mm;
     }
 
     .page-title-main {
-      font-size: 18px;
+      font-size: 21px;
       font-weight: 900;
       line-height: 1.08;
       white-space: nowrap;
@@ -120,7 +117,7 @@
     }
 
     .page-title-sub {
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 900;
       line-height: 1.12;
       margin-top: 1px;
@@ -130,28 +127,11 @@
     }
 
     .page-title-detail {
-      font-size: 11px;
+      font-size: 15px;
       font-weight: 800;
       line-height: 1.12;
       margin-top: 1px;
     }
-
-    .per-1,
-    .per-2 {
-      grid-template-columns: 1fr;
-      grid-auto-rows: auto;
-    }
-
-    .per-4,
-    .per-6,
-    .per-8,
-    .per-10,
-    .per-12,
-    .per-14 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-auto-rows: auto;
-    }
-    {% endif %}
 
     /* =========================================================
        2) MATCH CARD
@@ -197,13 +177,13 @@
     .event-title-wrap { min-width: 0; }
 
     .main-title {
-      font-size: 18px;
+      font-size: 23px;
       font-weight: 900;
       line-height: 1.08;
     }
 
     .sub-title {
-      font-size: 14px;
+      font-size: 17px;
       font-weight: 800;
       margin-top: 2px;
       white-space: nowrap;
@@ -250,7 +230,7 @@
       gap: 3px;
       flex-wrap: wrap;
       text-align: center;
-      font-size: 13px;
+      font-size: 15px;
       padding: 4px 6px;
     }
 
@@ -280,7 +260,7 @@
       text-align: center;
       vertical-align: middle;
       padding: 2px 3px;
-      font-size: 13px;
+      font-size: 15px;
       font-weight: 900;
     }
 
@@ -453,7 +433,7 @@
     .per-3 .match-table td,
     .per-4 .match-table th,
     .per-4 .match-table td {
-      font-size: 13px;
+      font-size: 15px;
     }
 
     {% if not ns.is_double %}
@@ -600,7 +580,7 @@
     .per-10 .meta-row,
     .per-12 .meta-row,
     .per-14 .meta-row {
-      font-size: 11px;
+      font-size: 14px;
       grid-template-columns: 32fr 47fr 21fr;
     }
 
@@ -609,7 +589,7 @@
     .per-14 .meta-row > div {
       padding: 2px 3px;
       min-height: 18px;
-      font-size: 11px;
+      font-size: 14px;
     }
 
     .per-10 .match-table th,
@@ -618,7 +598,7 @@
     .per-12 .match-table td,
     .per-14 .match-table th,
     .per-14 .match-table td {
-      font-size: 10px;
+      font-size: 15px;
       padding: 1px 2px;
     }
 
@@ -677,12 +657,12 @@
 
     .per-6 .main-title,
     .per-8 .main-title {
-      font-size: 13px;
+      font-size: 15px;
     }
 
     .per-6 .sub-title,
     .per-8 .sub-title {
-      font-size: 11px;
+      font-size: 14px;
     }
 
     .per-6 .logo-on-sheet,
@@ -693,7 +673,7 @@
 
     .per-6 .meta-row,
     .per-8 .meta-row {
-      font-size: 11px;
+      font-size: 14px;
       grid-template-columns: 32fr 47fr 21fr;
     }
 
@@ -701,19 +681,19 @@
     .per-8 .meta-row > div {
       padding: 2px 3px;
       min-height: 20px;
-      font-size: 11px;
+      font-size: 14px;
     }
 
     .per-6 .meta-row > div:last-child,
     .per-8 .meta-row > div:last-child {
-      font-size: 11px;
+      font-size: 14px;
     }
 
     .per-6 .match-table th,
     .per-6 .match-table td,
     .per-8 .match-table th,
     .per-8 .match-table td {
-      font-size: 10px;
+      font-size: 15px;
       padding: 1px 2px;
     }
 
@@ -734,7 +714,7 @@
 
     .per-6 .qualified-row,
     .per-8 .qualified-row {
-      font-size: 10px;
+      font-size: 15px;
       padding: 3px 3px;
       gap: 4px;
     }
@@ -745,6 +725,161 @@
     }
     {% endif %}
 
+
+
+
+    /* =========================================================
+       FIXED PRINT SIZE: ทุกโหมดใช้ขนาดเท่ากับ 2 ตาราง/แผ่น
+       เลือก 1/2/3/4/6/ทั้งหมด จะไม่ย่อขนาดตารางหรือตัวหนังสือ
+       ========================================================= */
+    .per-1 .page-title-main,
+    .per-2 .page-title-main,
+    .per-3 .page-title-main,
+    .per-4 .page-title-main,
+    .per-6 .page-title-main,
+    .per-8 .page-title-main,
+    .per-10 .page-title-main,
+    .per-12 .page-title-main,
+    .per-14 .page-title-main { font-size: 22px !important; }
+
+    .per-1 .page-title-sub,
+    .per-2 .page-title-sub,
+    .per-3 .page-title-sub,
+    .per-4 .page-title-sub,
+    .per-6 .page-title-sub,
+    .per-8 .page-title-sub,
+    .per-10 .page-title-sub,
+    .per-12 .page-title-sub,
+    .per-14 .page-title-sub { font-size: 18px !important; }
+
+    .per-1 .event-head,
+    .per-2 .event-head,
+    .per-3 .event-head,
+    .per-4 .event-head,
+    .per-6 .event-head,
+    .per-8 .event-head,
+    .per-10 .event-head,
+    .per-12 .event-head,
+    .per-14 .event-head { min-height: 56px !important; }
+
+    .per-1 .main-title,
+    .per-2 .main-title,
+    .per-3 .main-title,
+    .per-4 .main-title,
+    .per-6 .main-title,
+    .per-8 .main-title,
+    .per-10 .main-title,
+    .per-12 .main-title,
+    .per-14 .main-title { font-size: 23px !important; }
+
+    .per-1 .sub-title,
+    .per-2 .sub-title,
+    .per-3 .sub-title,
+    .per-4 .sub-title,
+    .per-6 .sub-title,
+    .per-8 .sub-title,
+    .per-10 .sub-title,
+    .per-12 .sub-title,
+    .per-14 .sub-title { font-size: 18px !important; }
+
+    .per-1 .logo-on-sheet,
+    .per-2 .logo-on-sheet,
+    .per-3 .logo-on-sheet,
+    .per-4 .logo-on-sheet,
+    .per-6 .logo-on-sheet,
+    .per-8 .logo-on-sheet,
+    .per-10 .logo-on-sheet,
+    .per-12 .logo-on-sheet,
+    .per-14 .logo-on-sheet { width: 50px !important; height: 50px !important; }
+
+    .per-1 .meta-row,
+    .per-2 .meta-row,
+    .per-3 .meta-row,
+    .per-4 .meta-row,
+    .per-6 .meta-row,
+    .per-8 .meta-row,
+    .per-10 .meta-row,
+    .per-12 .meta-row,
+    .per-14 .meta-row { font-size: 16px !important; grid-template-columns: 32fr 47fr 21fr !important; }
+
+    .per-1 .meta-row > div,
+    .per-2 .meta-row > div,
+    .per-3 .meta-row > div,
+    .per-4 .meta-row > div,
+    .per-6 .meta-row > div,
+    .per-8 .meta-row > div,
+    .per-10 .meta-row > div,
+    .per-12 .meta-row > div,
+    .per-14 .meta-row > div { font-size: 16px !important; padding: 6px 7px !important; min-height: 25px !important; }
+
+    .per-1 .meta-row > div:last-child,
+    .per-2 .meta-row > div:last-child,
+    .per-3 .meta-row > div:last-child,
+    .per-4 .meta-row > div:last-child,
+    .per-6 .meta-row > div:last-child,
+    .per-8 .meta-row > div:last-child,
+    .per-10 .meta-row > div:last-child,
+    .per-12 .meta-row > div:last-child,
+    .per-14 .meta-row > div:last-child { font-size: 18px !important; }
+
+    .per-1 .match-table th,
+    .per-1 .match-table td,
+    .per-2 .match-table th,
+    .per-2 .match-table td,
+    .per-3 .match-table th,
+    .per-3 .match-table td,
+    .per-4 .match-table th,
+    .per-4 .match-table td,
+    .per-6 .match-table th,
+    .per-6 .match-table td,
+    .per-8 .match-table th,
+    .per-8 .match-table td,
+    .per-10 .match-table th,
+    .per-10 .match-table td,
+    .per-12 .match-table th,
+    .per-12 .match-table td,
+    .per-14 .match-table th,
+    .per-14 .match-table td { font-size: 17px !important; padding: 2px 3px !important; }
+
+    .per-1 .match-table thead th,
+    .per-2 .match-table thead th,
+    .per-3 .match-table thead th,
+    .per-4 .match-table thead th,
+    .per-6 .match-table thead th,
+    .per-8 .match-table thead th,
+    .per-10 .match-table thead th,
+    .per-12 .match-table thead th,
+    .per-14 .match-table thead th { height: 31px !important; }
+
+    .per-1 .match-table tbody td,
+    .per-2 .match-table tbody td,
+    .per-3 .match-table tbody td,
+    .per-4 .match-table tbody td,
+    .per-6 .match-table tbody td,
+    .per-8 .match-table tbody td,
+    .per-10 .match-table tbody td,
+    .per-12 .match-table tbody td,
+    .per-14 .match-table tbody td { height: 35px !important; }
+
+    .per-1 .team-name,
+    .per-2 .team-name,
+    .per-3 .team-name,
+    .per-4 .team-name,
+    .per-6 .team-name,
+    .per-8 .team-name,
+    .per-10 .team-name,
+    .per-12 .team-name,
+    .per-14 .team-name { font-size: 11.5px !important; padding-left: 6px !important; }
+
+    .per-1 .qualified-row,
+    .per-2 .qualified-row,
+    .per-3 .qualified-row,
+    .per-4 .qualified-row,
+    .per-6 .qualified-row,
+    .per-8 .qualified-row,
+    .per-10 .qualified-row,
+    .per-12 .qualified-row,
+    .per-14 .qualified-row { font-size: 16px !important; padding: 8px 6px !important; gap: 7px !important; }
 
     /* =========================================================
        3) PRINT FILTER CONTROLS
@@ -841,7 +976,7 @@
   {% if ns.is_double %}
     {% set per_page_options = [1, 2, 3, 4] %}
   {% else %}
-    {% set per_page_options = [1, 2, 4, 6, 8, 10, 12, 14] %}
+    {% set per_page_options = [1, 2, 3, 4, 6] %}
   {% endif %}
 
   <!-- =======================================================
@@ -874,11 +1009,11 @@
 
     <span style="font-weight:800;">
       {% if per_page == 'all' %}
-        โหมดตารางทั้งหมด = แยกแผ่นตามรอบ/กลุ่ม และจัดตารางแบบสมส่วน
+        โหมดตารางทั้งหมด = ใช้ขนาดตารางมาตรฐาน ไม่ย่อ
       {% elif ns.is_double and per_page != 2 %}
-        โหมด {{ per_page }} ตาราง/แผ่น = แนวนอน
+        โหมด {{ per_page }} ตาราง/แผ่น = ขนาดมาตรฐาน
       {% else %}
-        โหมด {{ per_page }} ตาราง/แผ่น = แนวตั้ง
+        โหมด {{ per_page }} ตาราง/แผ่น = ขนาดมาตรฐาน ตัวใหญ่
       {% endif %}
     </span>
   </div>
@@ -1079,7 +1214,7 @@
     แยกพิมพ์เป็นชุดตามรอบและกลุ่ม A/B ก่อน batch เสมอ
     เพื่อไม่ให้ปลายกลุ่ม A ไปปนกับต้นกลุ่ม B และไม่ให้ตารางครึ่งหนึ่งค้างข้ามแผ่น
   #}
-  {% set page_capacity = (4 if ns.is_double else 10) if per_page == 'all' else per_page %}
+  {% set page_capacity = 4 if per_page == 'all' else per_page %}
   {% for round_group in tables|groupby('round_id') %}
     {% for zone_group in round_group.list|groupby('group_label') %}
       {% for page in zone_group.list|batch(page_capacity, none) %}

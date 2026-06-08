@@ -112,6 +112,38 @@
       max-height: 50px;
       margin-right: 15px;
     }
+
+
+    .voice-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      background: linear-gradient(135deg, #eef2ff, #ecfeff);
+      border: 1px solid #c7d2fe;
+      border-radius: 18px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    .voice-btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-weight: 800;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .12);
+    }
+
+    .voice-btn-all { background: #dbeafe; color: #1e3a8a; }
+    .voice-btn-stop { background: #fee2e2; color: #991b1b; }
+    .voice-btn-one { background: #fef3c7; color: #92400e; padding: 6px 10px; }
+
+    .voice-small-note {
+      color: #64748b;
+      font-size: 14px;
+      font-weight: 600;
+    }
   </style>
 </head>
 
@@ -137,6 +169,12 @@
 
     </div>
 
+    <div class="voice-toolbar no-print" aria-label="เครื่องมืออ่านเสียงประกบคู่">
+      <button type="button" class="voice-btn voice-btn-all" onclick="speakAllMatches()">🔊 อ่านทั้งหมด</button>
+      <button type="button" class="voice-btn voice-btn-stop" onclick="stopMatchVoice()">⏹️ หยุดเสียง</button>
+      <span class="voice-small-note">อ่านประกาศสนามและคู่แข่งขันด้วยเสียงภาษาไทย</span>
+    </div>
+
 
     <!-- วนรอบแข่งขัน -->
     {% for round_number, matches in matches_by_round.items() %}
@@ -146,7 +184,7 @@
           <table class="table table-striped print-table align-middle">
             <thead class="text-center table-dark">
               <tr>
-                <th colspan="5" class="bg-white text-dark text-center border-0 p-3">
+                <th colspan="6" class="bg-white text-dark text-center border-0 p-3">
 
                   {% for logo in event.logo_list %}
                   <img src="{{ url_for('static', filename='logos/' + logo) }}" class="logo-on-sheet mb-1"
@@ -166,12 +204,17 @@
                 <th style="width: 30%">ทีม</th>
                 <th style="width: 10%">คะแนน</th>
                 <th style="width: 10%">คะแนน</th>
+                <th style="width: 10%" class="no-print">เสียง</th>
 
               </tr>
             </thead>
             <tbody>
               {% for match in matches %}
-              <tr class="text-center">
+              <tr class="text-center match-voice-row"
+                data-round="{{ round_number }}"
+                data-field="{{ match.field or '-' }}"
+                data-team1="{{ teams.get(match.team1_id, 'BYE') }}"
+                data-team2="{{ teams.get(match.team2_id, 'BYE') }}">
                 <td class="text-center fw-bold">{{ match.field or '-' }}</td>
                 <td>{{ teams.get(match.team1_id, 'BYE') }}</td>
                 <td>{{ teams.get(match.team2_id, 'BYE') }}</td>
@@ -180,11 +223,14 @@
                 </td>
                 <td class="text-center">{{ '' if is_zero_zero or match.team2_score is none else match.team2_score }}
                 </td>
+                <td class="text-center no-print">
+                  <button type="button" class="voice-btn voice-btn-one" onclick="speakMatchRow(this.closest('tr'))">🔈</button>
+                </td>
 
               </tr>
               {% else %}
               <tr>
-                <td colspan="5" class="text-center text-muted">ยังไม่มีข้อมูลคู่แข่งขัน</td>
+                <td colspan="6" class="text-center text-muted">ยังไม่มีข้อมูลคู่แข่งขัน</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -215,6 +261,49 @@
       link.click();
     });
   }
+
+  function normalizeVoicePart(value) {
+    return (value || '').toString().trim().replace(/\s+/g, ' ');
+  }
+
+  function buildMatchVoice(row) {
+    if (!row) return '';
+    const field = normalizeVoicePart(row.dataset.field);
+    const team1 = normalizeVoicePart(row.dataset.team1) || 'ทีมว่าง';
+    const team2 = normalizeVoicePart(row.dataset.team2) || 'ทีมว่าง';
+    const fieldText = field && field !== '-' ? `สนามแข่งขันที่ ${field}` : 'ยังไม่ระบุสนามแข่งขัน';
+    return `${fieldText} ${team1} พบ ${team2}`;
+  }
+
+  function speakText(text) {
+    if (!('speechSynthesis' in window)) {
+      alert('เครื่องนี้ยังไม่รองรับระบบอ่านเสียงของเบราว์เซอร์');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'th-TH';
+    u.rate = 0.9;
+    u.pitch = 1;
+    window.speechSynthesis.speak(u);
+  }
+
+  function stopMatchVoice() {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  }
+
+  function speakMatchRow(row) {
+    speakText(buildMatchVoice(row));
+  }
+
+  function speakAllMatches() {
+    const rows = Array.from(document.querySelectorAll('.match-voice-row'));
+    if (!rows.length) return alert('ยังไม่มีข้อมูลคู่แข่งขันให้อ่าน');
+    const title = 'ประกาศผลการประกบคู่ {{ event.name }} ประเภท {{ event.category }} {{ event.sex }} รุ่น {{ event.age_group }}';
+    const text = [title, ...rows.map(buildMatchVoice)].join(' . ');
+    speakText(text);
+  }
+
 </script>
 
 

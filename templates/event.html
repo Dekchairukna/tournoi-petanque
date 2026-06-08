@@ -273,13 +273,21 @@
       <div class="card-body">
         {% if matches_round_1|length > 0 %}
         <div class="alert alert-info py-2">
-          มีการจับสลาก/ประกบคู่แล้ว: การเพิ่มรายชื่อใหม่จะไม่ล้างคู่เดิม และระบบจะสร้างแถวคีย์คะแนนเฉพาะรายชื่อที่เพิ่มในรอบล่าสุด
+          มีการจับสลาก/ประกบคู่แล้ว: การเพิ่มรายชื่อใหม่จะไม่ล้างคู่เดิม ระบบจะถาม/เลือกได้ว่าจะรอประกบเอง หรือให้ระบบประกบเฉพาะทีมใหม่อัตโนมัติ
         </div>
         {% endif %}
         <form method="POST" action="{{ url_for('add_team_route', event_id=event.id) }}" class="row g-2">
           <div class="col-md-6">
             <input type="text" name="team_name" class="form-control" placeholder="ชื่อทีม" required />
           </div>
+          {% if matches_round_1|length > 0 %}
+          <div class="col-md-4">
+            <select name="late_pair_mode" class="form-select">
+              <option value="ask">เพิ่มไว้ก่อน / ไปเลือกประกบเองในรอบล่าสุด</option>
+              <option value="auto">ให้ระบบประกบเฉพาะทีมใหม่ทันที</option>
+            </select>
+          </div>
+          {% endif %}
           <div class="col-md-auto">
             <button class="btn btn-success btn-lg">เพิ่ม</button>
           </div>
@@ -291,6 +299,12 @@
           </label>
           <div class="input-group">
             <input type="file" name="file" class="form-control" id="file" accept=".xls,.xlsx" required />
+            {% if matches_round_1|length > 0 %}
+            <select name="late_pair_mode" class="form-select" style="max-width: 300px;">
+              <option value="ask">นำเข้าแล้วค่อยประกบเอง</option>
+              <option value="auto">นำเข้าแล้วให้ระบบประกบทีมใหม่เลย</option>
+            </select>
+            {% endif %}
             <button class="btn btn-primary" type="submit">
               อัปโหลด
             </button>

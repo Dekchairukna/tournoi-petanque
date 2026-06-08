@@ -115,6 +115,67 @@
   }
   .badge-pending-confirm { background: #fd7e14; color: #fff; }
 
+
+  .voice-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: linear-gradient(135deg, #eef2ff, #ecfeff);
+    border: 1px solid #c7d2fe;
+    border-radius: 18px;
+    padding: 12px;
+    margin: 12px 0 14px;
+  }
+  .voice-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-weight: 800;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, .12);
+    cursor: pointer;
+  }
+  .voice-btn-all { background: #dbeafe; color: #1e3a8a; }
+  .voice-btn-stop { background: #fee2e2; color: #991b1b; }
+  .voice-btn-one { background: #fef3c7; color: #92400e; padding: 6px 10px; }
+  .voice-control-select {
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 7px 12px;
+    background: #fff;
+    font-weight: 700;
+    min-width: 145px;
+  }
+  .voice-small-note { color: #64748b; font-size: 13px; font-weight: 700; }
+
+  .voice-console {
+    margin: 12px 0 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 18px;
+    background: #f8fafc;
+    overflow: hidden;
+  }
+  .voice-console summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 900;
+    color: #0f172a;
+    list-style: none;
+  }
+  .voice-console summary::-webkit-details-marker { display: none; }
+  .voice-console .voice-toolbar { margin: 0 12px 12px; }
+  .voice-script-box {
+    width: calc(100% - 24px);
+    margin: 0 12px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-family: Tahoma, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    resize: vertical;
+  }
+
 </style>
 <div class="container mb-4">
   {% if event.logo_list %}
@@ -158,6 +219,53 @@
     </div>
     <div class="card-body p-3">
 
+
+      <details class="voice-console no-print" id="swissVoiceConsole">
+        <summary>🔊 ระบบเสียงประกาศประกบคู่ Swiss</summary>
+        <div class="voice-toolbar" aria-label="เครื่องมืออ่านเสียงประกบคู่">
+          <button type="button" class="voice-btn voice-btn-all" onclick="speakAllMatches()">🔊 อ่านทั้งหมด</button>
+          <button type="button" class="voice-btn voice-btn-stop" onclick="stopMatchVoice()">⏹️ หยุด</button>
+          <button type="button" class="voice-btn voice-btn-one" onclick="refreshSwissVoiceScript()">↻ สร้างสคริปต์ใหม่</button>
+          <select id="voiceLangSelect" class="voice-control-select" title="เลือกภาษา">
+            <option value="th-TH">ภาษาไทย</option>
+            <option value="en-US">English</option>
+          </select>
+          <select id="voiceNameSelect" class="voice-control-select" title="เลือกเสียง">
+            <option value="">เสียงอัตโนมัติ</option>
+          </select>
+          <span class="voice-small-note">กางออกมาแก้สคริปต์ก่อนอ่านได้ ระบบจำภาษา/เสียง/คำอ่านที่ชอบ</span>
+        </div>
+        <textarea id="voiceScriptText" class="voice-script-box" rows="5" placeholder="สคริปต์ที่จะประกาศจะแสดงตรงนี้ แก้ไขก่อนกดอ่านได้"></textarea>
+      </details>
+
+
+      {% set late_rows = matches | selectattr('team2_id', 'none') | selectattr('is_manual', 'equalto', False) | list %}
+      {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] and late_rows|length > 0 %}
+      <div class="alert alert-primary no-print">
+        <div class="fw-bold mb-2">มีทีมเพิ่มภายหลังรอประกบ {{ late_rows|length }} รายการ</div>
+        <form method="POST" action="{{ url_for('late_pairing_route', event_id=event.id) }}" class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <input type="hidden" name="round" value="{{ selected_round or current_round or round }}">
+          <input type="hidden" name="mode" value="auto">
+          <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('ให้ระบบประกบเฉพาะทีมที่เพิ่มใหม่ โดยไม่แก้คู่เดิม ใช่หรือไม่?');">⚡ ให้ระบบประกบทีมใหม่อัตโนมัติ</button>
+          <span class="small text-muted">ระบบจะจับคู่เฉพาะแถวสีฟ้า ไม่แตะคู่ที่จับไว้แล้ว</span>
+        </form>
+        {% if late_rows|length >= 2 %}
+        <form method="POST" action="{{ url_for('late_pairing_route', event_id=event.id) }}" class="d-flex flex-wrap gap-2 align-items-center">
+          <input type="hidden" name="round" value="{{ selected_round or current_round or round }}">
+          <input type="hidden" name="mode" value="manual">
+          <select name="team1_id" class="form-select form-select-sm" style="max-width: 260px;" required>
+            <option value="">เลือกทีมใหม่ฝั่งที่ 1</option>
+            {% for lm in late_rows %}<option value="{{ lm.team1_id }}">{{ teams[lm.team1_id] }}</option>{% endfor %}
+          </select>
+          <select name="team2_id" class="form-select form-select-sm" style="max-width: 260px;" required>
+            <option value="">เลือกทีมใหม่ฝั่งที่ 2</option>
+            {% for lm in late_rows %}<option value="{{ lm.team1_id }}">{{ teams[lm.team1_id] }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-outline-primary">ประกบเองเฉพาะ 2 ทีมนี้</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
       <div class="alert alert-info py-2 mb-3">
         สีเขียว = กรอกคะแนนครบแล้ว, สีเหลือง = รอคีย์/ยังเป็น 0:0, สีฟ้า = รายชื่อที่เพิ่มภายหลัง, สีส้ม = มีคะแนนออนไลน์รอ admin ยืนยัน
       </div>
@@ -197,6 +305,7 @@
                 <th>ทีม</th>
                 <th>ผลการแข่งขัน</th>
                 <th>สนาม</th>
+                <th class="no-print">เสียง</th>
                 <th>สกอร์การ์ดออนไลน์</th>
               </tr>
             </thead>
@@ -209,11 +318,15 @@
               {% set is_waiting = (not scores_ready) or ((match.team1_score | default(0) | int) == 0 and (match.team2_score | default(0) | int) == 0) %}
               {% set has_pending = (match.pending_team1_score is not none or match.pending_team2_score is not none) %}
               {% set pending_submitted = match.pending_is_submitted %}
-              <tr class="{% if is_late_entry %}match-late-entry{% elif match.is_locked or pending_submitted %}match-scored{% elif has_pending or is_waiting %}match-pending{% else %}match-scored{% endif %}"
+              <tr class="{% if is_late_entry %}match-late-entry{% elif match.is_locked or pending_submitted %}match-scored{% elif has_pending or is_waiting %}match-pending{% else %}match-scored{% endif %} match-voice-row"
                   data-match-row="{{ match.id }}"
                   data-late-entry="{{ '1' if is_late_entry else '0' }}"
                   data-locked="{{ '1' if match.is_locked else '0' }}"
-                  data-has-pending="{{ '1' if has_pending else '0' }}">
+                  data-has-pending="{{ '1' if has_pending else '0' }}"
+                  data-round="{{ selected_round or current_round or round }}"
+                  data-field="{{ match.field or '-' }}"
+                  data-team1="{{ teams[match.team1_id] if match.team1_id else '-' }}"
+                  data-team2="{{ teams[match.team2_id] if match.team2_id else 'BYE' }}">
                 <td>
                   {{ teams[match.team1_id] if match.team1_id else '-' }}
                   {% if is_late_entry %}
@@ -282,7 +395,10 @@
                 <td>
                   <input type="text" name="field_{{ match.id }}"
                     value="{% if auto_assign_field and match.field %}{{ match.field }}{% elif not auto_assign_field and match.field %}{{ match.field }}{% else %}{% endif %}"
-                    class="form-control text-center" {% if auto_assign_field %}readonly{% endif %}>
+                    class="form-control text-center match-field-input" data-match-id="{{ match.id }}" {% if auto_assign_field %}readonly{% endif %}>
+                </td>
+                <td class="no-print">
+                  <button type="button" class="voice-btn voice-btn-one" onclick="speakMatchRow(this.closest('tr'))">🔈</button>
                 </td>
                 <td>
                   {% if current_user.is_authenticated and current_user.role in ['user', 'admin', 'superadmin'] %}
@@ -634,4 +750,8 @@
     }
   });
 </script>
+
+<script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
+
+
 {% endblock %}
