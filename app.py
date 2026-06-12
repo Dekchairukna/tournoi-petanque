@@ -5497,6 +5497,168 @@ def setup():
         db.session.commit()
 
 
+# -----------------------------------------------------------------------------
+# Public Live Report API for Live Report Board
+# -----------------------------------------------------------------------------
+@app.after_request
+def live_report_public_headers(response):
+    """Allow the separated Live Report Board to read public JSON and embed public pages."""
+    response.headers.setdefault("Access-Control-Allow-Origin", "*")
+    response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    response.headers.setdefault("Access-Control-Allow-Methods", "GET, OPTIONS")
+    # ให้ Report Board / จอทีวีฝังหน้า public ได้ ถ้าในอนาคตต้องใช้ iframe
+    response.headers.pop("X-Frame-Options", None)
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors *")
+    return response
+
+
+def _lr_team_payload(team):
+    if not team:
+        return None
+    return {"id": team.id, "name": team.name}
+
+
+def _lr_match_payload(match):
+    score1 = match.pending_team1_score if match.pending_team1_score is not None else match.team1_score
+    score2 = match.pending_team2_score if match.pending_team2_score is not None else match.team2_score
+    if match.team2_id is None:
+        status = "bye"
+    elif match.is_locked:
+        status = "finished"
+    elif match.pending_team1_score is not None or match.pending_team2_score is not None:
+        status = "playing"
+    else:
+        status = "waiting"
+    leader = "draw"
+    try:
+        if int(score1 or 0) > int(score2 or 0):
+            leader = "team1"
+        elif int(score2 or 0) > int(score1 or 0):
+            leader = "team2"
+    except Exception:
+        pass
+    return {
+        "id": match.id,
+        "event_id": match.event_id,
+        "round": match.round,
+        "round_label": f"รอบแรก ครั้งที่ {match.round}",
+        "field": match.field,
+        "team1": match.team1.name if match.team1 else "",
+        "team2": match.team2.name if match.team2 else "BYE",
+        "team1_obj": _lr_team_payload(match.team1),
+        "team2_obj": _lr_team_payload(match.team2),
+        "score1": score1 or 0,
+        "score2": score2 or 0,
+        "official_score1": match.team1_score or 0,
+        "official_score2": match.team2_score or 0,
+        "pending_score1": match.pending_team1_score,
+        "pending_score2": match.pending_team2_score,
+        "has_pending": match.pending_team1_score is not None or match.pending_team2_score is not None,
+        "status": status,
+        "leader": leader,
+        "is_locked": bool(match.is_locked),
+    }
+
+
+def _lr_event_payload(event):
+    return {
+        "id": event.id,
+        "name": event.name,
+        "location": event.location,
+        "category": event.category,
+        "sex": event.sex,
+        "age_group": event.age_group,
+        "rounds": event.rounds,
+        "current_round": event.current_round,
+        "date": event.date.isoformat() if event.date else None,
+        "team_count": Team.query.filter_by(event_id=event.id).count(),
+        "match_count": Match.query.filter_by(event_id=event.id).count(),
+    }
+
+
+@app.route('/api/public/events')
+def api_public_events():
+    events = Event.query.order_by(Event.created_at.desc(), Event.id.desc()).all()
+    return jsonify({"ok": True, "events": [_lr_event_payload(e) for e in events]})
+
+
+@app.route('/api/public/event/<int:event_id>/live')
+def api_public_event_live(event_id):
+    event = Event.query.get_or_404(event_id)
+    round_no = request.args.get('round', type=int)
+    query = Match.query.filter_by(event_id=event.id)
+    if round_no:
+        query = query.filter_by(round=round_no)
+    matches = query.order_by(Match.round.asc(), Match.field.asc().nullslast(), Match.id.asc()).all()
+    rounds = sorted({m.round for m in Match.query.filter_by(event_id=event.id).all() if m.round})
+    live_matches = [m for m in matches if not m.is_locked and m.team2_id is not None]
+    finished_matches = [m for m in matches if m.is_locked]
+    return jsonify({
+        "ok": True,
+        "source": "tournoi",
+        "event": _lr_event_payload(event),
+        "rounds": rounds,
+        "current_round": event.current_round,
+        "matches": [_lr_match_payload(m) for m in matches],
+        "live_matches": [_lr_match_payload(m) for m in live_matches],
+        "latest_results": [_lr_match_payload(m) for m in finished_matches[-20:]],
+    })
+
+
+@app.route('/api/public/event/<int:event_id>/standings')
+def api_public_event_standings(event_id):
+    event = Event.query.get_or_404(event_id)
+    rows = calculate_standings(event.id)
+    standings = []
+    for idx, row in enumerate(rows, start=1):
+        standings.append({
+            "rank": idx,
+            "team_id": row.get("team_id"),
+            "team": row.get("team_name"),
+            "win": row.get("score", 0),
+            "played": row.get("played", 0),
+            "point_for": row.get("point_for", 0),
+            "point_against": row.get("point_against", 0),
+            "diff": row.get("point_diff", 0),
+            "buchholz": row.get("buchholz", 0),
+            "final_buchholz": row.get("final_buchholz", 0),
+            "raw": row,
+        })
+    return jsonify({"ok": True, "source": "tournoi", "event": _lr_event_payload(event), "standings": standings})
+
+
+@app.route('/api/public/event/<int:event_id>/playoffs')
+def api_public_event_playoffs(event_id):
+    event = Event.query.get_or_404(event_id)
+    playoffs = []
+    try:
+        for p in _active_playoffs_for_event(event.id):
+            view = _fetch_playoff(p.get('id'))
+            playoffs.append({"id": p.get('id'), "title": p.get('title'), "competition_type": p.get('competition_type'), "view": view})
+    except Exception as exc:
+        return jsonify({"ok": False, "source": "tournoi", "event": _lr_event_payload(event), "error": str(exc), "playoffs": []}), 200
+    return jsonify({"ok": True, "source": "tournoi", "event": _lr_event_payload(event), "playoffs": playoffs})
+
+
+@app.route('/api/public/event/<int:event_id>/report')
+def api_public_event_report(event_id):
+    """One-call endpoint for Report Board."""
+    event = Event.query.get_or_404(event_id)
+    matches = Match.query.filter_by(event_id=event.id).order_by(Match.round.asc(), Match.field.asc().nullslast(), Match.id.asc()).all()
+    standings = []
+    for idx, row in enumerate(calculate_standings(event.id), start=1):
+        standings.append({"rank": idx, "team": row.get("team_name"), "win": row.get("score", 0), "diff": row.get("point_diff", 0), "raw": row})
+    return jsonify({
+        "ok": True,
+        "source": "tournoi",
+        "event": _lr_event_payload(event),
+        "matches": [_lr_match_payload(m) for m in matches],
+        "live_matches": [_lr_match_payload(m) for m in matches if not m.is_locked and m.team2_id is not None],
+        "latest_results": [_lr_match_payload(m) for m in matches if m.is_locked][-20:],
+        "standings": standings[:32],
+    })
+
+
 if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
