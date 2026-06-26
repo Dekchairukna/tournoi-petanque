@@ -1861,6 +1861,68 @@ def round_matches(event_id, round):
     )
 
 
+@app.route('/event/<int:event_id>/swith/<int:round_no>', methods=['GET', 'POST'])
+@login_required
+@roles_required('superadmin')
+def swith_round_positions(event_id, round_no):
+    """หน้าลับสำหรับ superadmin สลับตำแหน่งทีมหลังประกบคู่แล้ว
+
+    วิธีใช้: เปลี่ยน URL จาก /event/<id>/round/<round> เป็น /event/<id>/swith/<round>
+    เลือกทีม 2 ทีม แล้วกดสลับตำแหน่ง ระบบจะสลับ team1_id/team2_id ในรอบนั้นแบบเงียบ ๆ
+    โดยไม่ flash ข้อความแจ้งเตือนใด ๆ ตามที่ต้องการ
+    """
+    event = Event.query.get_or_404(event_id)
+
+    try:
+        event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
+    except Exception:
+        event.logo_list = []
+
+    matches = Match.query.filter_by(event_id=event_id, round=round_no).order_by(Match.field.asc(), Match.id.asc()).all()
+    teams = {team.id: team.name for team in Team.query.filter_by(event_id=event_id).all()}
+
+    if request.method == 'POST':
+        selected_ids = []
+        for raw_id in request.form.getlist('team_ids'):
+            try:
+                team_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if team_id not in selected_ids:
+                selected_ids.append(team_id)
+
+        # ไม่ต้องแจ้งข้อความ: ถ้าเลือกไม่ครบ 2 ทีม ให้กลับหน้าเดิมเงียบ ๆ
+        if len(selected_ids) == 2:
+            selected_set = set(selected_ids)
+            found_slots = {}
+
+            for match in matches:
+                if match.team1_id in selected_set and match.team1_id not in found_slots:
+                    found_slots[match.team1_id] = (match, 'team1_id')
+                if match.team2_id in selected_set and match.team2_id not in found_slots:
+                    found_slots[match.team2_id] = (match, 'team2_id')
+
+            # ต้องเจอทีมที่เลือกทั้ง 2 ทีมในรอบนี้ จึงสลับ
+            if all(team_id in found_slots for team_id in selected_ids):
+                first_team_id, second_team_id = selected_ids
+                first_match, first_side = found_slots[first_team_id]
+                second_match, second_side = found_slots[second_team_id]
+
+                setattr(first_match, first_side, second_team_id)
+                setattr(second_match, second_side, first_team_id)
+                db.session.commit()
+
+        return redirect(url_for('swith_round_positions', event_id=event_id, round_no=round_no))
+
+    return render_template(
+        'swith.html',
+        event=event,
+        matches=matches,
+        teams=teams,
+        round_no=round_no,
+    )
+
+
 @app.route('/event/<int:event_id>/late_pairing', methods=['POST'])
 @login_required
 @roles_required('admin', 'superadmin')

@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+
+{% block title %}swith - {{ event.name }}{% endblock %}
+
+{% block content %}
+<style>
+  .swith-wrap {
+    max-width: 980px;
+    margin: 0 auto 40px;
+  }
+  .swith-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+    overflow: hidden;
+    background: #fff;
+  }
+  .swith-header {
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #111827, #374151);
+    color: #fff;
+  }
+  .swith-header h2,
+  .swith-header p {
+    margin: 0;
+  }
+  .swith-header p {
+    opacity: .85;
+    margin-top: 6px;
+    font-size: .95rem;
+  }
+  .swith-table th,
+  .swith-table td {
+    vertical-align: middle;
+  }
+  .swith-team-cell {
+    text-align: left;
+    font-weight: 700;
+  }
+  .swith-team-check {
+    width: 22px;
+    height: 22px;
+    margin-right: 10px;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  .swith-team-label {
+    cursor: pointer;
+  }
+  .swith-bye {
+    color: #9ca3af;
+    font-weight: 700;
+  }
+  .swith-actionbar {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, .96);
+    border-top: 1px solid #e5e7eb;
+  }
+  .swith-count {
+    margin-right: auto;
+    color: #6b7280;
+    font-weight: 700;
+  }
+</style>
+
+<div class="container py-4 swith-wrap">
+  <div class="swith-card">
+    <div class="swith-header">
+      <h2>หน้าลับ swith</h2>
+      <p>{{ event.name }} | ครั้งที่ {{ round_no }}</p>
+    </div>
+
+    <form method="post" id="swithForm">
+      <div class="table-responsive">
+        <table class="table table-hover table-bordered mb-0 swith-table">
+          <thead class="table-dark text-center">
+            <tr>
+              <th style="width: 90px;">สนาม</th>
+              <th>ทีม / ผู้เล่น 1</th>
+              <th>ทีม / ผู้เล่น 2</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for match in matches %}
+            <tr>
+              <td class="text-center fw-bold">{{ match.field or '-' }}</td>
+              <td class="swith-team-cell">
+                <label class="swith-team-label">
+                  <input class="swith-team-check" type="checkbox" name="team_ids" value="{{ match.team1_id }}">
+                  {{ teams.get(match.team1_id, 'BYE') }}
+                </label>
+              </td>
+              <td class="swith-team-cell">
+                {% if match.team2_id %}
+                <label class="swith-team-label">
+                  <input class="swith-team-check" type="checkbox" name="team_ids" value="{{ match.team2_id }}">
+                  {{ teams.get(match.team2_id, 'BYE') }}
+                </label>
+                {% else %}
+                <span class="swith-bye">BYE</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" class="text-center text-muted py-4">ยังไม่มีข้อมูลประกบคู่ในรอบนี้</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="swith-actionbar">
+        <span class="swith-count" id="swithCount">เลือกแล้ว 0/2</span>
+        <button type="submit" class="btn btn-danger btn-lg fw-bold" id="swithSubmit" disabled>สลับตำแหน่ง</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const checks = Array.from(document.querySelectorAll('.swith-team-check'));
+    const submitBtn = document.getElementById('swithSubmit');
+    const countText = document.getElementById('swithCount');
+
+    function updateState() {
+      const selected = checks.filter(c => c.checked);
+      if (selected.length > 2) {
+        selected[0].checked = false;
+      }
+      const count = checks.filter(c => c.checked).length;
+      submitBtn.disabled = count !== 2;
+      countText.textContent = `เลือกแล้ว ${count}/2`;
+    }
+
+    checks.forEach(check => check.addEventListener('change', updateState));
+    updateState();
+  })();
+</script>
+{% endblock %}
