@@ -558,6 +558,7 @@
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
   const socket = io(); // ปล่อยให้ auto เลือก transport เอง
+  window.roundLiveSocket = socket;
 
   function updateMatchRowStatus(matchId) {
     const row = document.querySelector(`[data-match-row="${matchId}"]`);
@@ -752,6 +753,15 @@
 </script>
 
 <script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
+
+<script src="{{ url_for('static', filename='js/round_live_refresh.js') }}"></script>
+<script>
+  startRoundLiveReload({
+    eventId: {{ event.id|tojson }},
+    roundNo: {{ round|tojson }},
+    version: {{ live_version|tojson }}
+  });
+</script>
 
 
 {% endblock %}

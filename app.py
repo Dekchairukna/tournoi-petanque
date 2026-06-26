@@ -26,6 +26,7 @@ from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
 from flask_wtf.file import FileField, FileAllowed
 import json
+import hashlib
 import secrets
 import qrcode
 from i18n import SUPPORTED_LANGS, TEXT_TRANSLATIONS, translate
@@ -311,6 +312,113 @@ def unauthorized():
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
 
 
+def _round_live_state(event_id, round_no=None):
+    """สร้าง fingerprint ของคู่แข่งขัน/สนาม/คะแนน เพื่อให้หน้าที่เปิดค้างอยู่รู้ว่าต้องอัปเดต"""
+    query = Match.query.filter_by(event_id=event_id)
+    if round_no:
+        query = query.filter_by(round=round_no)
+
+    matches = query.order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
+    team_ids = set()
+    for match in matches:
+        if match.team1_id:
+            team_ids.add(match.team1_id)
+        if match.team2_id:
+            team_ids.add(match.team2_id)
+
+    team_map = {team.id: team.name for team in Team.query.filter(Team.id.in_(team_ids)).all()} if team_ids else {}
+    rows = []
+    for match in matches:
+        rows.append({
+            'id': match.id,
+            'round': match.round,
+            'field': str(match.field) if match.field is not None else '',
+            'team1_id': match.team1_id,
+            'team1_name': team_map.get(match.team1_id, '-'),
+            'team2_id': match.team2_id,
+            'team2_name': team_map.get(match.team2_id, 'BYE') if match.team2_id else 'BYE',
+            'team1_score': match.team1_score,
+            'team2_score': match.team2_score,
+            'pending_team1_score': match.pending_team1_score,
+            'pending_team2_score': match.pending_team2_score,
+            'pending_is_submitted': bool(match.pending_is_submitted),
+            'is_locked': bool(match.is_locked),
+            'is_manual': bool(match.is_manual),
+        })
+
+    raw = json.dumps(rows, ensure_ascii=False, sort_keys=True, default=str)
+    version = hashlib.sha1(raw.encode('utf-8')).hexdigest()
+    return version, rows
+
+
+def _emit_round_live_changed(event_id, round_no):
+    """ส่งสัญญาณให้หน้าประกบคู่/ใบบันทึกที่เปิดค้างอยู่ reload เอง"""
+    try:
+        version, rows = _round_live_state(event_id, round_no)
+        socketio.emit(
+            'round_pairing_updated',
+            {
+                'event_id': event_id,
+                'round_no': round_no,
+                'version': version,
+                'matches': rows,
+                'timestamp': datetime.utcnow().isoformat(),
+            },
+            to=f'event_{event_id}_round_{round_no}'
+        )
+        socketio.emit(
+            'event_pairing_updated',
+            {
+                'event_id': event_id,
+                'round_no': round_no,
+                'version': version,
+                'timestamp': datetime.utcnow().isoformat(),
+            },
+            to=f'event_{event_id}_all'
+        )
+    except Exception as exc:
+        print(f'emit round live changed failed: {exc}')
+
+
+@app.route('/event/<int:event_id>/round/<int:round_no>/live-version')
+def round_live_version(event_id, round_no):
+    Event.query.get_or_404(event_id)
+    version, rows = _round_live_state(event_id, round_no)
+    return jsonify({
+        'ok': True,
+        'event_id': event_id,
+        'round_no': round_no,
+        'version': version,
+        'matches': rows,
+    })
+
+
+@app.route('/event/<int:event_id>/live-version')
+def event_live_version(event_id):
+    Event.query.get_or_404(event_id)
+    version, rows = _round_live_state(event_id, None)
+    return jsonify({
+        'ok': True,
+        'event_id': event_id,
+        'round_no': None,
+        'version': version,
+        'matches': rows,
+    })
+
+
+@socketio.on('join_round')
+def handle_join_round(data):
+    try:
+        from flask_socketio import join_room
+        event_id = int((data or {}).get('event_id', 0))
+        round_no = (data or {}).get('round_no')
+        if event_id:
+            join_room(f'event_{event_id}_all')
+        if event_id and round_no not in (None, '', 'null'):
+            join_room(f'event_{event_id}_round_{int(round_no)}')
+    except Exception:
+        pass
+
 
 @socketio.on('join_playoff')
 def handle_join_playoff(data):
@@ -354,6 +462,7 @@ def handle_update_score(data):
                     'updated_by_username': username,
                     'timestamp': datetime.utcnow().isoformat()
                 }, broadcast=True)
+                _emit_round_live_changed(match.event_id, match.round)
 
             except ValueError:
                 emit('error_message', {'message': 'Invalid score format'}, room=request.sid)
@@ -668,6 +777,7 @@ def score_sheet_all(event_id):
     matches_per_page = max(1, num_teams // 2)  # อย่างน้อย 1 เพื่อป้องกันหารศูนย์
 
     total_rounds = db.session.query(func.max(Match.round)).filter_by(event_id=event_id).scalar() or 1
+    live_version, _ = _round_live_state(event_id, selected_round)
     print(event.logo_list)
     return render_template(
         'score_sheet.html',
@@ -676,7 +786,9 @@ def score_sheet_all(event_id):
         teams=teams,
         total_rounds=total_rounds,
         num_teams=num_teams,
-        matches_per_page=matches_per_page  # ✅ ส่งเข้า template
+        matches_per_page=matches_per_page,  # ✅ ส่งเข้า template
+        selected_round=selected_round,
+        live_version=live_version
         
     )
 #-------------------------------------------------------------------------------
@@ -1747,6 +1859,7 @@ def round_matches(event_id, round):
                     match.field = None
 
             db.session.commit()
+            _emit_round_live_changed(event_id, round)
             flash(f"{'เปิด' if auto_assign_field else 'ปิด'} การกำหนดเลขสนามอัตโนมัติเรียบร้อยแล้ว", "success")
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
@@ -1786,6 +1899,7 @@ def round_matches(event_id, round):
                         match.field = None  # ถ้าไม่กรอก ให้ล้างเลขสนาม
 
             db.session.commit()
+            _emit_round_live_changed(event_id, round)
             flash("บันทึกเลขสนามเรียบร้อยแล้ว", "success")
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
@@ -1833,6 +1947,7 @@ def round_matches(event_id, round):
                 match.is_locked = True
 
             db.session.commit()
+            _emit_round_live_changed(event_id, round)
             if draw_matches:
                 flash("บันทึกและล็อกผลเรียบร้อยแล้ว แต่มีผลเสมอ {} คู่ — {}".format(len(draw_matches), " | ".join(draw_matches)), "warning")
             else:
@@ -1844,6 +1959,7 @@ def round_matches(event_id, round):
         total_rounds = event.rounds if event.rounds else db.session.query(db.func.max(Match.round)).filter(Match.event_id == event_id).scalar() or 1
         auto_fields = generate_field_numbers(event, len(matches)) if auto_assign_field else []
 
+    live_version, _ = _round_live_state(event_id, round)
     return render_template(
         "round_matches.html",
         event=event,
@@ -1858,6 +1974,7 @@ def round_matches(event_id, round):
         selected_round=round,  # ✅ ส่งตัวแปรนี้ไปให้ HTML
         all_current_round_locked=all_current_round_locked,
         is_last_configured_round=is_last_configured_round,
+        live_version=live_version,
     )
 
 
@@ -1911,6 +2028,7 @@ def swith_round_positions(event_id, round_no):
                 setattr(first_match, first_side, second_team_id)
                 setattr(second_match, second_side, first_team_id)
                 db.session.commit()
+                _emit_round_live_changed(event_id, round_no)
 
         return redirect(url_for('swith_round_positions', event_id=event_id, round_no=round_no))
 
@@ -1955,10 +2073,12 @@ def late_pairing_route(event_id):
             m1.field = _next_available_field(event, target_round)
         db.session.delete(m2)
         db.session.commit()
+        _emit_round_live_changed(event_id, target_round)
         flash('ประกบคู่ทีมเพิ่มภายหลังแบบแมนนวลเรียบร้อยแล้ว โดยไม่แก้คู่เดิม', 'success')
     else:
         paired, remaining = auto_pair_late_entries(event_id, target_round)
         db.session.commit()
+        _emit_round_live_changed(event_id, target_round)
         flash(f'ระบบประกบทีมเพิ่มภายหลังให้อัตโนมัติ {paired} คู่ เหลือรอคู่ {remaining} รายการ โดยไม่แก้คู่เดิม', 'success')
 
     return redirect(url_for('round_matches', event_id=event_id, round=target_round))
@@ -2182,13 +2302,15 @@ def match_pairs(event_id):
     for m in matches:
         matches_by_round[m.round].append(m)
 
+    live_version, _ = _round_live_state(event_id, selected_round)
     return render_template(
         'match_pairs.html',
         event=event,
         matches=matches,
         matches_by_round=matches_by_round,
         teams=teams,
-        selected_round=selected_round
+        selected_round=selected_round,
+        live_version=live_version
     )
 
 #--------------------------------------------------------------------------------------

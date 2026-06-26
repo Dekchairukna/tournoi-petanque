@@ -308,4 +308,15 @@
 
 
 
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/round_live_refresh.js') }}"></script>
+<script>
+  startRoundLiveReload({
+    eventId: {{ event.id|tojson }},
+    roundNo: {{ selected_round|tojson }},
+    version: {{ live_version|tojson }}
+  });
+</script>
+
 </html>
