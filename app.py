@@ -197,6 +197,31 @@ def ensure_runtime_columns():
     db.session.commit()
 
 
+def ensure_performance_settings():
+    """ตั้งค่า DB ให้เบาลงสำหรับงานแข่งจริง โดยไม่เปลี่ยนข้อมูลเดิม"""
+    dialect = db.engine.dialect.name
+    try:
+        if dialect == 'sqlite':
+            db.session.execute(text("PRAGMA journal_mode=WAL"))
+            db.session.execute(text("PRAGMA synchronous=NORMAL"))
+            db.session.execute(text("PRAGMA busy_timeout=5000"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round_field ON matches (event_id, round, field)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_team1 ON matches (event_id, team1_id)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_team2 ON matches (event_id, team2_id)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)"))
+        elif dialect == 'postgresql':
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round_field ON matches (event_id, round, field)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_team1 ON matches (event_id, team1_id)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_team2 ON matches (event_id, team2_id)"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)"))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[PERF] skip performance settings: {e}")
+
+
 def ensure_match_scorecard_token(match):
     """สร้าง token ลับสำหรับ QR สกอร์การ์ดของแมตช์ ถ้ายังไม่มี"""
     if getattr(match, "scorecard_token", None):
@@ -302,6 +327,7 @@ with app.app_context():
     db.create_all()  # สร้างตารางตามโมเดล
     ensure_runtime_columns()  # อัปเกรดฐานข
     ensure_playoff_tables()  # ตารางระบบน็อคเอาท์/ดับเบิ้ลหลังจบ Standing
+    ensure_performance_settings()  # index/SQLite WAL ลดอาการค้างเวลาเขียนพร้อมกัน
     #ensure_match_tokens(Match.query.all())  # สร้าง token QR ให้แมตช์เก่า้อมูลเดิมแบบไม่ลบข้อมูล
 
 @login_manager.user_loader
@@ -333,8 +359,9 @@ def _emit_round(event_name, match, payload):
 @socketio.on('join_round')
 def handle_join_round(data):
     try:
-        event_id = int((data or {}).get('event_id', 0))
-        round_no = int((data or {}).get('round', 0))
+        data = data or {}
+        event_id = int(data.get('event_id') or 0)
+        round_no = int(data.get('round') or data.get('round_no') or 0)
         if event_id and round_no:
             join_room(_round_room(event_id, round_no))
     except Exception:
@@ -383,12 +410,13 @@ def handle_update_score(data):
         old_a = match.team1_score
         old_b = match.team2_score
         changed = (old_a != score_a) or (old_b != score_b)
-        if changed:
-            match.team1_score = score_a
-            match.team2_score = score_b
-            db.session.commit()
-        else:
+        if not changed:
             db.session.rollback()
+            return
+
+        match.team1_score = score_a
+        match.team2_score = score_b
+        db.session.commit()
 
         payload = {
             'match_id': match.id,
@@ -1753,8 +1781,11 @@ def round_matches(event_id, round):
             num += 1
         return fields
 
-    # กำหนดค่าพวกนี้ก่อน render เสมอ
-    standings = calculate_standings(event_id)
+    # หน้า round ต้องเบา: ไม่คำนวณ Standing ทุกครั้ง เพราะหนักมากเมื่อหลายอีเวนต์เปิดพร้อมกัน
+    # ต้องการดูตารางจัดลำดับให้กดปุ่ม "โหลดตารางคะแนน" (?standings=1)
+    show_standings = request.args.get('standings') == '1'
+    standings = calculate_standings(event_id) if show_standings else []
+    team_count = len(teams)
     total_rounds = event.rounds if event.rounds else db.session.query(db.func.max(Match.round)).filter(Match.event_id == event_id).scalar() or 1
     auto_fields = generate_field_numbers(event, len(matches)) if auto_assign_field else []
     all_current_round_locked = bool(matches) and all(m.is_locked for m in matches)
@@ -1885,7 +1916,7 @@ def round_matches(event_id, round):
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
         # กรณี POST ที่ไม่ได้กด save_fields หรือ lock_scores (เช่น แค่ติ๊ก checkbox)
-        standings = calculate_standings(event_id)
+        standings = calculate_standings(event_id) if show_standings else []
         total_rounds = event.rounds if event.rounds else db.session.query(db.func.max(Match.round)).filter(Match.event_id == event_id).scalar() or 1
         auto_fields = generate_field_numbers(event, len(matches)) if auto_assign_field else []
 
@@ -1896,6 +1927,8 @@ def round_matches(event_id, round):
         teams=teams,
         round=round,
         standings=standings,
+        show_standings=show_standings,
+        team_count=team_count,
         total_rounds=total_rounds,
         auto_assign_field=auto_assign_field,
         auto_fields=auto_fields,

@@ -439,7 +439,7 @@
               class="btn btn-outline-secondary">พิมพ์ใบบันทึกคะแนน</a>
             <button type="submit" name="action" value="lock_scores" class="btn btn-danger">บันทึก + ล็อกผล</button>
             {% if is_last_configured_round and all_current_round_locked %}
-            <a href="{{ url_for('event_standings', event_id=event.id, num_qualified_teams=standings|length) }}"
+            <a href="{{ url_for('event_standings', event_id=event.id, num_qualified_teams=team_count) }}"
                class="btn btn-success">
               สิ้นสุดการแข่งขัน / ไปหน้ารายงาน Standing
             </a>
@@ -472,8 +472,17 @@
       ตารางจัดลำดับ
     </div>
     <div class="card-body p-0">
-      <h5>>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</h5>
-      {% if standings %}
+      {% if not show_standings %}
+      <div class="p-3">
+        <div class="alert alert-info mb-3">
+          หน้าใส่คะแนนถูกปรับให้เบา: ยังไม่คำนวณ Standing อัตโนมัติทุกครั้ง เพื่อให้คลิกและกรอกคะแนนเร็วขึ้น
+        </div>
+        <a class="btn btn-warning" href="{{ url_for('round_matches', event_id=event.id, round=round) }}?standings=1">
+          โหลดตารางคะแนน / ดูผลจัดอันดับ
+        </a>
+      </div>
+      {% elif standings %}
+      <h5 class="p-2 mb-0">>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</h5>
       <div class="table-responsive">
         <table class="table table-bordered table-sm align-middle text-center mb-0">
           <thead class="table-light">
@@ -493,26 +502,16 @@
             {% for team in standings %}
             <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
               <td>{{ loop.index }}</td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-                {{ team.team_name }}
-              </td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.team_name }}</td>
               {% for i in range(1, event.rounds + 1) %}
               <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                 {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
               </td>
               {% endfor %}
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-                {{ team.score }}
-              </td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-                {{ team.buchholz }}
-              </td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-                {{ team.final_buchholz }}
-              </td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
-                {{ team.point_diff }}
-              </td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.score }}</td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.buchholz }}</td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.final_buchholz }}</td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.point_diff }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -552,12 +551,12 @@
 
 {% block scripts %}
 <script>
-  console.log("HELLO FROM ROUND_MATCHES.HTML SCRIPTS BLOCK!"); // <-- เพิ่มบรรทัดนี้
 </script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = io(); // ปล่อยให้ auto เลือก transport เอง
+  const socket = window.roundSocket || io({ transports: ['websocket'], upgrade: false, reconnectionDelayMax: 5000 });
+  window.roundSocket = socket;
   const CURRENT_EVENT_ID = {{ event.id|tojson }};
   const CURRENT_ROUND = {{ round|tojson }};
 
@@ -610,39 +609,31 @@
   refreshAllMatchStatuses();
 
   socket.on('connect', () => {
-    console.log("✅ Socket.IO connected successfully");
     socket.emit('join_round', { event_id: CURRENT_EVENT_ID, round: CURRENT_ROUND });
   });
 
   socket.on('connect_error', (err) => {
-    console.error("❌ Socket.IO connection error:", err.message);
   });
 
-  // เมื่อ input คะแนนเปลี่ยน ให้ส่งข้อมูลไปยัง server (ใช้ 'input' event)
+  // ส่งคะแนนแบบ debounce ต่อ 1 คู่ ไม่ใช่ต่อ 1 ช่อง เพื่อลด request ซ้อน
+  const scoreTimers = new Map();
   document.querySelectorAll('.score-input').forEach(input => {
-    const row = input.closest('tr');
-    const matchId = input.dataset.matchId;
-
-    // ตัวแปรสำหรับ debounce timeout ของ input field นั้นๆ
-    input._typingTimeout = null;
-
-    input.addEventListener('input', () => { // <--- ใช้ 'input' event เพื่ออัปเดตทันที
-      const scoreA = row.querySelector('.score-a').value;
-      const scoreB = row.querySelector('.score-b').value;
-
-      // ล้าง timeout ก่อนหน้า ถ้าผู้ใช้ยังพิมพ์อยู่
-      clearTimeout(input._typingTimeout);
-
-      // ตั้ง timeout ใหม่เพื่อส่งข้อมูลหลังจากหยุดพิมพ์ ลด request ซ้อนเวลาแข่งหลายสนาม
-      input._typingTimeout = setTimeout(() => {
-        updateMatchRowStatus(matchId);
+    input.addEventListener('input', () => {
+      const row = input.closest('tr');
+      if (!row) return;
+      const matchId = input.dataset.matchId;
+      updateMatchRowStatus(matchId);
+      clearTimeout(scoreTimers.get(matchId));
+      scoreTimers.set(matchId, setTimeout(() => {
+        const scoreA = row.querySelector('.score-a')?.value ?? '';
+        const scoreB = row.querySelector('.score-b')?.value ?? '';
         if (scoreA === '' || scoreB === '') return;
         socket.emit('update_score', {
           match_id: matchId,
           team_a_score: scoreA,
           team_b_score: scoreB
         });
-      }, 800); // 800ms delay
+      }, 900));
     });
   });
 
@@ -690,7 +681,6 @@
 
   // เมื่อมีคนอื่นแก้คะแนน ระบบจะอัปเดตให้ทุก client ทันที
   socket.on('score_updated', data => {
-    console.log(`[CLIENT] Received score_updated event. Data: `, data); // เพิ่ม log เพื่อดูข้อมูลที่ได้รับ
 
     const matchIdToUpdate = data.match_id;
     const teamAScore = data.team_a_score;
@@ -702,10 +692,8 @@
     // ค้นหาช่อง input ที่มี data-match-id ตรงกัน
     const inputs = document.querySelectorAll(`input[data-match-id=\"${matchIdToUpdate}\"]`);
 
-    console.log(`[CLIENT] Found ${inputs.length} inputs for match ID ${matchIdToUpdate}.`); // เพิ่ม log เพื่อดูว่าหาเจอไหม
 
     if (inputs.length === 0) {
-      console.warn(`[CLIENT] No input elements found for match ID: ${matchIdToUpdate}. Check HTML data-match-id and class names.`);
       return; // ถ้าหาไม่เจอ ให้หยุดทำงาน
     }
 
@@ -714,9 +702,7 @@
     let isCurrentClientTypingInThisMatch = false;
     if (activeElement && activeElement.classList.contains('score-input') && activeElement.dataset.matchId === matchIdToUpdate.toString()) {
       isCurrentClientTypingInThisMatch = true;
-      console.log(`[CLIENT] Current client is typing in match ${matchIdToUpdate}. Updating only non-active inputs.`); // เพิ่ม log
     } else {
-      console.log(`[CLIENT] Current client is NOT typing in match ${matchIdToUpdate}. Updating all inputs.`); // เพิ่ม log
     }
 
 
@@ -726,15 +712,12 @@
       if (isCurrentClientTypingInThisMatch && input === activeElement) {
         // ถ้าเป็น input ที่กำลังพิมพ์อยู่ ให้ข้ามการอัปเดตช่องนี้
         // แต่จะยังคงอัปเดตช่องอีกฝั่งของ match นั้น (เช่น ถ้าพิมพ์ score-a ให้ score-b อัปเดต)
-        console.log(`[CLIENT] Skipping update for active input: ${input.className}`);
       } else {
         // อัปเดตค่า input field
         if (input.classList.contains('score-a')) {
           input.value = teamAScore;
-          console.log(`[CLIENT] Updated score-a for match ${matchIdToUpdate} to ${teamAScore}`); // เพิ่ม log
         } else if (input.classList.contains('score-b')) {
           input.value = teamBScore;
-          console.log(`[CLIENT] Updated score-b for match ${matchIdToUpdate} to ${teamBScore}`); // เพิ่ม log
         }
       }
     });
@@ -754,7 +737,7 @@
   });
 </script>
 
-<script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
 
 
 {% endblock %}
