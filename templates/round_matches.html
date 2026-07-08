@@ -551,14 +551,14 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  console.log("HELLO FROM ROUND_MATCHES.HTML SCRIPTS BLOCK!"); // <-- เพิ่มบรรทัดนี้
-</script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = io(); // ปล่อยให้ auto เลือก transport เอง
+  const socket = io({ transports: ['websocket', 'polling'] }); // ใช้ websocket ก่อน ลดภาระ polling
   window.roundLiveSocket = socket;
+  const currentEventId = {{ event.id|tojson }};
+  const currentRoundNo = {{ round|tojson }};
+  const lastSentScores = {};
 
   function updateMatchRowStatus(matchId) {
     const row = document.querySelector(`[data-match-row="${matchId}"]`);
@@ -609,12 +609,11 @@
   refreshAllMatchStatuses();
 
   socket.on('connect', () => {
-    console.log("✅ Socket.IO connected successfully");
-    socket.emit('join_round', { event_id: {{ event.id|tojson }}, round_no: {{ round|tojson }} });
+    socket.emit('join_round', { event_id: currentEventId, round_no: currentRoundNo });
   });
 
-  socket.on('connect_error', (err) => {
-    console.error("❌ Socket.IO connection error:", err.message);
+  socket.on('connect_error', () => {
+    // เงียบไว้ ไม่ให้ console ทำงานหนักตอนเน็ตแกว่ง
   });
 
   // เมื่อ input คะแนนเปลี่ยน ให้ส่งข้อมูลไปยัง server (ใช้ 'input' event)
@@ -632,16 +631,21 @@
       // ล้าง timeout ก่อนหน้า ถ้าผู้ใช้ยังพิมพ์อยู่
       clearTimeout(input._typingTimeout);
 
-      // ตั้ง timeout ใหม่เพื่อส่งข้อมูลหลังจากหยุดพิมพ์ 500ms
+      // ส่งหลังหยุดพิมพ์นานขึ้น และส่งเฉพาะเมื่อคะแนนครบ/เปลี่ยนจริง
       input._typingTimeout = setTimeout(() => {
         updateMatchRowStatus(matchId);
-        console.log(`[CLIENT] Emitting update_score: Match ID: ${matchId}, Score A: ${scoreA}, Score B: ${scoreB}`); // เพิ่ม log
+        const a = String(scoreA ?? '').trim();
+        const b = String(scoreB ?? '').trim();
+        if (a === '' || b === '') return;
+        const key = `${matchId}:${a}:${b}`;
+        if (lastSentScores[matchId] === key) return;
+        lastSentScores[matchId] = key;
         socket.emit('update_score', {
           match_id: matchId,
-          team_a_score: scoreA,
-          team_b_score: scoreB
+          team_a_score: a,
+          team_b_score: b
         });
-      }, 900); // ลดการยิงบันทึกถี่เกินไปเวลาใช้หลายสนามพร้อมกัน
+      }, 900);
     });
   });
 
@@ -689,8 +693,6 @@
 
   // เมื่อมีคนอื่นแก้คะแนน ระบบจะอัปเดตให้ทุก client ทันที
   socket.on('score_updated', data => {
-    console.log(`[CLIENT] Received score_updated event. Data: `, data); // เพิ่ม log เพื่อดูข้อมูลที่ได้รับ
-
     const matchIdToUpdate = data.match_id;
     const teamAScore = data.team_a_score;
     const teamBScore = data.team_b_score;
@@ -701,10 +703,7 @@
     // ค้นหาช่อง input ที่มี data-match-id ตรงกัน
     const inputs = document.querySelectorAll(`input[data-match-id=\"${matchIdToUpdate}\"]`);
 
-    console.log(`[CLIENT] Found ${inputs.length} inputs for match ID ${matchIdToUpdate}.`); // เพิ่ม log เพื่อดูว่าหาเจอไหม
-
     if (inputs.length === 0) {
-      console.warn(`[CLIENT] No input elements found for match ID: ${matchIdToUpdate}. Check HTML data-match-id and class names.`);
       return; // ถ้าหาไม่เจอ ให้หยุดทำงาน
     }
 
@@ -713,9 +712,7 @@
     let isCurrentClientTypingInThisMatch = false;
     if (activeElement && activeElement.classList.contains('score-input') && activeElement.dataset.matchId === matchIdToUpdate.toString()) {
       isCurrentClientTypingInThisMatch = true;
-      console.log(`[CLIENT] Current client is typing in match ${matchIdToUpdate}. Updating only non-active inputs.`); // เพิ่ม log
     } else {
-      console.log(`[CLIENT] Current client is NOT typing in match ${matchIdToUpdate}. Updating all inputs.`); // เพิ่ม log
     }
 
 
@@ -725,15 +722,12 @@
       if (isCurrentClientTypingInThisMatch && input === activeElement) {
         // ถ้าเป็น input ที่กำลังพิมพ์อยู่ ให้ข้ามการอัปเดตช่องนี้
         // แต่จะยังคงอัปเดตช่องอีกฝั่งของ match นั้น (เช่น ถ้าพิมพ์ score-a ให้ score-b อัปเดต)
-        console.log(`[CLIENT] Skipping update for active input: ${input.className}`);
       } else {
         // อัปเดตค่า input field
         if (input.classList.contains('score-a')) {
           input.value = teamAScore;
-          console.log(`[CLIENT] Updated score-a for match ${matchIdToUpdate} to ${teamAScore}`); // เพิ่ม log
         } else if (input.classList.contains('score-b')) {
           input.value = teamBScore;
-          console.log(`[CLIENT] Updated score-b for match ${matchIdToUpdate} to ${teamBScore}`); // เพิ่ม log
         }
       }
     });
@@ -754,15 +748,6 @@
 </script>
 
 <script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
-
-<script src="{{ url_for('static', filename='js/round_live_refresh.js') }}"></script>
-<script>
-  startRoundLiveReload({
-    eventId: {{ event.id|tojson }},
-    roundNo: {{ round|tojson }},
-    version: {{ live_version|tojson }}
-  });
-</script>
 
 
 {% endblock %}
