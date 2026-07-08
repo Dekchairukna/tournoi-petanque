@@ -232,6 +232,10 @@
   const s2 = document.getElementById('team2_score');
   let scoreEnds = [];
   let selectedTeam = 1;
+  let autosaveTimer = null;
+  let autosaveBusy = false;
+  let autosaveQueued = false;
+  let lastAutosavePayload = '';
   const initialManualT1 = Number(s1.value || 0);
   const initialManualT2 = Number(s2.value || 0);
   let scoreMode = 'ends';
@@ -320,14 +324,32 @@
     document.getElementById('addEndBtn').disabled = isLockedOrSubmitted || finished;
     document.getElementById('undoEndBtn').disabled = isLockedOrSubmitted || scoreEnds.length === 0;
   }
-  async function autosave() {
+  async function autosave(payloadOverride = null) {
     if (isLockedOrSubmitted) return;
+    const payload = payloadOverride || {score_ends: scoreEnds};
+    const payloadKey = JSON.stringify(payload);
+    if (payloadKey === lastAutosavePayload) return;
+    if (autosaveBusy) { autosaveQueued = payload; return; }
+    autosaveBusy = true;
     try {
-      const res = await fetch(saveUrl, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({score_ends: scoreEnds}) });
+      const res = await fetch(saveUrl, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: payloadKey });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+      lastAutosavePayload = payloadKey;
       setSaved(true, 'บันทึกอัตโนมัติแล้ว ' + new Date().toLocaleTimeString('th-TH'));
     } catch (err) { setSaved(false, err.message || 'บันทึกไม่สำเร็จ'); }
+    finally {
+      autosaveBusy = false;
+      if (autosaveQueued) {
+        const nextPayload = autosaveQueued;
+        autosaveQueued = false;
+        setTimeout(() => autosave(nextPayload), 120);
+      }
+    }
+  }
+  function scheduleAutosave(payload = null) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => autosave(payload), 700);
   }
   document.querySelectorAll('[data-score-mode]').forEach(btn => btn.addEventListener('click', () => {
     if (isLockedOrSubmitted) return;
@@ -363,14 +385,7 @@
     document.getElementById('team2TotalCell').textContent = t2;
 
     setSaved(false, 'กำลังบันทึก...');
-    fetch(saveUrl, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({team1_score: t1, team2_score: t2})
-    }).then(r => r.json().then(data => ({ok:r.ok, data}))).then(({ok, data}) => {
-      if (!ok || !data.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
-      setSaved(true, 'บันทึกคะแนนรวมแล้ว ' + new Date().toLocaleTimeString('th-TH'));
-    }).catch(err => setSaved(false, err.message || 'บันทึกไม่สำเร็จ'));
+    scheduleAutosave({team1_score: t1, team2_score: t2});
   });
 
   document.querySelectorAll('[data-team-choice]').forEach(btn => btn.addEventListener('click', () => {
@@ -389,14 +404,14 @@
     scoreEnds.push({team: selectedTeam, points});
     render();
     setSaved(false, 'กำลังบันทึก...');
-    autosave();
+    scheduleAutosave();
   });
   document.getElementById('undoEndBtn').addEventListener('click', () => {
     if (isLockedOrSubmitted || !scoreEnds.length) return;
     scoreEnds.pop();
     render();
     setSaved(false, 'กำลังบันทึก...');
-    autosave();
+    scheduleAutosave();
   });
 
   function setupCanvas(canvas) {
