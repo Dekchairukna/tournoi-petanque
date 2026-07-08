@@ -173,14 +173,35 @@
     {% if messages %}
     <div class="mt-2">
       {% for category, message in messages %}
+      {% if category == 'draw-warning' %}
+      <div class="d-none draw-warning-flash-message">{{ message }}</div>
+      {% else %}
       <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
         {{ message }}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>
+      {% endif %}
       {% endfor %}
     </div>
     {% endif %}
     {% endwith %}
+
+    <div class="modal fade" id="flashDrawWarningModal" tabindex="-1" aria-labelledby="flashDrawWarningModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-warning shadow-lg">
+          <div class="modal-header bg-warning-subtle border-warning">
+            <h5 class="modal-title text-warning-emphasis fw-bold" id="flashDrawWarningModalLabel">⚠️ Warning: มีคู่เสมอ</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="flashDrawWarningModalBody">
+            พบคู่เสมอ กรุณาตรวจสอบคะแนน
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-warning fw-bold" data-bs-dismiss="modal">รับทราบ</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     {% if breadcrumbs %}
     <nav aria-label="breadcrumb">
@@ -203,6 +224,43 @@
     <!-- Content from other templates will be inserted here -->
     {% endblock %}
   </div>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const messages = Array.from(document.querySelectorAll('.draw-warning-flash-message'))
+      .map(el => (el.textContent || '').trim())
+      .filter(Boolean);
+    if (!messages.length) return;
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    const body = document.getElementById('flashDrawWarningModalBody');
+    const html = messages.map(message => {
+      const lines = message.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      if (!lines.length) return '';
+      const head = escapeHtml(lines.shift());
+      const details = lines.map(line => `<li>${escapeHtml(line)}</li>`).join('');
+      return `
+        <div class="fw-bold text-warning-emphasis mb-2">${head}</div>
+        ${details ? `<ul class="mb-0 ps-4">${details}</ul>` : ''}
+      `;
+    }).join('<hr>');
+
+    if (body) body.innerHTML = html;
+    const modalEl = document.getElementById('flashDrawWarningModal');
+    if (modalEl && window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else if (messages.length) {
+      alert('⚠️ Warning: มีคู่เสมอ\n' + messages.join('\n\n'));
+    }
+  });
+</script>
 <script>
     window.APP_LANG = {{ current_lang|tojson }};
     window.APP_TEXT_TRANSLATIONS = {{ text_translations|tojson }};

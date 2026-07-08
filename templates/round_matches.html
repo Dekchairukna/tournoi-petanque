@@ -105,6 +105,14 @@
   .badge-scored { background: #198754; color: #fff; }
   .badge-pending { background: #ffc107; color: #212529; }
   .badge-late { background: #0d6efd; color: #fff; }
+  .match-draw td { background: #ffe4e6 !important; }
+  .draw-warning-list {
+    margin-bottom: 0;
+    padding-left: 1.25rem;
+  }
+  .draw-warning-list li {
+    margin-bottom: .25rem;
+  }
   .pending-score-box {
     margin-top: .45rem;
     padding: .45rem .55rem;
@@ -268,6 +276,23 @@
       {% endif %}
       <div class="alert alert-info py-2 mb-3">
         สีเขียว = กรอกคะแนนครบแล้ว, สีเหลือง = รอคีย์/ยังเป็น 0:0, สีฟ้า = รายชื่อที่เพิ่มภายหลัง, สีส้ม = มีคะแนนออนไลน์รอ admin ยืนยัน
+      </div>
+
+      <div class="modal fade" id="drawWarningModal" tabindex="-1" aria-labelledby="drawWarningModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content border-warning shadow-lg">
+            <div class="modal-header bg-warning-subtle border-warning">
+              <h5 class="modal-title text-warning-emphasis" id="drawWarningModalLabel">⚠️ Warning: มีคู่เสมอ</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="drawWarningModalBody">
+              พบคู่เสมอ กรุณาตรวจสอบคะแนนก่อนล็อกผล
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-warning fw-bold" data-bs-dismiss="modal">รับทราบ</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {% if error_message %}
@@ -437,7 +462,7 @@
           <div class="d-flex flex-wrap gap-2">
             <a href="{{ url_for('score_sheet_all', event_id=event.id) }}?round={{ round }}" target="_blank"
               class="btn btn-outline-secondary">พิมพ์ใบบันทึกคะแนน</a>
-            <button type="submit" name="action" value="lock_scores" class="btn btn-danger">บันทึก + ล็อกผล</button>
+            <button type="submit" name="action" value="lock_scores" class="btn btn-danger" onclick="return confirmDrawBeforeLock();">บันทึก + ล็อกผล</button>
             {% if is_last_configured_round and all_current_round_locked %}
             <a href="{{ url_for('event_standings', event_id=event.id, num_qualified_teams=standings|length) }}"
                class="btn btn-success">
@@ -551,14 +576,14 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+  console.log("HELLO FROM ROUND_MATCHES.HTML SCRIPTS BLOCK!"); // <-- เพิ่มบรรทัดนี้
+</script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = io({ transports: ['websocket', 'polling'] }); // ใช้ websocket ก่อน ลดภาระ polling
+  const socket = io(); // ปล่อยให้ auto เลือก transport เอง
   window.roundLiveSocket = socket;
-  const currentEventId = {{ event.id|tojson }};
-  const currentRoundNo = {{ round|tojson }};
-  const lastSentScores = {};
 
   function updateMatchRowStatus(matchId) {
     const row = document.querySelector(`[data-match-row="${matchId}"]`);
@@ -604,16 +629,94 @@
 
   function refreshAllMatchStatuses() {
     document.querySelectorAll('[data-match-row]').forEach(row => updateMatchRowStatus(row.dataset.matchRow));
+    updateDrawWarning();
   }
+
+  function getDrawMatches() {
+    const drawMatches = [];
+    document.querySelectorAll('[data-match-row]').forEach(row => {
+      row.classList.remove('match-draw');
+      if (row.dataset.lateEntry === '1') return;
+      const team2Name = (row.dataset.team2 || '').trim();
+      if (!team2Name || team2Name === '-' || team2Name.toUpperCase() === 'BYE') return;
+      const scoreAInput = row.querySelector('.score-a');
+      const scoreBInput = row.querySelector('.score-b');
+      if (!scoreAInput || !scoreBInput) return;
+      const scoreAValue = scoreAInput.value.trim();
+      const scoreBValue = scoreBInput.value.trim();
+      if (scoreAValue === '' || scoreBValue === '') return;
+      const scoreA = Number(scoreAValue);
+      const scoreB = Number(scoreBValue);
+      if (!Number.isFinite(scoreA) || !Number.isFinite(scoreB)) return;
+      if (scoreA === 0 && scoreB === 0) return;
+      if (scoreA === scoreB) {
+        const field = row.querySelector('.match-field-input')?.value || row.dataset.field || '-';
+        drawMatches.push(`สนาม ${field || '-'}: ${row.dataset.team1 || '-'} ${scoreA}-${scoreB} ${team2Name}`);
+        row.classList.add('match-draw');
+      }
+    });
+    return drawMatches;
+  }
+
+  let lastDrawWarningSignature = '';
+
+  function escapeHtmlForWarning(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function showDrawWarningPopup(drawMatches) {
+    if (!drawMatches.length) return;
+    const body = document.getElementById('drawWarningModalBody');
+    const detailList = drawMatches
+      .map(item => `<li>${escapeHtmlForWarning(item)}</li>`)
+      .join('');
+    if (body) {
+      body.innerHTML = `
+        <div class="fw-bold mb-2 text-warning-emphasis">พบคู่เสมอ ${drawMatches.length} คู่ กรุณาตรวจสอบก่อนล็อกผล</div>
+        <ul class="draw-warning-list">${detailList}</ul>
+      `;
+    }
+
+    const modalEl = document.getElementById('drawWarningModal');
+    if (modalEl && window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else {
+      alert(`⚠️ Warning: มีคู่เสมอ ${drawMatches.length} คู่\n${drawMatches.join('\n')}`);
+    }
+  }
+
+  function updateDrawWarning(options = {}) {
+    const drawMatches = getDrawMatches();
+    const signature = drawMatches.join('|');
+    const shouldPopup = options.popup === true && drawMatches.length > 0 && signature !== lastDrawWarningSignature;
+
+    if (shouldPopup) {
+      showDrawWarningPopup(drawMatches);
+    }
+
+    lastDrawWarningSignature = signature;
+    return drawMatches;
+  }
+
+  window.confirmDrawBeforeLock = function confirmDrawBeforeLock() {
+    const drawMatches = updateDrawWarning({ popup: false });
+    if (!drawMatches.length) return true;
+    return confirm(`⚠️ Warning: มีคู่เสมอ ${drawMatches.length} คู่\n${drawMatches.join('\n')}\n\nต้องการบันทึกและล็อกผลต่อหรือไม่?`);
+  };
 
   refreshAllMatchStatuses();
 
   socket.on('connect', () => {
-    socket.emit('join_round', { event_id: currentEventId, round_no: currentRoundNo });
+    console.log("✅ Socket.IO connected successfully");
   });
 
-  socket.on('connect_error', () => {
-    // เงียบไว้ ไม่ให้ console ทำงานหนักตอนเน็ตแกว่ง
+  socket.on('connect_error', (err) => {
+    console.error("❌ Socket.IO connection error:", err.message);
   });
 
   // เมื่อ input คะแนนเปลี่ยน ให้ส่งข้อมูลไปยัง server (ใช้ 'input' event)
@@ -627,25 +730,26 @@
     input.addEventListener('input', () => { // <--- ใช้ 'input' event เพื่ออัปเดตทันที
       const scoreA = row.querySelector('.score-a').value;
       const scoreB = row.querySelector('.score-b').value;
+      updateMatchRowStatus(matchId);
+      updateDrawWarning({ popup: true });
 
       // ล้าง timeout ก่อนหน้า ถ้าผู้ใช้ยังพิมพ์อยู่
       clearTimeout(input._typingTimeout);
 
-      // ส่งหลังหยุดพิมพ์นานขึ้น และส่งเฉพาะเมื่อคะแนนครบ/เปลี่ยนจริง
+      // ตั้ง timeout ใหม่เพื่อส่งข้อมูลหลังจากหยุดพิมพ์ 500ms
       input._typingTimeout = setTimeout(() => {
         updateMatchRowStatus(matchId);
-        const a = String(scoreA ?? '').trim();
-        const b = String(scoreB ?? '').trim();
-        if (a === '' || b === '') return;
-        const key = `${matchId}:${a}:${b}`;
-        if (lastSentScores[matchId] === key) return;
-        lastSentScores[matchId] = key;
+        if (scoreA === '' || scoreB === '') {
+          // ยังพิมพ์ไม่ครบ 2 ฝั่ง ไม่ส่งไป server เพื่อกัน error และกันจังหวะกระตุก
+          return;
+        }
+        console.log(`[CLIENT] Emitting update_score: Match ID: ${matchId}, Score A: ${scoreA}, Score B: ${scoreB}`); // เพิ่ม log
         socket.emit('update_score', {
           match_id: matchId,
-          team_a_score: a,
-          team_b_score: b
+          team_a_score: scoreA,
+          team_b_score: scoreB
         });
-      }, 900);
+      }, 500); // 500ms delay
     });
   });
 
@@ -693,6 +797,8 @@
 
   // เมื่อมีคนอื่นแก้คะแนน ระบบจะอัปเดตให้ทุก client ทันที
   socket.on('score_updated', data => {
+    console.log(`[CLIENT] Received score_updated event. Data: `, data); // เพิ่ม log เพื่อดูข้อมูลที่ได้รับ
+
     const matchIdToUpdate = data.match_id;
     const teamAScore = data.team_a_score;
     const teamBScore = data.team_b_score;
@@ -703,7 +809,10 @@
     // ค้นหาช่อง input ที่มี data-match-id ตรงกัน
     const inputs = document.querySelectorAll(`input[data-match-id=\"${matchIdToUpdate}\"]`);
 
+    console.log(`[CLIENT] Found ${inputs.length} inputs for match ID ${matchIdToUpdate}.`); // เพิ่ม log เพื่อดูว่าหาเจอไหม
+
     if (inputs.length === 0) {
+      console.warn(`[CLIENT] No input elements found for match ID: ${matchIdToUpdate}. Check HTML data-match-id and class names.`);
       return; // ถ้าหาไม่เจอ ให้หยุดทำงาน
     }
 
@@ -712,7 +821,9 @@
     let isCurrentClientTypingInThisMatch = false;
     if (activeElement && activeElement.classList.contains('score-input') && activeElement.dataset.matchId === matchIdToUpdate.toString()) {
       isCurrentClientTypingInThisMatch = true;
+      console.log(`[CLIENT] Current client is typing in match ${matchIdToUpdate}. Updating only non-active inputs.`); // เพิ่ม log
     } else {
+      console.log(`[CLIENT] Current client is NOT typing in match ${matchIdToUpdate}. Updating all inputs.`); // เพิ่ม log
     }
 
 
@@ -722,17 +833,21 @@
       if (isCurrentClientTypingInThisMatch && input === activeElement) {
         // ถ้าเป็น input ที่กำลังพิมพ์อยู่ ให้ข้ามการอัปเดตช่องนี้
         // แต่จะยังคงอัปเดตช่องอีกฝั่งของ match นั้น (เช่น ถ้าพิมพ์ score-a ให้ score-b อัปเดต)
+        console.log(`[CLIENT] Skipping update for active input: ${input.className}`);
       } else {
         // อัปเดตค่า input field
         if (input.classList.contains('score-a')) {
           input.value = teamAScore;
+          console.log(`[CLIENT] Updated score-a for match ${matchIdToUpdate} to ${teamAScore}`); // เพิ่ม log
         } else if (input.classList.contains('score-b')) {
           input.value = teamBScore;
+          console.log(`[CLIENT] Updated score-b for match ${matchIdToUpdate} to ${teamBScore}`); // เพิ่ม log
         }
       }
     });
 
     updateMatchRowStatus(matchIdToUpdate);
+    updateDrawWarning({ popup: true });
   });
 </script>
 <script>
@@ -748,6 +863,15 @@
 </script>
 
 <script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
+
+<script src="{{ url_for('static', filename='js/round_live_refresh.js') }}"></script>
+<script>
+  startRoundLiveReload({
+    eventId: {{ event.id|tojson }},
+    roundNo: {{ round|tojson }},
+    version: {{ live_version|tojson }}
+  });
+</script>
 
 
 {% endblock %}
