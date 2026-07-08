@@ -2081,7 +2081,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     startPlayoffRealtime();
     pollPlayoffScores();
-    setInterval(pollPlayoffScores, 5000);
+    setInterval(pollPlayoffScores, 3000);
   });
   const timers = {};
   function postJSON(url, payload) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json().catch(() => ({ ok: false }))); }
@@ -2183,16 +2183,15 @@
       refreshGroupColors(input.dataset.round, input.dataset.group);
       const key = ['score', input.dataset.round, input.dataset.group, input.dataset.slot, input.dataset.stage].join('-');
       clearTimeout(timers[key]);
-      timers[key] = setTimeout(() => postJSON(`/playoff/${input.dataset.playoff}/autosave-score`, { round_id: input.dataset.round, group_no: input.dataset.group, slot_no: input.dataset.slot, stage_no: input.dataset.stage, score: input.value }).then(r => { if (!r.ok) return; input.dataset.lastSaved = String(input.value || ''); }), 900);
+      timers[key] = setTimeout(() => postJSON(`/playoff/${input.dataset.playoff}/autosave-score`, { round_id: input.dataset.round, group_no: input.dataset.group, slot_no: input.dataset.slot, stage_no: input.dataset.stage, score: input.value }).then(r => { if (!r.ok) return; }), 350);
     });
     input.addEventListener('blur', () => {
       const key = ['score', input.dataset.round, input.dataset.group, input.dataset.slot, input.dataset.stage].join('-');
       clearTimeout(timers[key]);
-      if (input.dataset.lastSaved === String(input.value || '')) return;
-      postJSON(`/playoff/${input.dataset.playoff}/autosave-score`, { round_id: input.dataset.round, group_no: input.dataset.group, slot_no: input.dataset.slot, stage_no: input.dataset.stage, score: input.value }).then(() => { input.dataset.lastSaved = String(input.value || ''); showLiveBadge('บันทึกคะแนนแล้ว'); });
+      postJSON(`/playoff/${input.dataset.playoff}/autosave-score`, { round_id: input.dataset.round, group_no: input.dataset.group, slot_no: input.dataset.slot, stage_no: input.dataset.stage, score: input.value }).then(() => showLiveBadge('บันทึกคะแนนแล้ว'));
     });
   });
-  document.querySelectorAll('.autosave-court').forEach(input => { input.addEventListener('input', () => { const key = 'court-' + input.dataset.slot; clearTimeout(timers[key]); timers[key] = setTimeout(() => postJSON(`/playoff/${input.dataset.playoff}/autosave-court`, { slot_id: input.dataset.slot, court: input.value }), 900); }); });
+  document.querySelectorAll('.autosave-court').forEach(input => { input.addEventListener('input', () => { const key = 'court-' + input.dataset.slot; clearTimeout(timers[key]); timers[key] = setTimeout(() => postJSON(`/playoff/${input.dataset.playoff}/autosave-court`, { slot_id: input.dataset.slot, court: input.value }), 350); }); });
   document.addEventListener('DOMContentLoaded', () => {
     const seenGroups = new Set(); document.querySelectorAll('.autosave-score').forEach(input => { const k = input.dataset.round + '-' + input.dataset.group; if (!seenGroups.has(k)) { seenGroups.add(k); refreshGroupColors(input.dataset.round, input.dataset.group); } });
     refreshPlayoffStatus();

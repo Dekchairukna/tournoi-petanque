@@ -1,3 +1,13 @@
+import os
+
+# ใช้ eventlet เพื่อให้ Socket.IO รองรับหลายเครื่องพร้อมกันบน Railway ได้ลื่นกว่า threading
+# ต้อง monkey_patch ก่อน import network/socket libraries อื่น ๆ
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except Exception:
+    eventlet = None
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_socketio import SocketIO, emit
 
@@ -8,7 +18,6 @@ from PIL import Image
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Match, Team, Event, User
-import os
 from urllib.parse import quote
 from urllib.request import urlopen, Request
 import re
@@ -26,6 +35,7 @@ from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
 from flask_wtf.file import FileField, FileAllowed
 import json
+import hashlib
 import secrets
 import qrcode
 from i18n import SUPPORTED_LANGS, TEXT_TRANSLATIONS, translate
@@ -100,16 +110,11 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# ลด DB overhead / stale connection โดยเฉพาะ Railway + PostgreSQL
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,
-    'pool_recycle': 280,
-}
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 socketio = SocketIO(
     app,
-    async_mode="eventlet",
+    async_mode="eventlet" if eventlet else "threading",
     cors_allowed_origins="*",
     ping_timeout=60,
     ping_interval=25,
@@ -172,6 +177,13 @@ def ensure_runtime_columns():
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorecard_token VARCHAR(80)"))
         db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_matches_scorecard_token ON matches (scorecard_token)"))
     else:
+        # SQLite เขียนพร้อมกันได้ทีละ writer เท่านั้น; WAL + busy_timeout ช่วยลดอาการ database locked/ดีเลย์
+        try:
+            db.session.execute(text("PRAGMA journal_mode=WAL"))
+            db.session.execute(text("PRAGMA synchronous=NORMAL"))
+            db.session.execute(text("PRAGMA busy_timeout=5000"))
+        except Exception as exc:
+            print(f"[DB] SQLite performance PRAGMA skipped: {exc}")
         existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
         if 'pending_team1_score' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_team1_score INTEGER"))
@@ -193,17 +205,14 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
         if 'scorecard_token' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorecard_token VARCHAR(80)"))
-    # Index สำหรับหน้าที่มีการเปิดหลายอีเวนต์/หลายรอบพร้อมกัน
-    index_stmts = [
-        "CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)",
-        "CREATE INDEX IF NOT EXISTS ix_matches_event_field ON matches (event_id, field)",
-        "CREATE INDEX IF NOT EXISTS ix_teams_event ON teams (event_id)",
-    ]
-    if dialect != 'postgresql':
-        db.session.execute(text("PRAGMA journal_mode=WAL"))
-        db.session.execute(text("PRAGMA busy_timeout=8000"))
-    for stmt in index_stmts:
-        db.session.execute(text(stmt))
+
+    # Index สำคัญสำหรับงานจริงหลายอีเวนต์พร้อมกัน: ลดเวลาค้นหาแมตช์รายรอบ/ทีม/QR
+    try:
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_field ON matches (event_id, field)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)"))
+    except Exception as exc:
+        print(f"[DB] create runtime indexes skipped: {exc}")
     db.session.commit()
 
 
@@ -327,9 +336,72 @@ def unauthorized():
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
 
 
+def _round_live_state(event_id, round_no=None):
+    """สร้าง fingerprint ของคู่แข่งขัน/สนาม/คะแนน เพื่อให้หน้าที่เปิดค้างอยู่รู้ว่าต้องอัปเดต"""
+    query = Match.query.filter_by(event_id=event_id)
+    if round_no:
+        query = query.filter_by(round=round_no)
+
+    matches = query.order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
+    team_ids = set()
+    for match in matches:
+        if match.team1_id:
+            team_ids.add(match.team1_id)
+        if match.team2_id:
+            team_ids.add(match.team2_id)
+
+    team_map = {team.id: team.name for team in Team.query.filter(Team.id.in_(team_ids)).all()} if team_ids else {}
+    rows = []
+    for match in matches:
+        rows.append({
+            'id': match.id,
+            'round': match.round,
+            'field': str(match.field) if match.field is not None else '',
+            'team1_id': match.team1_id,
+            'team1_name': team_map.get(match.team1_id, '-'),
+            'team2_id': match.team2_id,
+            'team2_name': team_map.get(match.team2_id, 'BYE') if match.team2_id else 'BYE',
+            'team1_score': match.team1_score,
+            'team2_score': match.team2_score,
+            'pending_team1_score': match.pending_team1_score,
+            'pending_team2_score': match.pending_team2_score,
+            'pending_is_submitted': bool(match.pending_is_submitted),
+            'is_locked': bool(match.is_locked),
+            'is_manual': bool(match.is_manual),
+        })
+
+    raw = json.dumps(rows, ensure_ascii=False, sort_keys=True, default=str)
+    version = hashlib.sha1(raw.encode('utf-8')).hexdigest()
+    return version, rows
+
+
 def _emit_round_live_changed(event_id, round_no):
-    """live-version ถูกตัดออกแล้ว: ไม่สั่ง reload หน้าอัตโนมัติ เพื่อแก้ระบบหน่วงเวลาเปิดหลายอีเวนต์"""
-    return None
+    """ส่งสัญญาณให้หน้าประกบคู่/ใบบันทึกที่เปิดค้างอยู่ reload เอง"""
+    try:
+        version, rows = _round_live_state(event_id, round_no)
+        socketio.emit(
+            'round_pairing_updated',
+            {
+                'event_id': event_id,
+                'round_no': round_no,
+                'version': version,
+                'matches': rows,
+                'timestamp': datetime.utcnow().isoformat(),
+            },
+            to=f'event_{event_id}_round_{round_no}'
+        )
+        socketio.emit(
+            'event_pairing_updated',
+            {
+                'event_id': event_id,
+                'round_no': round_no,
+                'version': version,
+                'timestamp': datetime.utcnow().isoformat(),
+            },
+            to=f'event_{event_id}_all'
+        )
+    except Exception as exc:
+        print(f'emit round live changed failed: {exc}')
 
 
 @socketio.on('join_round')
@@ -344,6 +416,44 @@ def handle_join_round(data):
             join_room(f'event_{event_id}_round_{int(round_no)}')
     except Exception:
         pass
+
+
+
+def _round_room(event_id, round_no):
+    return f'event_{event_id}_round_{round_no}'
+
+
+def _emit_score_event(event_name, match, payload):
+    """ส่งคะแนนเฉพาะห้องรวมของอีเวนต์ ไม่ยิงข้ามอีเวนต์หรือทั้งระบบ"""
+    try:
+        # ใช้ event room เป็นหลัก เพื่อไม่ให้พลาดกรณีเลขรอบ/ห้องย่อยไม่ตรงกัน
+        # หน้าอื่นที่ไม่ใช่แมตช์นี้จะ ignore เองเพราะไม่มี data-match-row ของ match_id นั้น
+        socketio.emit(event_name, payload, to=f'event_{match.event_id}_all')
+    except Exception as exc:
+        print(f'emit {event_name} failed: {exc}')
+
+
+@app.route('/event/<int:event_id>/round/<int:round_no>/scores-json')
+@login_required
+def round_scores_json(event_id, round_no):
+    """ข้อมูลคะแนนเบา ๆ สำหรับอัปเดตหน้าจอโดยไม่ refresh หน้าเต็ม"""
+    Event.query.get_or_404(event_id)
+    matches = Match.query.filter_by(event_id=event_id, round=round_no).order_by(Match.field.asc(), Match.id.asc()).all()
+    return jsonify({
+        'ok': True,
+        'event_id': event_id,
+        'round_no': round_no,
+        'matches': [{
+            'match_id': m.id,
+            'team_a_score': m.team1_score,
+            'team_b_score': m.team2_score,
+            'pending_team_a_score': m.pending_team1_score,
+            'pending_team_b_score': m.pending_team2_score,
+            'has_pending': m.pending_team1_score is not None or m.pending_team2_score is not None,
+            'pending_is_submitted': bool(m.pending_is_submitted),
+            'is_locked': bool(m.is_locked),
+        } for m in matches]
+    })
 
 
 @socketio.on('join_playoff')
@@ -373,18 +483,16 @@ def handle_update_score(data):
         match = Match.query.get(match_id)
         if match:
             try:
-                new_team1_score = int(team_a_score)
-                new_team2_score = int(team_b_score)
-                if match.team1_score == new_team1_score and match.team2_score == new_team2_score:
-                    return
-                match.team1_score = new_team1_score
-                match.team2_score = new_team2_score
-                db.session.commit()
+                new_a = int(team_a_score)
+                new_b = int(team_b_score)
+                changed = (match.team1_score != new_a) or (match.team2_score != new_b)
+                if changed:
+                    match.team1_score = new_a
+                    match.team2_score = new_b
+                    db.session.commit()
 
                 payload = {
                     'match_id': match.id,
-                    'event_id': match.event_id,
-                    'round_no': match.round,
                     'team_a_score': match.team1_score,
                     'team_b_score': match.team2_score,
                     'pending_team_a_score': match.pending_team1_score,
@@ -394,7 +502,8 @@ def handle_update_score(data):
                     'updated_by_username': username,
                     'timestamp': datetime.utcnow().isoformat()
                 }
-                socketio.emit('score_updated', payload, to=f'event_{match.event_id}_round_{match.round}')
+                _emit_score_event('score_updated', match, payload)
+                # score realtime is sent through score_updated only; no page reload work here
 
             except ValueError:
                 emit('error_message', {'message': 'Invalid score format'}, room=request.sid)
@@ -718,7 +827,7 @@ def score_sheet_all(event_id):
         total_rounds=total_rounds,
         num_teams=num_teams,
         matches_per_page=matches_per_page,  # ✅ ส่งเข้า template
-        selected_round=selected_round
+        selected_round=selected_round,
         
     )
 #-------------------------------------------------------------------------------
@@ -1480,20 +1589,20 @@ def save_online_scorecard_payload(match, data, submitted_user=None):
     if score1 > 13 or score2 > 13:
         return {'ok': False, 'message': 'คะแนนต้องไม่เกิน 13'}, 400
 
-    new_score_ends_json = json.dumps(score_ends, ensure_ascii=False)
-    new_submitter_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
+    score_ends_json = json.dumps(score_ends, ensure_ascii=False)
+    submitted_by_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
     unchanged = (
-        match.pending_team1_score == score1 and
-        match.pending_team2_score == score2 and
-        (match.score_ends or '[]') == new_score_ends_json and
-        match.pending_submitted_by_id == new_submitter_id and
-        match.pending_submitted_at is None
+        match.pending_team1_score == score1
+        and match.pending_team2_score == score2
+        and (match.score_ends or '[]') == score_ends_json
+        and match.pending_submitted_by_id == submitted_by_id
+        and not bool(match.pending_is_submitted)
     )
     if not unchanged:
         match.pending_team1_score = score1
         match.pending_team2_score = score2
-        match.score_ends = new_score_ends_json
-        match.pending_submitted_by_id = new_submitter_id
+        match.score_ends = score_ends_json
+        match.pending_submitted_by_id = submitted_by_id
         match.pending_submitted_at = None
         db.session.commit()
 
@@ -1508,7 +1617,7 @@ def save_online_scorecard_payload(match, data, submitted_user=None):
         'score_ends': json.loads(match.score_ends or '[]'),
     }
     if not unchanged:
-        socketio.emit('pending_score_updated', payload, to=f'event_{match.event_id}_round_{match.round}')
+        _emit_score_event('pending_score_updated', match, payload)
     return {'ok': True, **payload}, 200
 
 
@@ -1568,7 +1677,7 @@ def finish_online_scorecard_payload(match, form_data, submitted_user=None):
     match.pending_submitted_at = datetime.utcnow()
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_score_event('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
@@ -1576,7 +1685,7 @@ def finish_online_scorecard_payload(match, form_data, submitted_user=None):
         'submitted_at': match.pending_submitted_at.isoformat(),
         'pending_is_submitted': True,
         'has_pending': True,
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     return "สิ้นสุดการแข่งขันแล้ว คะแนนจะขึ้นให้ admin/superadmin ยืนยันก่อนนำไปใช้งานจริง", "success", True
 
@@ -1637,7 +1746,7 @@ def public_finish_online_scorecard(token):
     match.pending_submitted_at = datetime.utcnow()
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_score_event('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
@@ -1645,7 +1754,7 @@ def public_finish_online_scorecard(token):
         'submitted_at': match.pending_submitted_at.isoformat(),
         'pending_is_submitted': True,
         'has_pending': True,
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     flash("สิ้นสุดการแข่งขันแล้ว คะแนนจะขึ้นให้ admin/superadmin ยืนยันก่อนนำไปใช้งานจริง", "success")
     return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
@@ -1675,7 +1784,7 @@ def approve_pending_score(event_id, match_id):
     match.is_locked = True
     db.session.commit()
 
-    socketio.emit('score_updated', {
+    _emit_score_event('score_updated', match, {
         'match_id': match.id,
         'team_a_score': match.team1_score,
         'team_b_score': match.team2_score,
@@ -1685,7 +1794,7 @@ def approve_pending_score(event_id, match_id):
         'pending_is_submitted': False,
         'locked': True,
         'timestamp': datetime.utcnow().isoformat()
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     flash("ยืนยันคะแนนออนไลน์และล็อกผลเรียบร้อยแล้ว", "success")
     return redirect(url_for("round_matches", event_id=event_id, round=match.round))
@@ -1711,14 +1820,14 @@ def reject_pending_score(event_id, match_id):
     match.score_ends = None
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_score_event('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': None,
         'pending_team_b_score': None,
         'submitted_by': None,
         'submitted_at': None,
         'pending_is_submitted': False
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     flash("ยกเลิกคะแนนที่รอยืนยันแล้ว", "success")
     return redirect(url_for("round_matches", event_id=event_id, round=match.round))
@@ -5293,24 +5402,13 @@ def autosave_playoff_score(playoff_id):
     slot_no = _as_int(data.get('slot_no'))
     stage_no = _as_int(data.get('stage_no'))
     raw = (str(data.get('score')) if data.get('score') is not None else '').strip()
+    db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no})
     score = None
     if raw != '':
         try:
             score = max(0, min(13, int(raw)))
         except Exception:
             return jsonify({'ok': False, 'message': 'กรอกคะแนน 0-13'}), 400
-
-    current = db.session.execute(text("""
-        SELECT score FROM playoff_scores
-        WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st
-        LIMIT 1
-    """), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no}).mappings().first()
-    current_score = None if not current else current['score']
-    if current_score == score:
-        return jsonify({'ok': True, 'skipped': True})
-
-    db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no})
-    if score is not None:
         db.session.execute(text("""
             INSERT INTO playoff_scores (round_id, group_no, slot_no, stage_no, score)
             VALUES (:rid, :g, :s, :st, :score)
@@ -5339,13 +5437,6 @@ def autosave_playoff_court(playoff_id):
         SELECT id FROM playoff_slots
         WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
     """), {'rid': slot['round_id'], 'g': slot['group_no'], 'a': pair_start, 'b': pair_end}).mappings().all()
-    old_courts = db.session.execute(text("""
-        SELECT COALESCE(court_name, '') AS court_name FROM playoff_slots
-        WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
-    """), {'rid': slot['round_id'], 'g': slot['group_no'], 'a': pair_start, 'b': pair_end}).mappings().all()
-    if old_courts and all((r['court_name'] or '') == court for r in old_courts):
-        return jsonify({'ok': True, 'skipped': True})
-
     db.session.execute(text("""
         UPDATE playoff_slots SET court_name=:court
         WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b

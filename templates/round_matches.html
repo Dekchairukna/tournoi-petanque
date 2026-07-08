@@ -439,7 +439,7 @@
               class="btn btn-outline-secondary">พิมพ์ใบบันทึกคะแนน</a>
             <button type="submit" name="action" value="lock_scores" class="btn btn-danger">บันทึก + ล็อกผล</button>
             {% if is_last_configured_round and all_current_round_locked %}
-            <a href="{{ url_for('event_standings', event_id=event.id, num_qualified_teams=team_count) }}"
+            <a href="{{ url_for('event_standings', event_id=event.id, num_qualified_teams=standings|length) }}"
                class="btn btn-success">
               สิ้นสุดการแข่งขัน / ไปหน้ารายงาน Standing
             </a>
@@ -472,17 +472,8 @@
       ตารางจัดลำดับ
     </div>
     <div class="card-body p-0">
-      {% if not show_standings %}
-      <div class="p-3">
-        <div class="alert alert-info mb-3">
-          หน้าใส่คะแนนถูกปรับให้เบา: ยังไม่คำนวณ Standing อัตโนมัติทุกครั้ง เพื่อให้คลิกและกรอกคะแนนเร็วขึ้น
-        </div>
-        <a class="btn btn-warning" href="{{ url_for('round_matches', event_id=event.id, round=round) }}?standings=1">
-          โหลดตารางคะแนน / ดูผลจัดอันดับ
-        </a>
-      </div>
-      {% elif standings %}
-      <h5 class="p-2 mb-0">>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</h5>
+      <h5>>>>เลื่อนไปทางขวาเพื่อดูตารางคะแนน Score BHN fBHN และผลต่างคะแนน</h5>
+      {% if standings %}
       <div class="table-responsive">
         <table class="table table-bordered table-sm align-middle text-center mb-0">
           <thead class="table-light">
@@ -502,16 +493,26 @@
             {% for team in standings %}
             <tr class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
               <td>{{ loop.index }}</td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.team_name }}</td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                {{ team.team_name }}
+              </td>
               {% for i in range(1, event.rounds + 1) %}
               <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
                 {{ team["VS_Round" ~ i] if team["VS_Round" ~ i] else '-' }}
               </td>
               {% endfor %}
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.score }}</td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.buchholz }}</td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.final_buchholz }}</td>
-              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">{{ team.point_diff }}</td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                {{ team.score }}
+              </td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                {{ team.buchholz }}
+              </td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                {{ team.final_buchholz }}
+              </td>
+              <td class="{{ macros.score_class(team.score) }}" style="font-weight: bold">
+                {{ team.point_diff }}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -551,19 +552,36 @@
 
 {% block scripts %}
 <script>
-</script>
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script>
-  // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = window.roundSocket || io({ transports: ['websocket'], upgrade: false, reconnectionDelayMax: 5000 });
-  window.roundSocket = socket;
-  const CURRENT_EVENT_ID = {{ event.id|tojson }};
-  const CURRENT_ROUND = {{ round|tojson }};
+(function () {
+  const eventId = {{ event.id|tojson }};
+  const roundNo = {{ round|tojson }};
+  const socket = window.roundLiveSocket || io({ transports: ['websocket', 'polling'] });
+  window.roundLiveSocket = socket;
+
+  let socketConnected = false;
+  let lastLocalEditAt = 0;
+  const scoreTimers = new Map();
+
+  function joinRoundRoom() {
+    if (!socket || !socket.emit) return;
+    socket.emit('join_round', { event_id: eventId, round_no: roundNo });
+  }
+
+  socket.on('connect', () => {
+    socketConnected = true;
+    joinRoundRoom();
+  });
+  socket.on('reconnect', joinRoundRoom);
+  setTimeout(joinRoundRoom, 700);
+  setTimeout(joinRoundRoom, 2500);
+
+  socket.on('disconnect', () => {
+    socketConnected = false;
+  });
 
   function updateMatchRowStatus(matchId) {
     const row = document.querySelector(`[data-match-row="${matchId}"]`);
     if (!row) return;
-
     const badge = row.querySelector(`[data-status-badge="${matchId}"]`);
     const isLateEntry = row.dataset.lateEntry === '1';
     const isLocked = row.dataset.locked === '1';
@@ -580,11 +598,11 @@
       return;
     }
 
-    const scoreAValue = scoreAInput ? scoreAInput.value.trim() : '';
-    const scoreBValue = scoreBInput ? scoreBInput.value.trim() : '';
-    const hasBothScores = scoreAValue !== '' && scoreBValue !== '';
-    const isZeroWaiting = hasBothScores && Number(scoreAValue) === 0 && Number(scoreBValue) === 0;
-    const isReady = hasBothScores && !isZeroWaiting;
+    const a = scoreAInput ? scoreAInput.value.trim() : '';
+    const b = scoreBInput ? scoreBInput.value.trim() : '';
+    const hasBoth = a !== '' && b !== '';
+    const isZeroWaiting = hasBoth && Number(a) === 0 && Number(b) === 0;
+    const isReady = hasBoth && !isZeroWaiting;
 
     row.classList.remove('match-scored', 'match-pending', 'match-late-entry');
     if (isReady) {
@@ -602,41 +620,6 @@
     }
   }
 
-  function refreshAllMatchStatuses() {
-    document.querySelectorAll('[data-match-row]').forEach(row => updateMatchRowStatus(row.dataset.matchRow));
-  }
-
-  refreshAllMatchStatuses();
-
-  socket.on('connect', () => {
-    socket.emit('join_round', { event_id: CURRENT_EVENT_ID, round: CURRENT_ROUND });
-  });
-
-  socket.on('connect_error', (err) => {
-  });
-
-  // ส่งคะแนนแบบ debounce ต่อ 1 คู่ ไม่ใช่ต่อ 1 ช่อง เพื่อลด request ซ้อน
-  const scoreTimers = new Map();
-  document.querySelectorAll('.score-input').forEach(input => {
-    input.addEventListener('input', () => {
-      const row = input.closest('tr');
-      if (!row) return;
-      const matchId = input.dataset.matchId;
-      updateMatchRowStatus(matchId);
-      clearTimeout(scoreTimers.get(matchId));
-      scoreTimers.set(matchId, setTimeout(() => {
-        const scoreA = row.querySelector('.score-a')?.value ?? '';
-        const scoreB = row.querySelector('.score-b')?.value ?? '';
-        if (scoreA === '' || scoreB === '') return;
-        socket.emit('update_score', {
-          match_id: matchId,
-          team_a_score: scoreA,
-          team_b_score: scoreB
-        });
-      }, 900));
-    });
-  });
-
   function renderPendingScore(data) {
     const matchId = data.match_id;
     const pendingBox = document.querySelector(`[data-pending-box="${matchId}"]`);
@@ -646,27 +629,21 @@
     const row = document.querySelector(`[data-match-row="${matchId}"]`);
     const badge = document.querySelector(`[data-status-badge="${matchId}"]`);
 
-    const hasPending = data.pending_team_a_score !== null && data.pending_team_a_score !== undefined
-      && data.pending_team_a_score !== ''
-      && (data.pending_team_b_score !== null && data.pending_team_b_score !== undefined && data.pending_team_b_score !== '');
+    const hasPending = data.pending_team_a_score !== null && data.pending_team_a_score !== undefined && data.pending_team_a_score !== '' &&
+      data.pending_team_b_score !== null && data.pending_team_b_score !== undefined && data.pending_team_b_score !== '';
     const isSubmitted = data.pending_is_submitted === true || data.pending_is_submitted === 'true' || data.pending_is_submitted === 1 || data.pending_is_submitted === '1';
 
     if (row) row.dataset.hasPending = hasPending ? '1' : '0';
-
     if (pendingBox) {
       pendingBox.classList.toggle('d-none', !hasPending);
       const label = pendingBox.querySelector('.badge-pending-confirm');
       if (label) label.textContent = isSubmitted ? 'รอยืนยัน' : 'กำลังกรอก';
     }
     if (pendingActions) pendingActions.classList.toggle('d-none', !(hasPending && isSubmitted));
-    if (pendingScore) {
-      pendingScore.textContent = hasPending ? `${data.pending_team_a_score} - ${data.pending_team_b_score}` : '';
-    }
+    if (pendingScore) pendingScore.textContent = hasPending ? `${data.pending_team_a_score} - ${data.pending_team_b_score}` : '';
     if (pendingMeta) {
       pendingMeta.textContent = hasPending
-        ? (isSubmitted
-            ? (data.submitted_by ? `สิ้นสุดโดย ${data.submitted_by}` : 'สิ้นสุดจากหน้าสกอร์การ์ด')
-            : 'กำลังกรอก ยังไม่สิ้นสุดการแข่งขัน')
+        ? (isSubmitted ? (data.submitted_by ? `สิ้นสุดโดย ${data.submitted_by}` : 'สิ้นสุดจากหน้าสกอร์การ์ด') : 'กำลังกรอก ยังไม่สิ้นสุดการแข่งขัน')
         : '';
     }
     if (badge && hasPending && (!row || row.dataset.locked !== '1')) {
@@ -675,69 +652,85 @@
     }
   }
 
-  socket.on('pending_score_updated', data => {
-    renderPendingScore(data);
-  });
+  function applyScorePayload(data, options = {}) {
+    if (!data || !data.match_id) return;
+    const matchId = String(data.match_id);
+    const row = document.querySelector(`[data-match-row="${matchId}"]`);
+    if (!row) return;
 
-  // เมื่อมีคนอื่นแก้คะแนน ระบบจะอัปเดตให้ทุก client ทันที
-  socket.on('score_updated', data => {
-
-    const matchIdToUpdate = data.match_id;
-    const teamAScore = data.team_a_score;
-    const teamBScore = data.team_b_score;
     if ('pending_team_a_score' in data || 'pending_team_b_score' in data) {
       renderPendingScore(data);
     }
 
-    // ค้นหาช่อง input ที่มี data-match-id ตรงกัน
-    const inputs = document.querySelectorAll(`input[data-match-id=\"${matchIdToUpdate}\"]`);
+    const active = document.activeElement;
+    const activeMatch = active && active.classList && active.classList.contains('score-input') && active.dataset.matchId === matchId;
+    const skipActive = options.skipActive !== false && activeMatch;
 
-
-    if (inputs.length === 0) {
-      return; // ถ้าหาไม่เจอ ให้หยุดทำงาน
+    const inputA = row.querySelector('.score-a');
+    const inputB = row.querySelector('.score-b');
+    if (inputA && !(skipActive && active === inputA) && data.team_a_score !== null && data.team_a_score !== undefined) {
+      inputA.value = data.team_a_score;
     }
-
-    // ตรวจสอบว่า input ที่กำลังถูกอัปเดต ไม่ใช่ input ที่ผู้ใช้กำลัง Active (กำลังพิมพ์อยู่)
-    const activeElement = document.activeElement;
-    let isCurrentClientTypingInThisMatch = false;
-    if (activeElement && activeElement.classList.contains('score-input') && activeElement.dataset.matchId === matchIdToUpdate.toString()) {
-      isCurrentClientTypingInThisMatch = true;
-    } else {
+    if (inputB && !(skipActive && active === inputB) && data.team_b_score !== null && data.team_b_score !== undefined) {
+      inputB.value = data.team_b_score;
     }
+    updateMatchRowStatus(matchId);
+  }
 
+  document.querySelectorAll('[data-match-row]').forEach(row => updateMatchRowStatus(row.dataset.matchRow));
 
-    inputs.forEach(input => {
-      // ถ้าผู้ใช้กำลังพิมพ์อยู่ใน input นั้นๆ ให้ข้ามการอัปเดตช่องนั้น เพื่อไม่ให้ cursor เด้ง
-      // แต่จะอัปเดตช่องตรงข้าม หรือถ้าไม่ใช่ active element ก็อัปเดตทั้งหมด
-      if (isCurrentClientTypingInThisMatch && input === activeElement) {
-        // ถ้าเป็น input ที่กำลังพิมพ์อยู่ ให้ข้ามการอัปเดตช่องนี้
-        // แต่จะยังคงอัปเดตช่องอีกฝั่งของ match นั้น (เช่น ถ้าพิมพ์ score-a ให้ score-b อัปเดต)
-      } else {
-        // อัปเดตค่า input field
-        if (input.classList.contains('score-a')) {
-          input.value = teamAScore;
-        } else if (input.classList.contains('score-b')) {
-          input.value = teamBScore;
+  document.querySelectorAll('.score-input').forEach(input => {
+    input.addEventListener('input', () => {
+      lastLocalEditAt = Date.now();
+      const row = input.closest('[data-match-row]');
+      if (!row) return;
+      const matchId = input.dataset.matchId;
+      const scoreA = row.querySelector('.score-a')?.value ?? '';
+      const scoreB = row.querySelector('.score-b')?.value ?? '';
+      updateMatchRowStatus(matchId);
+
+      if (scoreTimers.has(matchId)) clearTimeout(scoreTimers.get(matchId));
+      scoreTimers.set(matchId, setTimeout(() => {
+        socket.emit('update_score', {
+          match_id: matchId,
+          team_a_score: scoreA,
+          team_b_score: scoreB
+        });
+      }, 650));
+    });
+  });
+
+  socket.on('score_updated', data => applyScorePayload(data));
+  socket.on('pending_score_updated', data => applyScorePayload(data));
+
+  async function pullScoresFallback() {
+    // ถ้า socket ต่อได้ปกติ ใช้ fallback ห่าง ๆ พอเป็นประกัน ไม่ใช่ refresh หน้า
+    const delay = socketConnected ? 7000 : 2000;
+    try {
+      if (Date.now() - lastLocalEditAt > 900) {
+        const res = await fetch(`/event/${eventId}/round/${roundNo}/scores-json`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && Array.isArray(data.matches)) {
+            data.matches.forEach(item => applyScorePayload(item));
+          }
         }
       }
-    });
+    } catch (err) {
+      // เงียบไว้ ไม่ให้รบกวนหน้ากรอกคะแนน
+    } finally {
+      setTimeout(pullScoresFallback, delay);
+    }
+  }
+  setTimeout(pullScoresFallback, 1800);
 
-    updateMatchRowStatus(matchIdToUpdate);
-  });
-</script>
-<script>
-  // เมื่อมีการเปลี่ยนแปลงในฟิลด์อัตโนมัติ ให้ส่งข้อมูลไปยัง server
-  document.addEventListener("DOMContentLoaded", function () {
-    const autoAssignField = document.getElementById("autoAssignField");
+  document.addEventListener('DOMContentLoaded', function () {
+    const autoAssignField = document.getElementById('autoAssignField');
     if (autoAssignField) {
-      autoAssignField.addEventListener("change", function () {
-        this.form.submit();
-      });
+      autoAssignField.addEventListener('change', function () { this.form.submit(); });
     }
   });
+})();
 </script>
-
-<script defer src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
-
-
+<script src="{{ url_for('static', filename='js/tournoi_voice_announcer.js') }}"></script>
 {% endblock %}
