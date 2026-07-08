@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+{% block title %}MANUAL ประกบคู่เพลย์ออฟ{% endblock %}
+{% block content %}
+<div class="manual-pair-wrap">
+  <div class="manual-head card">
+    <h1>MANUAL — แอดมินจิ้มประกบคู่เอง</h1>
+    <div class="muted">
+      {% if mode == 'event' %}
+        สร้างเพลย์ออฟจาก Standing: {{ source_event.name if source_event else payload.next_stage_name }}
+      {% else %}
+        สร้างรอบถัดไป: {{ payload.round_name }}
+      {% endif %}
+    </div>
+    <div class="mode-badge">{{ plan.mode_label }}</div>
+  </div>
+
+  <div class="card help-box">
+    <b>วิธีใช้:</b>
+    เลือกทีมลงแต่ละช่องตามที่ต้องการ ระบบจะกันเลือกทีมซ้ำให้อัตโนมัติ<br>
+    {% if payload.competition_type == 'double_knockout' or payload.next_type == 'double_knockout' %}
+      Double knockout: เลือกทีมลงตาม <b>สาย / ลำดับ 1-4</b> โดยแต่ละสายต้องมีทีมจริง 3 หรือ 4 ทีม ช่องว่างจะเป็น X/BYE
+    {% else %}
+      Knockout: เลือกทีมลง <b>ทีม A / ทีม B</b> ถ้ามีช่องว่างจะเป็น X/BYE
+    {% endif %}
+  </div>
+
+  <form method="post" id="manualPairForm" class="card manual-form">
+    <div class="manual-toolbar no-print">
+      <a class="btn btn-secondary" href="{% if mode == 'event' %}{{ url_for('event_standings', event_id=source_event.id) }}{% else %}{{ url_for('playoff_detail', playoff_id=view.competition.id) }}{% endif %}">← กลับ</a>
+      <button type="button" class="btn btn-outline-secondary" id="clearAllBtn">ล้างที่เลือก</button>
+      <button type="submit" class="btn btn-primary">ยืนยันสร้างรอบนี้</button>
+    </div>
+
+    <div class="teams-left">
+      <h3>ทีมที่ยังไม่ถูกเลือก</h3>
+      <div id="remainingTeams" class="team-chip-grid"></div>
+    </div>
+
+    <div class="manual-grid {% if plan.slot_count == 4 %}double-mode{% else %}knockout-mode{% endif %}">
+      {% for group in plan.groups %}
+      <section class="pair-card">
+        <div class="pair-title">
+          {% if plan.slot_count == 4 %}
+            สาย {{ group.group_no }}
+            <span>ต้องมีทีมจริง {{ group.required_count }} ทีม</span>
+          {% else %}
+            คู่ที่ {{ group.group_no }}
+          {% endif %}
+        </div>
+
+        {% for slot_no in range(1, plan.slot_count + 1) %}
+        <label class="slot-row">
+          <span>
+            {% if plan.slot_count == 4 %}
+              ลำดับ {{ slot_no }}
+            {% elif slot_no == 1 %}
+              ทีม A
+            {% else %}
+              ทีม B
+            {% endif %}
+          </span>
+          <select name="team_{{ group.group_no }}_{{ slot_no }}" class="manual-team-select">
+            <option value="">-- ว่าง / X/BYE --</option>
+            {% for team in teams %}
+              <option value="{{ team.team_id }}">{{ team.seed }}. {{ team.team_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </section>
+      {% endfor %}
+    </div>
+  </form>
+</div>
+
+<style>
+  .manual-pair-wrap { max-width: 1180px; margin: 0 auto; padding: 18px 12px 80px; }
+  .manual-head, .help-box, .manual-form { border:0; border-radius:22px; box-shadow:0 10px 30px rgba(15,23,42,.08); background:#fff; padding:18px; margin-bottom:16px; }
+  .manual-head h1 { margin:0 0 8px; font-size:32px; font-weight:900; }
+  .muted { color:#64748b; font-weight:700; }
+  .mode-badge { display:inline-block; margin-top:12px; padding:8px 14px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:900; }
+  .help-box { background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; line-height:1.7; }
+  .manual-toolbar { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; margin-bottom:14px; }
+  .teams-left { border:1px dashed #cbd5e1; border-radius:18px; padding:14px; background:#f8fafc; margin-bottom:16px; }
+  .teams-left h3 { margin:0 0 10px; font-size:18px; }
+  .team-chip-grid { display:flex; flex-wrap:wrap; gap:8px; }
+  .team-chip { padding:7px 10px; border-radius:999px; background:#e0f2fe; color:#075985; font-weight:800; font-size:13px; }
+  .team-chip.used { background:#e5e7eb; color:#6b7280; text-decoration:line-through; }
+  .manual-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:14px; }
+  .manual-grid.double-mode { grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); }
+  .pair-card { border:1px solid #e5e7eb; border-radius:18px; padding:14px; background:#fff; }
+  .pair-title { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; font-size:20px; font-weight:900; color:#111827; }
+  .pair-title span { font-size:12px; color:#64748b; font-weight:800; }
+  .slot-row { display:grid; grid-template-columns:90px 1fr; gap:10px; align-items:center; margin-bottom:10px; font-weight:800; }
+  .slot-row select { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; font-weight:800; }
+  .slot-row select.duplicate { border-color:#ef4444; background:#fff1f2; color:#991b1b; }
+  .slot-row select:disabled { background:#f1f5f9; color:#94a3b8; }
+  .btn { border-radius:12px; padding:10px 14px; font-weight:900; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; border:1px solid #d1d5db; }
+  .btn-primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .btn-secondary, .btn-outline-secondary { background:#fff; color:#111827; }
+  @media(max-width:700px) {
+    .manual-head h1 { font-size:24px; }
+    .slot-row { grid-template-columns:1fr; gap:5px; }
+  }
+</style>
+
+<script>
+(function(){
+  const selects = Array.from(document.querySelectorAll('.manual-team-select'));
+  const teamData = [
+    {% for team in teams %}
+      {id: {{ team.team_id|tojson }}, name: {{ team.team_name|tojson }}, seed: {{ team.seed|tojson }}},
+    {% endfor %}
+  ];
+  const remaining = document.getElementById('remainingTeams');
+
+  function usedValues() {
+    return selects.map(s => s.value).filter(Boolean);
+  }
+
+  function refreshOptions() {
+    const used = usedValues();
+    selects.forEach(sel => {
+      const current = sel.value;
+      Array.from(sel.options).forEach(opt => {
+        if (!opt.value) return;
+        opt.disabled = opt.value !== current && used.includes(opt.value);
+      });
+      sel.classList.toggle('duplicate', current && used.filter(v => v === current).length > 1);
+    });
+    if (remaining) {
+      remaining.innerHTML = teamData.map(t => {
+        const isUsed = used.includes(String(t.id));
+        return `<span class="team-chip ${isUsed ? 'used' : ''}">${t.seed}. ${t.name}</span>`;
+      }).join('');
+    }
+  }
+
+  selects.forEach(sel => sel.addEventListener('change', refreshOptions));
+  const clearBtn = document.getElementById('clearAllBtn');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    if (!confirm('ล้างการเลือกทั้งหมด?')) return;
+    selects.forEach(sel => sel.value = '');
+    refreshOptions();
+  });
+
+  document.getElementById('manualPairForm').addEventListener('submit', function(e){
+    const used = usedValues();
+    const unique = new Set(used);
+    if (used.length !== unique.size) {
+      e.preventDefault();
+      alert('มีทีมซ้ำ กรุณาเลือกทีมแต่ละทีมได้ครั้งเดียว');
+      return;
+    }
+    if (used.length !== teamData.length) {
+      e.preventDefault();
+      alert('ยังเลือกทีมไม่ครบ กรุณานำทุกทีมลงคู่/ลงสายก่อน');
+      return;
+    }
+    if (!confirm('ยืนยันสร้างรอบตามคู่/สายที่เลือก?')) e.preventDefault();
+  });
+
+  refreshOptions();
+})();
+</script>
+{% endblock %}

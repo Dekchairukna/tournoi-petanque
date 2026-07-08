@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang|default('th') }}">
+
+<head>
+  <meta charset="UTF-8">
+  <title>ใบบันทึกคะแนนเพลย์ออฟ - {{ view.competition.title }}</title>
+
+  <style>
+    @page { size: A4 portrait; margin: 2mm; }
+    * { box-sizing: border-box; }
+    .small-font {
+      font-size: 13px;
+    }
+
+    .large-font {
+      font-size: 18px;
+    }
+
+    @media print {
+      .page-break {
+        page-break-after: always;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    body {
+      font-family: Tahoma, sans-serif;
+      font-size: 15px;
+      margin: 1px;
+    }
+
+    .no-print {
+      margin: 8px 0 10px;
+      padding: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: #f8fafc;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+    }
+
+    .btn,
+    select {
+      display: inline-block;
+      padding: 8px 12px;
+      border: 1px solid #111;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #111;
+      background: #fff;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .picker-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-weight: 900;
+    }
+
+    .mode-note {
+      font-weight: 900;
+      color: #334155;
+    }
+
+    .score-sheet {
+      border: 3px solid #000;
+      padding: 5px;
+      margin-bottom: 0px;
+      height: 24.2%;
+      position: relative;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0;
+      padding: 0 5px;
+      line-height: 1.2;
+    }
+
+    .event-info {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .event-name {
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+
+    .event-details {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .logo-wrapper {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .logo-on-sheet {
+      height: 40px;
+      width: 30px;
+      object-fit: contain;
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-start;
+      margin: 3px 0;
+    }
+
+    .label {
+      width: 50px;
+      min-width: 50px;
+      padding-top: 3px;
+    }
+
+    .boxes {
+      display: grid;
+      grid-template-columns: 170px repeat(14, 30px);
+      gap: 2px;
+    }
+
+    .box {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #000;
+      text-align: center;
+      line-height: 30px;
+      box-sizing: border-box;
+    }
+
+    .box:last-child {
+      width: 60px;
+    }
+
+    .team-name {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .team-name-box {
+      width: 170px;
+      height: 30px;
+      line-height: 30px;
+      padding-left: 5px;
+      border: 1px solid #000;
+      box-sizing: border-box;
+      text-align: left;
+      font-size: 13px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .signature {
+      margin-top: 5px;
+      line-height: 1.2;
+    }
+
+    .qr-scorecard-box {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .qr-scorecard-box img {
+      width: 65px;
+      height: 65px;
+      border: 1px solid #000;
+      padding: 0px;
+      background: #fff;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  {% set selected_ns = namespace(round_name='ทุกรอบ') %}
+  {% for rv in view.round_views %}
+    {% if selected_round and rv.round.id == selected_round %}{% set selected_ns.round_name = rv.round.round_name %}{% endif %}
+  {% endfor %}
+
+  <div class="no-print">
+    <a class="btn" href="javascript:window.print()">พิมพ์สกอร์ชีทเพลย์ออฟ</a>
+    <a class="btn" href="{{ url_for('playoff_detail', playoff_id=view.competition.id) }}">กลับหน้าเพลย์ออฟ</a>
+    <a class="btn" href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}">ทั้งหมด</a>
+    <span class="mode-note">{{ selected_ns.round_name }}{% if selected_group %} · สายที่ {{ selected_group }}{% endif %}</span>
+  </div>
+
+  <div class="no-print">
+    <div class="picker-field">
+      <label for="score-round-select">เลือกรอบสกอร์ชีท</label>
+      <select id="score-round-select" onchange="if(this.value){ window.location.href=this.value; }">
+        <option value="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" {% if not selected_round %}selected{% endif %}>ทุกรอบ</option>
+        {% for rv in view.round_views %}
+          <option value="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}" {% if selected_round == rv.round.id and not selected_group %}selected{% endif %}>{{ rv.round.round_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="picker-field">
+      <label for="score-group-select">เลือกสาย</label>
+      <select id="score-group-select" onchange="if(this.value){ window.location.href=this.value; }">
+        <option value="">เลือกสายที่ต้องการ</option>
+        {% for rv in view.round_views %}
+          <optgroup label="{{ rv.round.round_name }}">
+            {% for group in rv.group_views %}
+              <option value="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}" {% if selected_round == rv.round.id and selected_group == group.group_no %}selected{% endif %}>{{ rv.round.round_name }} / สายที่ {{ group.group_no }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  {% if not sheets %}
+  <div style="padding: 24px; border: 1px solid #ddd; font-weight:900;">ยังไม่มีคู่แข่งขันเพลย์ออฟที่พร้อมพิมพ์สกอร์ชีท</div>
+  {% endif %}
+
+  {% for sheet in sheets %}
+      <div class="score-sheet">
+        <div class="header">
+          <div class="event-info">
+            <div class="event-name {% if source_event and source_event.logo_list %}small-font{% else %}large-font{% endif %}">{{ source_event.name if source_event else view.competition.title }}</div>
+            <div class="event-name {% if source_event and source_event.logo_list %}small-font{% else %}large-font{% endif %}">
+              ประเภท: {{ source_event.category if source_event else '-' }}{{ source_event.sex if source_event else '' }} &nbsp;&nbsp;
+              รุ่น: {{ source_event.age_group if source_event else '-' }} &nbsp;&nbsp;
+              รอบ: {{ sheet.round_name }} &nbsp;&nbsp;
+              สายที่: {{ sheet.group_no }} &nbsp;&nbsp;
+              สนาม: {{ sheet.court_name or '__________' }}
+            </div>
+            <div class="event-details">{{ sheet.system_label }}{% if sheet.stage_label %} · {{ sheet.stage_label }}{% endif %}</div>
+          </div>
+          <div class="logo-wrapper">
+            {% if source_event %}
+              {% for logo in source_event.logo_list %}
+                <img src="{{ url_for('static', filename='logos/' + logo) }}" class="logo-on-sheet" alt="โลโก้ของ {{ source_event.name }}">
+              {% endfor %}
+            {% endif %}
+            <div class="qr-scorecard-box">
+              <img src="{{ url_for('public_playoff_scorecard_qr', token=sheet.token) }}" alt="QR สกอร์การ์ดเพลย์ออฟ">
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label"><strong>ทีม:</strong></div>
+          <div class="boxes">
+            <div class="team-name-box"><span class="team-name">{{ sheet.team1_print_name }}</span></div>
+            {% for _ in range(13) %}<div class="box"></div>{% endfor %}
+            <div class="box"></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label"><strong>คะแนน:</strong></div>
+          <div class="boxes">
+            <div class="team-name-box"></div>
+            {% for i in range(1, 14) %}<div class="box">{{ i }}</div>{% endfor %}
+            <div class="box">รวม</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label"><strong>ทีม:</strong></div>
+          <div class="boxes">
+            <div class="team-name-box"><span class="team-name">{{ sheet.team2_print_name }}</span></div>
+            {% for _ in range(13) %}<div class="box"></div>{% endfor %}
+            <div class="box"></div>
+          </div>
+        </div>
+
+        <div class="signature">
+          ลงชื่อทีม : _________________________________&nbsp;&nbsp;&nbsp;
+          ลงชื่อทีม : ________________________________<br>
+          ทีม _________________ เปลี่ยนตัว: _____________________ แทน ______________________________<br>
+          ทีม _________________ เปลี่ยนตัว: _____________________ แทน ______________________________<br>
+          ลงชื่อกรรมการ: _________________________________________________________________________
+        </div>
+      </div>
+      {% if loop.index % 4 == 0 %}
+      <div class="page-break"></div>
+      {% endif %}
+  {% endfor %}
+
+  <script>
+    function adjustFontSizeToFit(container, textElement, minFontSize = 8) {
+      let fontSize = parseFloat(window.getComputedStyle(textElement).fontSize);
+      const containerWidth = container.clientWidth;
+      while (textElement.scrollWidth > containerWidth && fontSize > minFontSize) {
+        fontSize -= 0.5;
+        textElement.style.fontSize = fontSize + 'px';
+      }
+    }
+
+    document.querySelectorAll('.team-name-box').forEach(box => {
+      const name = box.querySelector('.team-name');
+      if (name) {
+        adjustFontSizeToFit(box, name);
+      }
+    });
+  </script>
+</body>
+</html>
