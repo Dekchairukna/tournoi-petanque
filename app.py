@@ -1,3 +1,13 @@
+import os
+
+# ใช้ eventlet เพื่อให้ Socket.IO รองรับหลายเครื่องพร้อมกันบน Railway ได้ลื่นกว่า threading
+# ต้อง monkey_patch ก่อน import network/socket libraries อื่น ๆ
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except Exception:
+    eventlet = None
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_socketio import SocketIO, emit
 
@@ -8,7 +18,6 @@ from PIL import Image
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Match, Team, Event, User
-import os
 from urllib.parse import quote
 from urllib.request import urlopen, Request
 import re
@@ -105,7 +114,7 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 socketio = SocketIO(
     app,
-    async_mode="threading",
+    async_mode="eventlet" if eventlet else "threading",
     cors_allowed_origins="*",
     ping_timeout=60,
     ping_interval=25,
@@ -168,6 +177,13 @@ def ensure_runtime_columns():
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorecard_token VARCHAR(80)"))
         db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_matches_scorecard_token ON matches (scorecard_token)"))
     else:
+        # SQLite เขียนพร้อมกันได้ทีละ writer เท่านั้น; WAL + busy_timeout ช่วยลดอาการ database locked/ดีเลย์
+        try:
+            db.session.execute(text("PRAGMA journal_mode=WAL"))
+            db.session.execute(text("PRAGMA synchronous=NORMAL"))
+            db.session.execute(text("PRAGMA busy_timeout=5000"))
+        except Exception as exc:
+            print(f"[DB] SQLite performance PRAGMA skipped: {exc}")
         existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
         if 'pending_team1_score' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_team1_score INTEGER"))
@@ -189,6 +205,14 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
         if 'scorecard_token' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorecard_token VARCHAR(80)"))
+
+    # Index สำคัญสำหรับงานจริงหลายอีเวนต์พร้อมกัน: ลดเวลาค้นหาแมตช์รายรอบ/ทีม/QR
+    try:
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_matches_event_field ON matches (event_id, field)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_teams_event_id ON teams (event_id)"))
+    except Exception as exc:
+        print(f"[DB] create runtime indexes skipped: {exc}")
     db.session.commit()
 
 
@@ -420,6 +444,19 @@ def handle_join_round(data):
         pass
 
 
+
+def _round_room(event_id, round_no):
+    return f'event_{event_id}_round_{round_no}'
+
+
+def _emit_score_event(event_name, match, payload):
+    """ส่ง event เฉพาะห้องของอีเวนต์/รอบนั้น ไม่ broadcast ทั้งระบบ"""
+    try:
+        socketio.emit(event_name, payload, to=_round_room(match.event_id, match.round))
+    except Exception as exc:
+        print(f'emit {event_name} failed: {exc}')
+
+
 @socketio.on('join_playoff')
 def handle_join_playoff(data):
     try:
@@ -451,7 +488,7 @@ def handle_update_score(data):
                 match.team2_score = int(team_b_score)
                 db.session.commit()
 
-                emit('score_updated', {
+                payload = {
                     'match_id': match.id,
                     'team_a_score': match.team1_score,
                     'team_b_score': match.team2_score,
@@ -461,7 +498,8 @@ def handle_update_score(data):
                     'pending_is_submitted': bool(match.pending_is_submitted),
                     'updated_by_username': username,
                     'timestamp': datetime.utcnow().isoformat()
-                }, broadcast=True)
+                }
+                _emit_score_event('score_updated', match, payload)
                 _emit_round_live_changed(match.event_id, match.round)
 
             except ValueError:
@@ -1550,12 +1588,22 @@ def save_online_scorecard_payload(match, data, submitted_user=None):
     if score1 > 13 or score2 > 13:
         return {'ok': False, 'message': 'คะแนนต้องไม่เกิน 13'}, 400
 
-    match.pending_team1_score = score1
-    match.pending_team2_score = score2
-    match.score_ends = json.dumps(score_ends, ensure_ascii=False)
-    match.pending_submitted_by_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
-    match.pending_submitted_at = None
-    db.session.commit()
+    score_ends_json = json.dumps(score_ends, ensure_ascii=False)
+    submitted_by_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
+    unchanged = (
+        match.pending_team1_score == score1
+        and match.pending_team2_score == score2
+        and (match.score_ends or '[]') == score_ends_json
+        and match.pending_submitted_by_id == submitted_by_id
+        and not bool(match.pending_is_submitted)
+    )
+    if not unchanged:
+        match.pending_team1_score = score1
+        match.pending_team2_score = score2
+        match.score_ends = score_ends_json
+        match.pending_submitted_by_id = submitted_by_id
+        match.pending_submitted_at = None
+        db.session.commit()
 
     payload = {
         'match_id': match.id,
@@ -1567,7 +1615,8 @@ def save_online_scorecard_payload(match, data, submitted_user=None):
         'has_pending': True,
         'score_ends': json.loads(match.score_ends or '[]'),
     }
-    socketio.emit('pending_score_updated', payload)
+    if not unchanged:
+        _emit_score_event('pending_score_updated', match, payload)
     return {'ok': True, **payload}, 200
 
 
@@ -1627,7 +1676,7 @@ def finish_online_scorecard_payload(match, form_data, submitted_user=None):
     match.pending_submitted_at = datetime.utcnow()
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_score_event('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
@@ -1696,7 +1745,7 @@ def public_finish_online_scorecard(token):
     match.pending_submitted_at = datetime.utcnow()
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_score_event('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
@@ -1734,7 +1783,7 @@ def approve_pending_score(event_id, match_id):
     match.is_locked = True
     db.session.commit()
 
-    socketio.emit('score_updated', {
+    _emit_score_event('score_updated', match, {
         'match_id': match.id,
         'team_a_score': match.team1_score,
         'team_b_score': match.team2_score,
@@ -1770,7 +1819,7 @@ def reject_pending_score(event_id, match_id):
     match.score_ends = None
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_score_event('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': None,
         'pending_team_b_score': None,

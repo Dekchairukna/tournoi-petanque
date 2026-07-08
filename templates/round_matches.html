@@ -610,6 +610,7 @@
 
   socket.on('connect', () => {
     console.log("✅ Socket.IO connected successfully");
+    socket.emit('join_round', { event_id: {{ event.id|tojson }}, round_no: {{ round|tojson }} });
   });
 
   socket.on('connect_error', (err) => {
@@ -640,7 +641,7 @@
           team_a_score: scoreA,
           team_b_score: scoreB
         });
-      }, 500); // 500ms delay
+      }, 900); // ลดการยิงบันทึกถี่เกินไปเวลาใช้หลายสนามพร้อมกัน
     });
   });
 

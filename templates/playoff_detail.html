@@ -2081,7 +2081,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     startPlayoffRealtime();
     pollPlayoffScores();
-    setInterval(pollPlayoffScores, 1200);
+    setInterval(pollPlayoffScores, 3000);
   });
   const timers = {};
   function postJSON(url, payload) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json().catch(() => ({ ok: false }))); }
