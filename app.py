@@ -1,5 +1,11 @@
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except Exception:
+    pass
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
 from datetime import datetime, timedelta, date
@@ -100,11 +106,6 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# ลด DB overhead / stale connection โดยเฉพาะ Railway + PostgreSQL
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,
-    'pool_recycle': 280,
-}
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 socketio = SocketIO(
@@ -193,17 +194,6 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE matches ADD COLUMN score_ends TEXT"))
         if 'scorecard_token' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN scorecard_token VARCHAR(80)"))
-    # Index สำหรับหน้าที่มีการเปิดหลายอีเวนต์/หลายรอบพร้อมกัน
-    index_stmts = [
-        "CREATE INDEX IF NOT EXISTS ix_matches_event_round ON matches (event_id, round)",
-        "CREATE INDEX IF NOT EXISTS ix_matches_event_field ON matches (event_id, field)",
-        "CREATE INDEX IF NOT EXISTS ix_teams_event ON teams (event_id)",
-    ]
-    if dialect != 'postgresql':
-        db.session.execute(text("PRAGMA journal_mode=WAL"))
-        db.session.execute(text("PRAGMA busy_timeout=8000"))
-    for stmt in index_stmts:
-        db.session.execute(text(stmt))
     db.session.commit()
 
 
@@ -327,21 +317,26 @@ def unauthorized():
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
 
 
-def _emit_round_live_changed(event_id, round_no):
-    """live-version ถูกตัดออกแล้ว: ไม่สั่ง reload หน้าอัตโนมัติ เพื่อแก้ระบบหน่วงเวลาเปิดหลายอีเวนต์"""
-    return None
+
+# แยกห้อง realtime ตามรายการแข่งขัน + รอบ เพื่อไม่ให้หลายอีเวนต์ยิงข้อมูลชนกัน
+def _round_room(event_id, round_no):
+    return f"event_{int(event_id)}_round_{int(round_no)}"
+
+
+def _emit_round(event_name, match, payload):
+    """ส่ง realtime เฉพาะหน้ารอบที่เกี่ยวข้องเท่านั้น ไม่ broadcast ทั้งระบบ"""
+    if not match or match.event_id is None or match.round is None:
+        return
+    socketio.emit(event_name, payload, room=_round_room(match.event_id, match.round))
 
 
 @socketio.on('join_round')
 def handle_join_round(data):
     try:
-        from flask_socketio import join_room
         event_id = int((data or {}).get('event_id', 0))
-        round_no = (data or {}).get('round_no')
-        if event_id:
-            join_room(f'event_{event_id}_all')
-        if event_id and round_no not in (None, '', 'null'):
-            join_room(f'event_{event_id}_round_{int(round_no)}')
+        round_no = int((data or {}).get('round', 0))
+        if event_id and round_no:
+            join_room(_round_room(event_id, round_no))
     except Exception:
         pass
 
@@ -351,7 +346,6 @@ def handle_join_playoff(data):
     try:
         playoff_id = int((data or {}).get('playoff_id', 0))
         if playoff_id:
-            from flask_socketio import join_room
             join_room(f'playoff_{playoff_id}')
     except Exception:
         pass
@@ -359,51 +353,61 @@ def handle_join_playoff(data):
 @socketio.on('update_score')
 @login_required
 def handle_update_score(data):
-    """อัปเดตคะแนนจริงจากหน้า round สำหรับ admin/superadmin เท่านั้น"""
+    """อัปเดตคะแนนจริงจากหน้า round แล้วส่ง realtime เฉพาะ event/round นั้น"""
     if current_user.role not in ['admin', 'superadmin']:
         emit('error_message', {'message': 'เฉพาะ admin เท่านั้นที่แก้คะแนนจริงจากหน้า round ได้'}, room=request.sid)
         return
 
+    data = data or {}
     match_id = data.get('match_id')
     team_a_score = data.get('team_a_score')
     team_b_score = data.get('team_b_score')
     username = current_user.username
 
-    with app.app_context():
-        match = Match.query.get(match_id)
-        if match:
-            try:
-                new_team1_score = int(team_a_score)
-                new_team2_score = int(team_b_score)
-                if match.team1_score == new_team1_score and match.team2_score == new_team2_score:
-                    return
-                match.team1_score = new_team1_score
-                match.team2_score = new_team2_score
-                db.session.commit()
+    if team_a_score in (None, '') or team_b_score in (None, ''):
+        return
 
-                payload = {
-                    'match_id': match.id,
-                    'event_id': match.event_id,
-                    'round_no': match.round,
-                    'team_a_score': match.team1_score,
-                    'team_b_score': match.team2_score,
-                    'pending_team_a_score': match.pending_team1_score,
-                    'pending_team_b_score': match.pending_team2_score,
-                    'has_pending': match.pending_team1_score is not None or match.pending_team2_score is not None,
-                    'pending_is_submitted': bool(match.pending_is_submitted),
-                    'updated_by_username': username,
-                    'timestamp': datetime.utcnow().isoformat()
-                }
-                socketio.emit('score_updated', payload, to=f'event_{match.event_id}_round_{match.round}')
+    try:
+        score_a = int(team_a_score)
+        score_b = int(team_b_score)
+    except (TypeError, ValueError):
+        emit('error_message', {'message': 'Invalid score format'}, room=request.sid)
+        return
 
-            except ValueError:
-                emit('error_message', {'message': 'Invalid score format'}, room=request.sid)
-            except Exception as e:
-                db.session.rollback()
-                print(f"Database error updating score for Match {match_id}: {e}")
-                emit('error_message', {'message': 'Server error updating score'}, room=request.sid)
+    match = Match.query.get(match_id)
+    if not match:
+        emit('error_message', {'message': 'Match not found'}, room=request.sid)
+        return
+
+    try:
+        old_a = match.team1_score
+        old_b = match.team2_score
+        changed = (old_a != score_a) or (old_b != score_b)
+        if changed:
+            match.team1_score = score_a
+            match.team2_score = score_b
+            db.session.commit()
         else:
-            emit('error_message', {'message': 'Match not found'}, room=request.sid)
+            db.session.rollback()
+
+        payload = {
+            'match_id': match.id,
+            'team_a_score': match.team1_score,
+            'team_b_score': match.team2_score,
+            'pending_team_a_score': match.pending_team1_score,
+            'pending_team_b_score': match.pending_team2_score,
+            'has_pending': match.pending_team1_score is not None or match.pending_team2_score is not None,
+            'pending_is_submitted': bool(match.pending_is_submitted),
+            'updated_by_username': username,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        _emit_round('score_updated', match, payload)
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Database error updating score for Match {match_id}: {e}")
+        emit('error_message', {'message': 'Server error updating score'}, room=request.sid)
+
 
 
 
@@ -717,8 +721,7 @@ def score_sheet_all(event_id):
         teams=teams,
         total_rounds=total_rounds,
         num_teams=num_teams,
-        matches_per_page=matches_per_page,  # ✅ ส่งเข้า template
-        selected_round=selected_round
+        matches_per_page=matches_per_page  # ✅ ส่งเข้า template
         
     )
 #-------------------------------------------------------------------------------
@@ -1480,22 +1483,12 @@ def save_online_scorecard_payload(match, data, submitted_user=None):
     if score1 > 13 or score2 > 13:
         return {'ok': False, 'message': 'คะแนนต้องไม่เกิน 13'}, 400
 
-    new_score_ends_json = json.dumps(score_ends, ensure_ascii=False)
-    new_submitter_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
-    unchanged = (
-        match.pending_team1_score == score1 and
-        match.pending_team2_score == score2 and
-        (match.score_ends or '[]') == new_score_ends_json and
-        match.pending_submitted_by_id == new_submitter_id and
-        match.pending_submitted_at is None
-    )
-    if not unchanged:
-        match.pending_team1_score = score1
-        match.pending_team2_score = score2
-        match.score_ends = new_score_ends_json
-        match.pending_submitted_by_id = new_submitter_id
-        match.pending_submitted_at = None
-        db.session.commit()
+    match.pending_team1_score = score1
+    match.pending_team2_score = score2
+    match.score_ends = json.dumps(score_ends, ensure_ascii=False)
+    match.pending_submitted_by_id = submitted_user.id if submitted_user and submitted_user.is_authenticated else None
+    match.pending_submitted_at = None
+    db.session.commit()
 
     payload = {
         'match_id': match.id,
@@ -1507,8 +1500,7 @@ def save_online_scorecard_payload(match, data, submitted_user=None):
         'has_pending': True,
         'score_ends': json.loads(match.score_ends or '[]'),
     }
-    if not unchanged:
-        socketio.emit('pending_score_updated', payload, to=f'event_{match.event_id}_round_{match.round}')
+    _emit_round('pending_score_updated', match, payload)
     return {'ok': True, **payload}, 200
 
 
@@ -1568,7 +1560,7 @@ def finish_online_scorecard_payload(match, form_data, submitted_user=None):
     match.pending_submitted_at = datetime.utcnow()
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_round('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
@@ -1576,7 +1568,7 @@ def finish_online_scorecard_payload(match, form_data, submitted_user=None):
         'submitted_at': match.pending_submitted_at.isoformat(),
         'pending_is_submitted': True,
         'has_pending': True,
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     return "สิ้นสุดการแข่งขันแล้ว คะแนนจะขึ้นให้ admin/superadmin ยืนยันก่อนนำไปใช้งานจริง", "success", True
 
@@ -1637,7 +1629,7 @@ def public_finish_online_scorecard(token):
     match.pending_submitted_at = datetime.utcnow()
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_round('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': match.pending_team1_score,
         'pending_team_b_score': match.pending_team2_score,
@@ -1645,7 +1637,7 @@ def public_finish_online_scorecard(token):
         'submitted_at': match.pending_submitted_at.isoformat(),
         'pending_is_submitted': True,
         'has_pending': True,
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     flash("สิ้นสุดการแข่งขันแล้ว คะแนนจะขึ้นให้ admin/superadmin ยืนยันก่อนนำไปใช้งานจริง", "success")
     return redirect(url_for('online_scorecard', event_id=event_id, match_id=match.id))
@@ -1675,7 +1667,7 @@ def approve_pending_score(event_id, match_id):
     match.is_locked = True
     db.session.commit()
 
-    socketio.emit('score_updated', {
+    _emit_round('score_updated', match, {
         'match_id': match.id,
         'team_a_score': match.team1_score,
         'team_b_score': match.team2_score,
@@ -1685,7 +1677,7 @@ def approve_pending_score(event_id, match_id):
         'pending_is_submitted': False,
         'locked': True,
         'timestamp': datetime.utcnow().isoformat()
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     flash("ยืนยันคะแนนออนไลน์และล็อกผลเรียบร้อยแล้ว", "success")
     return redirect(url_for("round_matches", event_id=event_id, round=match.round))
@@ -1711,14 +1703,14 @@ def reject_pending_score(event_id, match_id):
     match.score_ends = None
     db.session.commit()
 
-    socketio.emit('pending_score_updated', {
+    _emit_round('pending_score_updated', match, {
         'match_id': match.id,
         'pending_team_a_score': None,
         'pending_team_b_score': None,
         'submitted_by': None,
         'submitted_at': None,
         'pending_is_submitted': False
-    }, to=f'event_{match.event_id}_round_{match.round}')
+    })
 
     flash("ยกเลิกคะแนนที่รอยืนยันแล้ว", "success")
     return redirect(url_for("round_matches", event_id=event_id, round=match.round))
@@ -1800,7 +1792,6 @@ def round_matches(event_id, round):
                     match.field = None
 
             db.session.commit()
-            _emit_round_live_changed(event_id, round)
             flash(f"{'เปิด' if auto_assign_field else 'ปิด'} การกำหนดเลขสนามอัตโนมัติเรียบร้อยแล้ว", "success")
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
@@ -1840,7 +1831,6 @@ def round_matches(event_id, round):
                         match.field = None  # ถ้าไม่กรอก ให้ล้างเลขสนาม
 
             db.session.commit()
-            _emit_round_live_changed(event_id, round)
             flash("บันทึกเลขสนามเรียบร้อยแล้ว", "success")
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
@@ -1888,7 +1878,6 @@ def round_matches(event_id, round):
                 match.is_locked = True
 
             db.session.commit()
-            _emit_round_live_changed(event_id, round)
             if draw_matches:
                 flash("บันทึกและล็อกผลเรียบร้อยแล้ว แต่มีผลเสมอ {} คู่ — {}".format(len(draw_matches), " | ".join(draw_matches)), "warning")
             else:
@@ -1914,69 +1903,6 @@ def round_matches(event_id, round):
         selected_round=round,  # ✅ ส่งตัวแปรนี้ไปให้ HTML
         all_current_round_locked=all_current_round_locked,
         is_last_configured_round=is_last_configured_round,
-    )
-
-
-@app.route('/event/<int:event_id>/swith/<int:round_no>', methods=['GET', 'POST'])
-@login_required
-@roles_required('superadmin')
-def swith_round_positions(event_id, round_no):
-    """หน้าลับสำหรับ superadmin สลับตำแหน่งทีมหลังประกบคู่แล้ว
-
-    วิธีใช้: เปลี่ยน URL จาก /event/<id>/round/<round> เป็น /event/<id>/swith/<round>
-    เลือกทีม 2 ทีม แล้วกดสลับตำแหน่ง ระบบจะสลับ team1_id/team2_id ในรอบนั้นแบบเงียบ ๆ
-    โดยไม่ flash ข้อความแจ้งเตือนใด ๆ ตามที่ต้องการ
-    """
-    event = Event.query.get_or_404(event_id)
-
-    try:
-        event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
-    except Exception:
-        event.logo_list = []
-
-    matches = Match.query.filter_by(event_id=event_id, round=round_no).order_by(Match.field.asc(), Match.id.asc()).all()
-    teams = {team.id: team.name for team in Team.query.filter_by(event_id=event_id).all()}
-
-    if request.method == 'POST':
-        selected_ids = []
-        for raw_id in request.form.getlist('team_ids'):
-            try:
-                team_id = int(raw_id)
-            except (TypeError, ValueError):
-                continue
-            if team_id not in selected_ids:
-                selected_ids.append(team_id)
-
-        # ไม่ต้องแจ้งข้อความ: ถ้าเลือกไม่ครบ 2 ทีม ให้กลับหน้าเดิมเงียบ ๆ
-        if len(selected_ids) == 2:
-            selected_set = set(selected_ids)
-            found_slots = {}
-
-            for match in matches:
-                if match.team1_id in selected_set and match.team1_id not in found_slots:
-                    found_slots[match.team1_id] = (match, 'team1_id')
-                if match.team2_id in selected_set and match.team2_id not in found_slots:
-                    found_slots[match.team2_id] = (match, 'team2_id')
-
-            # ต้องเจอทีมที่เลือกทั้ง 2 ทีมในรอบนี้ จึงสลับ
-            if all(team_id in found_slots for team_id in selected_ids):
-                first_team_id, second_team_id = selected_ids
-                first_match, first_side = found_slots[first_team_id]
-                second_match, second_side = found_slots[second_team_id]
-
-                setattr(first_match, first_side, second_team_id)
-                setattr(second_match, second_side, first_team_id)
-                db.session.commit()
-                _emit_round_live_changed(event_id, round_no)
-
-        return redirect(url_for('swith_round_positions', event_id=event_id, round_no=round_no))
-
-    return render_template(
-        'swith.html',
-        event=event,
-        matches=matches,
-        teams=teams,
-        round_no=round_no,
     )
 
 
@@ -2012,12 +1938,10 @@ def late_pairing_route(event_id):
             m1.field = _next_available_field(event, target_round)
         db.session.delete(m2)
         db.session.commit()
-        _emit_round_live_changed(event_id, target_round)
         flash('ประกบคู่ทีมเพิ่มภายหลังแบบแมนนวลเรียบร้อยแล้ว โดยไม่แก้คู่เดิม', 'success')
     else:
         paired, remaining = auto_pair_late_entries(event_id, target_round)
         db.session.commit()
-        _emit_round_live_changed(event_id, target_round)
         flash(f'ระบบประกบทีมเพิ่มภายหลังให้อัตโนมัติ {paired} คู่ เหลือรอคู่ {remaining} รายการ โดยไม่แก้คู่เดิม', 'success')
 
     return redirect(url_for('round_matches', event_id=event_id, round=target_round))
@@ -5293,24 +5217,13 @@ def autosave_playoff_score(playoff_id):
     slot_no = _as_int(data.get('slot_no'))
     stage_no = _as_int(data.get('stage_no'))
     raw = (str(data.get('score')) if data.get('score') is not None else '').strip()
+    db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no})
     score = None
     if raw != '':
         try:
             score = max(0, min(13, int(raw)))
         except Exception:
             return jsonify({'ok': False, 'message': 'กรอกคะแนน 0-13'}), 400
-
-    current = db.session.execute(text("""
-        SELECT score FROM playoff_scores
-        WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st
-        LIMIT 1
-    """), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no}).mappings().first()
-    current_score = None if not current else current['score']
-    if current_score == score:
-        return jsonify({'ok': True, 'skipped': True})
-
-    db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': round_id, 'g': group_no, 's': slot_no, 'st': stage_no})
-    if score is not None:
         db.session.execute(text("""
             INSERT INTO playoff_scores (round_id, group_no, slot_no, stage_no, score)
             VALUES (:rid, :g, :s, :st, :score)
@@ -5339,13 +5252,6 @@ def autosave_playoff_court(playoff_id):
         SELECT id FROM playoff_slots
         WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
     """), {'rid': slot['round_id'], 'g': slot['group_no'], 'a': pair_start, 'b': pair_end}).mappings().all()
-    old_courts = db.session.execute(text("""
-        SELECT COALESCE(court_name, '') AS court_name FROM playoff_slots
-        WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
-    """), {'rid': slot['round_id'], 'g': slot['group_no'], 'a': pair_start, 'b': pair_end}).mappings().all()
-    if old_courts and all((r['court_name'] or '') == court for r in old_courts):
-        return jsonify({'ok': True, 'skipped': True})
-
     db.session.execute(text("""
         UPDATE playoff_slots SET court_name=:court
         WHERE round_id=:rid AND group_no=:g AND slot_no BETWEEN :a AND :b
@@ -5634,168 +5540,6 @@ def setup():
             print("Admin user created.")
 
         db.session.commit()
-
-
-# -----------------------------------------------------------------------------
-# Public Live Report API for Live Report Board
-# -----------------------------------------------------------------------------
-@app.after_request
-def live_report_public_headers(response):
-    """Allow the separated Live Report Board to read public JSON and embed public pages."""
-    response.headers.setdefault("Access-Control-Allow-Origin", "*")
-    response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    response.headers.setdefault("Access-Control-Allow-Methods", "GET, OPTIONS")
-    # ให้ Report Board / จอทีวีฝังหน้า public ได้ ถ้าในอนาคตต้องใช้ iframe
-    response.headers.pop("X-Frame-Options", None)
-    response.headers.setdefault("Content-Security-Policy", "frame-ancestors *")
-    return response
-
-
-def _lr_team_payload(team):
-    if not team:
-        return None
-    return {"id": team.id, "name": team.name}
-
-
-def _lr_match_payload(match):
-    score1 = match.pending_team1_score if match.pending_team1_score is not None else match.team1_score
-    score2 = match.pending_team2_score if match.pending_team2_score is not None else match.team2_score
-    if match.team2_id is None:
-        status = "bye"
-    elif match.is_locked:
-        status = "finished"
-    elif match.pending_team1_score is not None or match.pending_team2_score is not None:
-        status = "playing"
-    else:
-        status = "waiting"
-    leader = "draw"
-    try:
-        if int(score1 or 0) > int(score2 or 0):
-            leader = "team1"
-        elif int(score2 or 0) > int(score1 or 0):
-            leader = "team2"
-    except Exception:
-        pass
-    return {
-        "id": match.id,
-        "event_id": match.event_id,
-        "round": match.round,
-        "round_label": f"รอบแรก ครั้งที่ {match.round}",
-        "field": match.field,
-        "team1": match.team1.name if match.team1 else "",
-        "team2": match.team2.name if match.team2 else "BYE",
-        "team1_obj": _lr_team_payload(match.team1),
-        "team2_obj": _lr_team_payload(match.team2),
-        "score1": score1 or 0,
-        "score2": score2 or 0,
-        "official_score1": match.team1_score or 0,
-        "official_score2": match.team2_score or 0,
-        "pending_score1": match.pending_team1_score,
-        "pending_score2": match.pending_team2_score,
-        "has_pending": match.pending_team1_score is not None or match.pending_team2_score is not None,
-        "status": status,
-        "leader": leader,
-        "is_locked": bool(match.is_locked),
-    }
-
-
-def _lr_event_payload(event):
-    return {
-        "id": event.id,
-        "name": event.name,
-        "location": event.location,
-        "category": event.category,
-        "sex": event.sex,
-        "age_group": event.age_group,
-        "rounds": event.rounds,
-        "current_round": event.current_round,
-        "date": event.date.isoformat() if event.date else None,
-        "team_count": Team.query.filter_by(event_id=event.id).count(),
-        "match_count": Match.query.filter_by(event_id=event.id).count(),
-    }
-
-
-@app.route('/api/public/events')
-def api_public_events():
-    events = Event.query.order_by(Event.created_at.desc(), Event.id.desc()).all()
-    return jsonify({"ok": True, "events": [_lr_event_payload(e) for e in events]})
-
-
-@app.route('/api/public/event/<int:event_id>/live')
-def api_public_event_live(event_id):
-    event = Event.query.get_or_404(event_id)
-    round_no = request.args.get('round', type=int)
-    query = Match.query.filter_by(event_id=event.id)
-    if round_no:
-        query = query.filter_by(round=round_no)
-    matches = query.order_by(Match.round.asc(), Match.field.asc().nullslast(), Match.id.asc()).all()
-    rounds = sorted({m.round for m in Match.query.filter_by(event_id=event.id).all() if m.round})
-    live_matches = [m for m in matches if not m.is_locked and m.team2_id is not None]
-    finished_matches = [m for m in matches if m.is_locked]
-    return jsonify({
-        "ok": True,
-        "source": "tournoi",
-        "event": _lr_event_payload(event),
-        "rounds": rounds,
-        "current_round": event.current_round,
-        "matches": [_lr_match_payload(m) for m in matches],
-        "live_matches": [_lr_match_payload(m) for m in live_matches],
-        "latest_results": [_lr_match_payload(m) for m in finished_matches[-20:]],
-    })
-
-
-@app.route('/api/public/event/<int:event_id>/standings')
-def api_public_event_standings(event_id):
-    event = Event.query.get_or_404(event_id)
-    rows = calculate_standings(event.id)
-    standings = []
-    for idx, row in enumerate(rows, start=1):
-        standings.append({
-            "rank": idx,
-            "team_id": row.get("team_id"),
-            "team": row.get("team_name"),
-            "win": row.get("score", 0),
-            "played": row.get("played", 0),
-            "point_for": row.get("point_for", 0),
-            "point_against": row.get("point_against", 0),
-            "diff": row.get("point_diff", 0),
-            "buchholz": row.get("buchholz", 0),
-            "final_buchholz": row.get("final_buchholz", 0),
-            "raw": row,
-        })
-    return jsonify({"ok": True, "source": "tournoi", "event": _lr_event_payload(event), "standings": standings})
-
-
-@app.route('/api/public/event/<int:event_id>/playoffs')
-def api_public_event_playoffs(event_id):
-    event = Event.query.get_or_404(event_id)
-    playoffs = []
-    try:
-        for p in _active_playoffs_for_event(event.id):
-            view = _fetch_playoff(p.get('id'))
-            playoffs.append({"id": p.get('id'), "title": p.get('title'), "competition_type": p.get('competition_type'), "view": view})
-    except Exception as exc:
-        return jsonify({"ok": False, "source": "tournoi", "event": _lr_event_payload(event), "error": str(exc), "playoffs": []}), 200
-    return jsonify({"ok": True, "source": "tournoi", "event": _lr_event_payload(event), "playoffs": playoffs})
-
-
-@app.route('/api/public/event/<int:event_id>/report')
-def api_public_event_report(event_id):
-    """One-call endpoint for Report Board."""
-    event = Event.query.get_or_404(event_id)
-    matches = Match.query.filter_by(event_id=event.id).order_by(Match.round.asc(), Match.field.asc().nullslast(), Match.id.asc()).all()
-    standings = []
-    for idx, row in enumerate(calculate_standings(event.id), start=1):
-        standings.append({"rank": idx, "team": row.get("team_name"), "win": row.get("score", 0), "diff": row.get("point_diff", 0), "raw": row})
-    return jsonify({
-        "ok": True,
-        "source": "tournoi",
-        "event": _lr_event_payload(event),
-        "matches": [_lr_match_payload(m) for m in matches],
-        "live_matches": [_lr_match_payload(m) for m in matches if not m.is_locked and m.team2_id is not None],
-        "latest_results": [_lr_match_payload(m) for m in matches if m.is_locked][-20:],
-        "standings": standings[:32],
-    })
 
 
 if __name__ == '__main__':
