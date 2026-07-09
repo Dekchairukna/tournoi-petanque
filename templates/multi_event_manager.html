@@ -16,7 +16,7 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <div>
       <h2 class="mb-1">บริหารจัดการอีเว้นท์รวม</h2>
-      <div class="text-muted">เลือกหลายอีเว้นท์ แล้วสั่งจับคู่ครั้งที่ 1-4 / ระบุสนาม / พิมพ์ใบประกบคู่และสกอร์ชีทรวม</div>
+      <div class="text-muted">เลือกหลายอีเว้นท์ แล้วสั่งจับคู่/ระบุสนาม/ลบคู่/พิมพ์รวมได้ แม้แต่ละอีเว้นท์อยู่คนละรอบ</div>
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-primary" href="{{ url_for('multi_event_score_center', events=selected_events_param, round=selected_round) }}">ไปหน้าคีย์หลายอีเว้นท์</a>
@@ -66,8 +66,8 @@
       <div class="card-body">
         <div class="row g-2 align-items-end">
           <div class="col-6 col-md-2">
-            <label class="form-label">ครั้ง/รอบ</label>
-            <select class="form-select" name="round">
+            <label class="form-label">รอบตั้งต้น</label>
+            <select class="form-select" name="round" id="defaultRoundSelect">
               {% for n in [1,2,3,4] %}
               <option value="{{ n }}" {% if selected_round == n %}selected{% endif %}>ครั้งที่ {{ n }}</option>
               {% endfor %}
@@ -97,13 +97,17 @@
           <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name" {% if separate_same_name %}checked{% endif %}>
           <label class="form-check-label" for="separate_same_name">พยายามกันทีมชื่อฐานเดียวกันไม่ให้เจอกัน</label>
         </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" name="force_delete_locked" id="force_delete_locked" {% if force_delete_locked %}checked{% endif %}>
+          <label class="form-check-label text-danger fw-bold" for="force_delete_locked">อนุญาตให้ลบคู่ที่ล็อกผลแล้วด้วย (ใช้เฉพาะกรณีเลือกผิดจริง ๆ)</label>
+        </div>
         {% if summary.matches > summary.usable_fields %}
         <div class="alert alert-warning mt-3 mb-0">
           คู่ครั้งนี้มี {{ summary.matches }} คู่ แต่สนามใช้ได้ {{ summary.usable_fields }} สนาม ระบบจะใส่สนามให้ได้แค่ {{ summary.usable_fields }} คู่ ที่เหลือจะขึ้น “ยังไม่เลือก” เพื่อกันหลายอีเว้นท์ชนสนามเดียวกัน
         </div>
         {% endif %}
         <div class="small text-muted mt-2">
-          หมายเหตุ: การจับคู่ครั้งที่ 2/3/4 จะทำเฉพาะอีเว้นท์ที่รอบก่อนหน้าลงคะแนนและล็อกผลครบแล้ว ถ้ามีคู่ในครั้งนั้นอยู่แล้วระบบจะข้ามเพื่อกันลบงานเดิม ตอนใส่สนามระบบจะไม่ให้สนามเดียวกันถูกใช้ซ้ำในหลายอีเว้นท์ของครั้งเดียวกัน และจะพยายามไม่ให้ทีมกลับไปเล่นสนามเดิมที่เคยเล่นในอีเว้นท์นั้น
+          หมายเหตุ: เลือกรอบแยกต่ออีเว้นท์ได้ในตารางด้านล่าง เหมาะกับกรณีบางอีเว้นท์อยู่รอบ 2 บางอีเว้นท์อยู่รอบ 3 ส่วนการใส่สนามจะรวมทุกอีเว้นท์ที่เลือกไว้ด้วยกัน สนามเดียวกันจึงไม่ชนกัน และคู่ BYE จะไม่กินเลขสนาม
         </div>
       </div>
     </div>
@@ -116,8 +120,9 @@
             <tr>
               <th>อีเว้นท์</th>
               <th class="text-center">ทีม</th>
+              <th class="text-center">จัดการรอบ</th>
               <th class="text-center">มีรอบ</th>
-              <th class="text-center">คู่ครั้งนี้</th>
+              <th class="text-center">คู่รอบนี้</th>
               <th class="text-center">สนามครั้งนี้</th>
               <th class="text-center">เตือนสนามซ้ำ</th>
               <th class="text-center">ยังไม่ล็อก</th>
@@ -129,6 +134,13 @@
             <tr>
               <td><b>{{ row.event.name }}</b><br><span class="small text-muted">{{ row.event.date or '-' }} | {{ row.event.location or '-' }}</span></td>
               <td class="text-center">{{ row.team_count }}</td>
+              <td class="text-center">
+                <select class="form-select form-select-sm event-round-select" name="event_round_{{ row.event.id }}" data-event-id="{{ row.event.id }}">
+                  {% for n in [1,2,3,4] %}
+                  <option value="{{ n }}" {% if row.selected_round == n %}selected{% endif %}>ครั้งที่ {{ n }}</option>
+                  {% endfor %}
+                </select>
+              </td>
               <td class="text-center">{{ row.rounds|join(', ') if row.rounds else '-' }}</td>
               <td class="text-center">{{ row.match_count }}</td>
               <td class="text-center fw-bold">
@@ -148,7 +160,7 @@
               <td class="text-center"><a class="btn btn-sm btn-outline-primary" target="_blank" href="{{ url_for('event_detail', event_id=row.event.id) }}">ดู</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-4">ยังไม่ได้เลือกอีเว้นท์</td></tr>
+            <tr><td colspan="9" class="text-center text-muted py-4">ยังไม่ได้เลือกอีเว้นท์</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -157,13 +169,15 @@
 
     <div class="sticky-actions rounded shadow-sm d-flex flex-wrap gap-2 justify-content-between">
       <div class="d-flex flex-wrap gap-2">
-        <button type="submit" name="action" value="pair_selected_round" class="btn btn-warning fw-bold" onclick="return confirm('จับคู่ครั้งที่เลือกให้ทุกอีเว้นท์ที่เลือก? อีเว้นท์ที่มีคู่ในครั้งนี้แล้วจะถูกข้าม และครั้งที่ 2 ขึ้นไปต้องลงคะแนน/ล็อกผลรอบก่อนหน้าให้ครบ')">จับคู่ครั้งที่เลือก</button>
-        <button type="submit" name="action" value="assign_fields" class="btn btn-info fw-bold">ระบุสนามให้ครั้งที่เลือก</button>
-        <button type="submit" name="action" value="pair_and_assign_selected_round" class="btn btn-success fw-bold" onclick="return confirm('จับคู่ครั้งที่เลือกและใส่สนามต่อเนื่องให้ทุกอีเว้นท์ที่เลือก?')">จับคู่ครั้งที่เลือก + ใส่สนาม</button>
+        <button type="submit" name="action" value="pair_selected_round" class="btn btn-warning fw-bold" onclick="return confirm('จับคู่ตามรอบที่เลือกของแต่ละอีเว้นท์? อีเว้นท์ที่มีคู่ในรอบนั้นแล้วจะถูกข้าม')">จับคู่ตามรอบที่เลือก</button>
+        <button type="submit" name="action" value="assign_fields" class="btn btn-info fw-bold">ระบุสนามตามรอบที่เลือก</button>
+        <button type="submit" name="action" value="pair_and_assign_selected_round" class="btn btn-success fw-bold" onclick="return confirm('จับคู่และใส่สนามตามรอบที่เลือกของแต่ละอีเว้นท์?')">จับคู่ + ใส่สนาม</button>
+        <button type="submit" name="action" value="clear_fields" class="btn btn-outline-danger fw-bold" onclick="return confirm('ล้างเลขสนามของรอบที่เลือกทั้งหมด? คู่แข่งขันยังอยู่ ไม่ลบคะแนน')">ล้างเลขสนาม</button>
+        <button type="submit" name="action" value="delete_round_matches" class="btn btn-danger fw-bold" onclick="return confirm('ลบคู่แข่งขันในรอบที่เลือกของอีเว้นท์ที่เลือก? ถ้าลบแล้วต้องจับคู่ใหม่')">ลบคู่รอบที่เลือก</button>
       </div>
       <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printPairsLink" href="{{ url_for('multi_event_print_pairings', events=selected_events_param, round=selected_round) }}">ปริ้นใบประกบคู่ทั้งหมด</a>
-        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printScoresLink" href="{{ url_for('multi_event_print_score_sheets', events=selected_events_param, round=selected_round) }}">ปริ้นสกอร์ชีททั้งหมด</a>
+        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printPairsLink" href="{{ url_for('multi_event_print_pairings', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นใบประกบคู่ทั้งหมด</a>
+        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printScoresLink" href="{{ url_for('multi_event_print_score_sheets', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นสกอร์ชีททั้งหมด</a>
       </div>
     </div>
   </form>
@@ -176,5 +190,24 @@ function setAllEvents(checked) {
 function selectTodayEvents() {
   document.querySelectorAll('.event-box').forEach(cb => cb.checked = cb.dataset.today === '1');
 }
+function selectedEventIds() {
+  return Array.from(document.querySelectorAll('.event-box:checked')).map(cb => cb.value).join(',');
+}
+function eventRoundsParam() {
+  return Array.from(document.querySelectorAll('.event-round-select')).map(sel => `${sel.dataset.eventId}:${sel.value}`).join(',');
+}
+function refreshPrintLinks() {
+  const events = encodeURIComponent(selectedEventIds());
+  const round = encodeURIComponent(document.querySelector('select[name="round"]')?.value || '{{ selected_round }}');
+  const eventRounds = encodeURIComponent(eventRoundsParam());
+  const pairs = document.getElementById('printPairsLink');
+  const scores = document.getElementById('printScoresLink');
+  if (pairs) pairs.href = `{{ url_for('multi_event_print_pairings') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
+  if (scores) scores.href = `{{ url_for('multi_event_print_score_sheets') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
+}
+document.addEventListener('change', function(e) {
+  if (e.target.matches('.event-box, .event-round-select, select[name="round"]')) refreshPrintLinks();
+});
+document.addEventListener('DOMContentLoaded', refreshPrintLinks);
 </script>
 {% endblock %}

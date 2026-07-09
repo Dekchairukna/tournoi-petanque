@@ -183,7 +183,7 @@
 <body>
   <div class="toolbar no-print">
     <button onclick="window.print()">🖨️ พิมพ์สกอร์ชีททั้งหมด</button>
-    <a href="{{ url_for('multi_event_manager', events=request.args.get('events',''), round=selected_round) }}">← กลับบริหารรวม</a>
+    <a href="{{ url_for('multi_event_manager', events=request.args.get('events',''), round=selected_round, event_rounds=request.args.get('event_rounds','')) }}">← กลับบริหารรวม</a>
     <span style="font-weight:700; color:#555;">ใช้หน้าตาเดียวกับสกอร์ชีทเดิม รวมเฉพาะอีเว้นท์ที่เลือก</span>
   </div>
 

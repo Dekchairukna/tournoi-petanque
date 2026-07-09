@@ -143,7 +143,7 @@
       <button class="btn btn-dark btn-lg" onclick="window.print()">
         🖨️ พิมพ์ใบประกบคู่ทั้งหมด
       </button>
-      <a href="{{ url_for('multi_event_manager', events=request.args.get('events',''), round=selected_round) }}" class="btn btn-secondary btn-lg">
+      <a href="{{ url_for('multi_event_manager', events=request.args.get('events',''), round=selected_round, event_rounds=request.args.get('event_rounds','')) }}" class="btn btn-secondary btn-lg">
         ← กลับบริหารรวม
       </a>
     </div>
@@ -169,7 +169,7 @@
                   <h3 class="fw-bold mb-1">ตารางประกบคู่</h3>
                   <h4 class="fw-bold mb-1">{{ row.event.name }}</h4>
                   <h4 class="fw-bold mb-1">ณ {{ row.event.location }} | {{ thai_date_full(row.event.date) }}</h4>
-                  <h5 class="fw-bold mb-1">ประเภท {{ row.event.category }}{{ row.event.sex }} | รุ่น {{ row.event.age_group }} | ครั้งที่ {{ selected_round }}</h5>
+                  <h5 class="fw-bold mb-1">ประเภท {{ row.event.category }}{{ row.event.sex }} | รุ่น {{ row.event.age_group }} | ครั้งที่ {{ row.selected_round }}</h5>
                 </th>
               </tr>
               <tr>
@@ -185,7 +185,7 @@
               {% for match in row.matches %}
               <tr class="text-center match-voice-row"
                 data-event="{{ row.event.name }}"
-                data-round="{{ selected_round }}"
+                data-round="{{ row.selected_round }}"
                 data-field="{{ match.field or '-' }}"
                 data-team1="{{ row.teams.get(match.team1_id, 'BYE') }}"
                 data-team2="{{ row.teams.get(match.team2_id, 'BYE') }}">

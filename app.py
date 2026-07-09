@@ -6395,6 +6395,16 @@ def _beta_match_team_ids(match):
     return ids
 
 
+def _beta_is_bye_match(match):
+    """คู่ BYE ไม่ต้องใช้สนาม เพราะไม่มีการแข่งขันจริงในสนาม"""
+    return bool(getattr(match, 'team1_id', None) and not getattr(match, 'team2_id', None))
+
+
+def _beta_assignable_match_count(matches):
+    """นับเฉพาะคู่ที่มี 2 ทีมจริง ต้องลงสนามแข่ง"""
+    return sum(1 for m in (matches or []) if not _beta_is_bye_match(m))
+
+
 def _beta_team_used_fields(event_id, exclude_match_ids=None):
     """สร้าง map team_id -> set(สนามที่เคยเล่น) เพื่อหลีกเลี่ยงซ้ำสนามเดิมในรอบต่อไป"""
     exclude_match_ids = set(exclude_match_ids or [])
@@ -6426,9 +6436,15 @@ def _beta_assign_fields_to_matches(matches, prefix='', start=1, field_max=27, ex
     team_used_cache = {}
 
     for match in matches:
+        # ล้างสนามทุกคู่ก่อน รวมถึงคู่ BYE ที่เคยถูกใส่สนามจากเวอร์ชันเก่า
         match.field = None
 
     for match in matches:
+        # BYE ไม่มีการแข่งขันจริง จึงไม่ต้องจองเลขสนาม และไม่ให้นับเป็นสนามที่ยังไม่เลือก
+        if _beta_is_bye_match(match):
+            match.field = None
+            continue
+
         available_labels = [label for label in labels if label not in used_global]
         if not available_labels:
             # สนามไม่พอสำหรับแข่งพร้อมกัน: ไม่ใส่เลขสนาม เพื่อให้ขึ้นว่า "ยังไม่เลือก"
@@ -6496,10 +6512,12 @@ def _beta_event_round_field_text(event_id, round_no):
 
 
 def _beta_event_round_unassigned_count(event_id, round_no):
-    """นับคู่ในรอบที่เลือกที่ยังไม่มีเลขสนาม"""
+    """นับเฉพาะคู่ที่ต้องแข่งจริงแต่ยังไม่มีเลขสนาม; คู่ BYE ไม่ต้องใส่สนาม"""
     return Match.query.filter(
         Match.event_id == event_id,
         Match.round == round_no,
+        Match.team1_id != None,
+        Match.team2_id != None,
         (Match.field == None) | (Match.field == '')
     ).count()
 
@@ -6593,6 +6611,46 @@ def _beta_pair_selected_round(event, target_round=1, separate_same_name=False):
     created = Match.query.filter_by(event_id=event.id, round=target_round).count()
     return True, f"จับคู่ครั้งที่ {target_round} แล้ว", created
 
+
+
+def _beta_event_rounds_map_from_request(events, default_round=1):
+    """อ่านรอบต่ออีเว้นท์จาก form/query เพื่อให้หน้ารวมจัดการหลายอีเว้นท์ที่อยู่คนละรอบได้"""
+    try:
+        default_round = int(default_round or 1)
+    except Exception:
+        default_round = 1
+    default_round = max(1, min(default_round, 4))
+    mapping = {}
+
+    raw = request.values.get('event_rounds') or ''
+    for item in raw.split(','):
+        if ':' not in item:
+            continue
+        eid_s, rnd_s = item.split(':', 1)
+        try:
+            mapping[int(eid_s)] = max(1, min(int(rnd_s), 4))
+        except Exception:
+            pass
+
+    for event in events or []:
+        key = f'event_round_{event.id}'
+        val = request.values.get(key, type=int)
+        if val:
+            mapping[event.id] = max(1, min(int(val), 4))
+        mapping.setdefault(event.id, default_round)
+    return mapping
+
+
+def _beta_event_rounds_param(round_map):
+    return ','.join(f'{int(eid)}:{int(rnd)}' for eid, rnd in (round_map or {}).items())
+
+
+def _beta_safe_int_field_order_value(value):
+    try:
+        return int(value)
+    except Exception:
+        return 999999
+
 def _beta_selected_manage_events(selected_event_ids):
     if not selected_event_ids:
         return []
@@ -6605,102 +6663,122 @@ def _beta_selected_manage_events(selected_event_ids):
 @login_required
 @roles_required('admin')
 def multi_event_manager():
-    """บริหารจัดการหลายอีเว้นท์: เลือกอีเว้นท์ จับคู่รอบแรก ใส่สนาม และไปพิมพ์รวม"""
+    """บริหารจัดการหลายอีเว้นท์: เลือกอีเว้นท์ จับคู่ ใส่สนาม ลบคู่ และพิมพ์รวม
+    รองรับกรณีที่แต่ละอีเว้นท์อยู่คนละรอบ โดยเลือกครั้ง/รอบแยกต่ออีเว้นท์ได้
+    """
     today = date.today()
     selected_round = request.values.get('round', type=int) or 1
+    selected_round = max(1, min(int(selected_round or 1), 4))
     selected_event_ids = _selected_event_ids_from_request()
     field_start = request.values.get('field_start', type=int) or 1
     field_max = request.values.get('field_max', type=int) or 27
     field_prefix = (request.values.get('field_prefix') or '').strip()
     field_exclude = (request.values.get('field_exclude') or '').strip()
     separate_same_name = request.values.get('separate_same_name') == 'on'
+    force_delete_locked = request.values.get('force_delete_locked') == 'on'
 
-    all_events = Event.query.order_by(Event.date.desc().nullslast(), Event.id.desc()).all()
+    # ใช้ order_by แบบปลอดภัยกับ SQLite/Railway หลายเวอร์ชัน ไม่ใช้ nullslast() กัน Internal Server Error
+    all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
     if not selected_event_ids:
         selected_event_ids = [e.id for e in all_events if e.date == today][:12]
 
     selected_events = _beta_selected_manage_events(selected_event_ids)
+    event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
 
     if request.method == 'POST':
-        action = request.form.get('action')
+        action = request.form.get('action') or 'refresh'
         selected_events = _beta_selected_manage_events(selected_event_ids)
         selected_round = request.form.get('round', type=int) or selected_round
+        selected_round = max(1, min(int(selected_round or 1), 4))
         field_start = request.form.get('field_start', type=int) or field_start
         field_max = request.form.get('field_max', type=int) or field_max
         field_prefix = (request.form.get('field_prefix') or '').strip()
         field_exclude = (request.form.get('field_exclude') or '').strip()
         separate_same_name = request.form.get('separate_same_name') == 'on'
+        force_delete_locked = request.form.get('force_delete_locked') == 'on'
+        event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
 
         if not selected_events:
             flash('กรุณาเลือกอีเว้นท์ก่อน', 'warning')
             return redirect(url_for('multi_event_manager'))
 
-        if action in ('pair_first_round', 'pair_selected_round'):
+        if action == 'refresh':
+            pass
+
+        elif action in ('pair_first_round', 'pair_selected_round'):
             ok_count = skip_count = match_count = 0
             messages = []
+            changed = []
             for event in selected_events:
-                if action == 'pair_first_round':
-                    target_round = 1
+                target_round = 1 if action == 'pair_first_round' else event_round_map.get(event.id, selected_round)
+                if target_round <= 1:
                     ok, msg, created = _beta_pair_first_round(event, separate_same_name=separate_same_name)
+                    target_round = 1
                 else:
-                    target_round = selected_round
-                    ok, msg, created = _beta_pair_selected_round(event, target_round=selected_round, separate_same_name=separate_same_name)
+                    ok, msg, created = _beta_pair_selected_round(event, target_round=target_round, separate_same_name=separate_same_name)
                 if ok:
                     ok_count += 1
                     match_count += created
+                    changed.append((event.id, target_round))
                 else:
                     skip_count += 1
-                    messages.append(f"{event.name}: {msg}")
+                    messages.append(f"{event.name} ครั้งที่ {target_round}: {msg}")
             db.session.commit()
-            for event in selected_events:
+            for event_id, round_no in changed:
                 try:
-                    _emit_round_live_changed(event.id, target_round, force_reload=True, reason='multi_event_manager_pair_selected_round')
+                    _emit_round_live_changed(event_id, round_no, force_reload=True, reason='multi_event_manager_pair_selected_round')
                 except Exception:
                     pass
-            round_label = 1 if action == 'pair_first_round' else selected_round
             if messages:
-                flash(f"จับคู่ครั้งที่ {round_label} สำเร็จ {ok_count} อีเว้นท์ / ข้าม {skip_count} อีเว้นท์ | " + ' | '.join(messages[:8]), 'warning')
+                flash(f"จับคู่สำเร็จ {ok_count} อีเว้นท์ / ข้าม {skip_count} อีเว้นท์ | " + ' | '.join(messages[:8]), 'warning')
             else:
-                flash(f"จับคู่ครั้งที่ {round_label} สำเร็จ {ok_count} อีเว้นท์ รวม {match_count} คู่", 'success')
+                flash(f"จับคู่สำเร็จ {ok_count} อีเว้นท์ รวม {match_count} คู่", 'success')
 
         elif action == 'assign_fields':
             all_matches = []
+            changed = []
             for event in selected_events:
                 event.auto_field_enabled = True
                 event.field_start = field_start
                 event.field_max = field_max
                 event.field_prefix = field_prefix
                 event.field_exclude = field_exclude
-                matches = Match.query.filter_by(event_id=event.id, round=selected_round).order_by(Match.id.asc()).all()
+                round_no = event_round_map.get(event.id, selected_round)
+                matches = Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all()
                 all_matches.extend(matches)
+                if matches:
+                    changed.append((event.id, round_no))
             if not all_matches:
-                flash(f'ยังไม่มีคู่แข่งขันครั้งที่ {selected_round} ในอีเว้นท์ที่เลือก', 'warning')
+                flash('ยังไม่มีคู่แข่งขันในอีเว้นท์/ครั้งที่เลือก', 'warning')
             else:
                 assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude)
-                unassigned = len(all_matches) - assigned
+                unassigned = _beta_assignable_match_count(all_matches) - assigned
                 db.session.commit()
-                for event in selected_events:
+                for event_id, round_no in changed:
                     try:
-                        _emit_round_live_changed(event.id, selected_round, force_reload=True, reason='multi_event_manager_assign_fields')
+                        _emit_round_live_changed(event_id, round_no, force_reload=True, reason='multi_event_manager_assign_fields')
                     except Exception:
                         pass
-                flash(f'กำหนดเลขสนามครั้งที่ {selected_round} ให้แล้ว {assigned} คู่ / ยังไม่เลือกสนาม {unassigned} คู่' + (' (สนามไม่พอหรือเว้นสนามไว้)' if unassigned else ''), 'success' if not unassigned else 'warning')
+                flash(f'กำหนดเลขสนามให้แล้ว {assigned} คู่ / ยังไม่เลือกสนาม {unassigned} คู่' + (' (สนามไม่พอหรือเว้นสนามไว้)' if unassigned else ''), 'success' if not unassigned else 'warning')
 
         elif action in ('pair_and_assign_first_round', 'pair_and_assign_selected_round'):
-            target_round = 1 if action == 'pair_and_assign_first_round' else selected_round
             ok_count = skip_count = match_count = 0
             messages = []
+            changed = []
             for event in selected_events:
-                if action == 'pair_and_assign_first_round':
+                target_round = 1 if action == 'pair_and_assign_first_round' else event_round_map.get(event.id, selected_round)
+                if target_round <= 1:
                     ok, msg, created = _beta_pair_first_round(event, separate_same_name=separate_same_name)
+                    target_round = 1
                 else:
                     ok, msg, created = _beta_pair_selected_round(event, target_round=target_round, separate_same_name=separate_same_name)
                 if ok:
                     ok_count += 1
                     match_count += created
+                    changed.append((event.id, target_round))
                 else:
                     skip_count += 1
-                    messages.append(f"{event.name}: {msg}")
+                    messages.append(f"{event.name} ครั้งที่ {target_round}: {msg}")
             db.session.flush()
             all_matches = []
             for event in selected_events:
@@ -6709,17 +6787,66 @@ def multi_event_manager():
                 event.field_max = field_max
                 event.field_prefix = field_prefix
                 event.field_exclude = field_exclude
-                all_matches.extend(Match.query.filter_by(event_id=event.id, round=target_round).order_by(Match.id.asc()).all())
-            assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude)
-            unassigned = len(all_matches) - assigned
+                round_no = event_round_map.get(event.id, selected_round)
+                all_matches.extend(Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all())
+            assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude) if all_matches else 0
+            unassigned = _beta_assignable_match_count(all_matches) - assigned if all_matches else 0
             db.session.commit()
-            for event in selected_events:
+            for event_id, round_no in set(changed):
                 try:
-                    _emit_round_live_changed(event.id, target_round, force_reload=True, reason='multi_event_manager_pair_assign_selected')
+                    _emit_round_live_changed(event_id, round_no, force_reload=True, reason='multi_event_manager_pair_assign_selected')
                 except Exception:
                     pass
             tail = (' | ' + ' | '.join(messages[:8])) if messages else ''
-            flash(f'จับคู่+กำหนดสนามครั้งที่ {target_round} เสร็จ: จับใหม่ {ok_count} อีเว้นท์ / ข้าม {skip_count} / ใส่สนาม {assigned} คู่ / ยังไม่เลือกสนาม {unassigned} คู่{tail}', 'success' if ok_count and not unassigned else 'warning')
+            flash(f'จับคู่+กำหนดสนามเสร็จ: จับใหม่ {ok_count} อีเว้นท์ / ข้าม {skip_count} / ใส่สนาม {assigned} คู่ / ยังไม่เลือกสนาม {unassigned} คู่{tail}', 'success' if ok_count and not unassigned else 'warning')
+
+        elif action == 'clear_fields':
+            cleared = 0
+            changed = []
+            for event in selected_events:
+                round_no = event_round_map.get(event.id, selected_round)
+                matches = Match.query.filter_by(event_id=event.id, round=round_no).all()
+                for m in matches:
+                    if m.field not in (None, ''):
+                        m.field = None
+                        cleared += 1
+                if matches:
+                    changed.append((event.id, round_no))
+            db.session.commit()
+            for event_id, round_no in changed:
+                try:
+                    _emit_round_live_changed(event_id, round_no, force_reload=True, reason='multi_event_manager_clear_fields')
+                except Exception:
+                    pass
+            flash(f'ล้างเลขสนามแล้ว {cleared} คู่', 'success')
+
+        elif action == 'delete_round_matches':
+            deleted = 0
+            skipped = []
+            changed = []
+            for event in selected_events:
+                round_no = event_round_map.get(event.id, selected_round)
+                q = Match.query.filter_by(event_id=event.id, round=round_no)
+                locked_count = q.filter(Match.is_locked == True).count()
+                total_count = q.count()
+                if total_count <= 0:
+                    skipped.append(f'{event.name} ครั้งที่ {round_no}: ไม่มีคู่ให้ลบ')
+                    continue
+                if locked_count and not force_delete_locked:
+                    skipped.append(f'{event.name} ครั้งที่ {round_no}: มีคู่ล็อกผลแล้ว {locked_count} คู่')
+                    continue
+                for m in q.all():
+                    db.session.delete(m)
+                    deleted += 1
+                changed.append((event.id, round_no))
+            db.session.commit()
+            for event_id, round_no in changed:
+                try:
+                    _emit_round_live_changed(event_id, round_no, force_reload=True, reason='multi_event_manager_delete_round')
+                except Exception:
+                    pass
+            tail = (' | ' + ' | '.join(skipped[:8])) if skipped else ''
+            flash(f'ลบคู่ในครั้งที่เลือกแล้ว {deleted} คู่{tail}', 'warning' if skipped else 'success')
 
         query = {
             'events': ','.join(map(str, selected_event_ids)),
@@ -6728,29 +6855,35 @@ def multi_event_manager():
             'field_max': field_max,
             'field_prefix': field_prefix,
             'field_exclude': field_exclude,
+            'event_rounds': _beta_event_rounds_param(event_round_map),
         }
         if separate_same_name:
             query['separate_same_name'] = 'on'
+        if force_delete_locked:
+            query['force_delete_locked'] = 'on'
         return redirect(url_for('multi_event_manager', **query))
 
     rows = []
     for event in selected_events:
+        round_no = event_round_map.get(event.id, selected_round)
         rounds = [r[0] for r in db.session.query(Match.round).filter_by(event_id=event.id).distinct().order_by(Match.round.asc()).all()]
-        match_count = Match.query.filter_by(event_id=event.id, round=selected_round).count()
-        waiting_count = Match.query.filter_by(event_id=event.id, round=selected_round, is_locked=False).count()
+        match_count = Match.query.filter_by(event_id=event.id, round=round_no).count()
+        waiting_count = Match.query.filter_by(event_id=event.id, round=round_no, is_locked=False).count()
         team_count = Team.query.filter_by(event_id=event.id).count()
         rows.append({
             'event': event,
+            'selected_round': round_no,
             'team_count': team_count,
             'rounds': rounds,
             'match_count': match_count,
             'waiting_count': waiting_count,
-            'field_text': _beta_event_round_field_text(event.id, selected_round),
-            'field_repeat_count': _beta_match_field_repeat_count(event.id, selected_round),
-            'field_unassigned_count': _beta_event_round_unassigned_count(event.id, selected_round),
+            'field_text': _beta_event_round_field_text(event.id, round_no),
+            'field_repeat_count': _beta_match_field_repeat_count(event.id, round_no),
+            'field_unassigned_count': _beta_event_round_unassigned_count(event.id, round_no),
         })
 
     selected_events_param = ','.join(map(str, selected_event_ids))
+    event_rounds_param = _beta_event_rounds_param(event_round_map)
     summary = {
         'events': len(selected_events),
         'teams': sum(r['team_count'] for r in rows),
@@ -6766,6 +6899,8 @@ def multi_event_manager():
         selected_events=selected_events,
         selected_event_ids=selected_event_ids,
         selected_events_param=selected_events_param,
+        event_rounds_param=event_rounds_param,
+        event_round_map=event_round_map,
         selected_round=selected_round,
         rows=rows,
         summary=summary,
@@ -6775,6 +6910,7 @@ def multi_event_manager():
         field_prefix=field_prefix,
         field_exclude=field_exclude,
         separate_same_name=separate_same_name,
+        force_delete_locked=force_delete_locked,
     )
 
 
@@ -6785,16 +6921,19 @@ def multi_event_print_pairings():
     selected_round = request.args.get('round', type=int) or 1
     selected_event_ids = _selected_event_ids_from_request()
     events = _beta_selected_manage_events(selected_event_ids)
+    event_round_map = _beta_event_rounds_map_from_request(events, selected_round)
     rows = []
     for event in events:
+        round_no = event_round_map.get(event.id, selected_round)
         try:
             event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
         except Exception:
             event.logo_list = []
-        matches = Match.query.filter_by(event_id=event.id, round=selected_round).order_by(Match.field.asc().nullslast(), Match.id.asc()).all()
+        matches = Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all()
+        matches.sort(key=lambda m: (_beta_safe_int_field_order_value(m.field) if m.field not in (None, '') else 999999, m.id))
         teams = {t.id: t.name for t in Team.query.filter_by(event_id=event.id).all()}
-        rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams)})
-    return render_template('multi_event_print_pairings.html', events=events, rows=rows, selected_round=selected_round)
+        rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams), 'selected_round': round_no})
+    return render_template('multi_event_print_pairings.html', events=events, rows=rows, selected_round=selected_round, event_round_map=event_round_map)
 
 
 @app.route('/multi-manage/print-score-sheets')
@@ -6804,17 +6943,20 @@ def multi_event_print_score_sheets():
     selected_round = request.args.get('round', type=int) or 1
     selected_event_ids = _selected_event_ids_from_request()
     events = _beta_selected_manage_events(selected_event_ids)
+    event_round_map = _beta_event_rounds_map_from_request(events, selected_round)
     rows = []
     for event in events:
+        round_no = event_round_map.get(event.id, selected_round)
         try:
             event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
         except Exception:
             event.logo_list = []
-        matches = Match.query.filter_by(event_id=event.id, round=selected_round).order_by(Match.field.asc().nullslast(), Match.id.asc()).all()
+        matches = Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all()
+        matches.sort(key=lambda m: (_beta_safe_int_field_order_value(m.field) if m.field not in (None, '') else 999999, m.id))
         ensure_match_tokens(matches)
         teams = {t.id: t.name for t in Team.query.filter_by(event_id=event.id).all()}
-        rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams)})
-    return render_template('multi_event_print_score_sheets.html', events=events, rows=rows, selected_round=selected_round)
+        rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams), 'selected_round': round_no})
+    return render_template('multi_event_print_score_sheets.html', events=events, rows=rows, selected_round=selected_round, event_round_map=event_round_map)
 # ---------- end beta multi-event manager ----------
 
 
