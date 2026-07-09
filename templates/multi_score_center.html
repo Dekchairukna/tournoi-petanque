@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}คีย์หลายอีเว้นท์{% endblock %}
+{% block content %}
+<style>
+  .msc-shell { max-width: 1500px; }
+  .msc-hero {
+    background: linear-gradient(135deg, #eef2ff, #ecfeff);
+    border: 1px solid #c7d2fe;
+    border-radius: 18px;
+    padding: 16px;
+  }
+  .msc-summary { display: flex; flex-wrap: wrap; gap: 10px; }
+  .msc-pill {
+    background: #fff;
+    border: 1px solid #dbe4ff;
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-weight: 800;
+    box-shadow: 0 4px 12px rgba(15,23,42,.06);
+  }
+  .msc-event-box {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 10px;
+    background: #fff;
+  }
+  .msc-event-item {
+    border-bottom: 1px dashed #e5e7eb;
+    padding: 7px 4px;
+  }
+  .msc-event-item:last-child { border-bottom: 0; }
+  .msc-table th { white-space: nowrap; text-align: center; vertical-align: middle; }
+  .msc-table td { vertical-align: middle; }
+  .msc-score-input { width: 74px; font-size: 1.05rem; font-weight: 800; text-align: center; }
+  .msc-event-name { min-width: 210px; font-weight: 900; color: #1e3a8a; }
+  .msc-team { min-width: 180px; font-weight: 800; }
+  .msc-field { font-size: 1.15rem; font-weight: 900; color: #991b1b; text-align: center; min-width: 82px; }
+  .msc-row-waiting td { background: #fff7ed !important; }
+  .msc-row-scored td { background: #ecfdf5 !important; }
+  .msc-row-locked td { background: #e0f2fe !important; }
+  .msc-row-draw td { background: #ffe4e6 !important; }
+  .msc-badge { border-radius: 999px; padding: 4px 8px; font-size: .8rem; font-weight: 900; white-space: nowrap; }
+  .msc-badge-waiting { background: #fed7aa; color: #9a3412; }
+  .msc-badge-scored { background: #bbf7d0; color: #166534; }
+  .msc-badge-locked { background: #bae6fd; color: #075985; }
+  .msc-badge-draw { background: #fecdd3; color: #9f1239; }
+  .sticky-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: rgba(255,255,255,.96);
+    border-top: 1px solid #e5e7eb;
+    padding: 12px 0;
+  }
+  @media (max-width: 768px) {
+    .msc-score-input { width: 58px; }
+    .msc-event-name, .msc-team { min-width: 150px; }
+  }
+</style>
+
+<div class="container-fluid msc-shell my-4">
+  <div class="msc-hero mb-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="mb-1">คีย์หลายอีเว้นท์</h3>
+        <div class="text-muted fw-semibold">เลือกอีเว้นท์หลายรายการ แล้วคีย์คะแนนตามครั้ง/รอบจากหน้าเดียว</div>
+      </div>
+      <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">กลับหน้ารายการ</a>
+    </div>
+    <div class="msc-summary mt-3">
+      <span class="msc-pill">อีเว้นท์ที่เลือก: {{ summary.events }}</span>
+      <span class="msc-pill">คู่ในหน้านี้: {{ summary.matches }}</span>
+      <span class="msc-pill">รอคีย์: {{ summary.waiting }}</span>
+      <span class="msc-pill">กรอกแล้ว: {{ summary.scored }}</span>
+      <span class="msc-pill">ล็อกแล้ว: {{ summary.locked }}</span>
+      <span class="msc-pill">เสมอ: {{ summary.draw }}</span>
+    </div>
+  </div>
+
+  <form method="GET" action="{{ url_for('multi_event_score_center') }}" class="card shadow-sm mb-3">
+    <div class="card-header bg-dark text-white fw-bold">เลือกอีเว้นท์ / ครั้งที่ต้องการคีย์</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <label class="form-label fw-bold">เลือกอีเว้นท์</label>
+          <div class="msc-event-box">
+            {% for event in all_events %}
+            <label class="msc-event-item d-flex gap-2 align-items-start">
+              <input class="form-check-input mt-1" type="checkbox" name="event_ids" value="{{ event.id }}" {% if event.id in selected_event_ids %}checked{% endif %}>
+              <span>
+                <span class="fw-bold">{{ event.name }}</span>
+                <span class="text-muted small d-block">
+                  {{ event.date or '-' }} | {{ event.category or '-' }}{{ event.sex or '' }} | {{ event.age_group or '-' }}
+                </span>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label fw-bold">ครั้ง / รอบ</label>
+              <select name="round" class="form-select">
+                {% for r in [1,2,3,4] %}
+                <option value="{{ r }}" {% if selected_round == r %}selected{% endif %}>ครั้งที่ {{ r }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">สถานะ</label>
+              <select name="status" class="form-select">
+                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>ทั้งหมด</option>
+                <option value="waiting" {% if status_filter == 'waiting' %}selected{% endif %}>ยังไม่คีย์</option>
+                <option value="scored" {% if status_filter == 'scored' %}selected{% endif %}>กรอกแล้ว/ล็อกแล้ว</option>
+                <option value="draw" {% if status_filter == 'draw' %}selected{% endif %}>คู่เสมอ</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">ค้นหาสนาม</label>
+              <input name="field" value="{{ field_query }}" class="form-control" placeholder="เช่น 14">
+            </div>
+          </div>
+          <div class="alert alert-info mt-3 mb-0">
+            แนะนำหน้างาน: เลือกเฉพาะรายการที่แข่งพร้อมกัน แล้วเลือกครั้งที่ 1/2/3/4 เพื่อดูคู่ที่ต้องลงคะแนนรวมกันทั้งหมด
+          </div>
+          <button type="submit" class="btn btn-primary fw-bold mt-3">แสดงคู่ที่ต้องคีย์</button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <form method="POST" action="{{ url_for('multi_event_score_center') }}?round={{ selected_round }}&status={{ status_filter }}&field={{ field_query }}">
+    {% for eid in selected_event_ids %}<input type="hidden" name="event_ids" value="{{ eid }}">{% endfor %}
+    <input type="hidden" name="round" value="{{ selected_round }}">
+    <input type="hidden" name="status" value="{{ status_filter }}">
+    <input type="hidden" name="field" value="{{ field_query }}">
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white fw-bold">
+        คู่แข่งขันรวม ครั้งที่ {{ selected_round }}
+      </div>
+      <div class="card-body p-0">
+        {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-bordered table-hover msc-table mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>อีเว้นท์</th>
+                <th>สนาม</th>
+                <th>ทีมซ้าย</th>
+                <th>คะแนน</th>
+                <th>ทีมขวา</th>
+                <th>สถานะ</th>
+                <th>ไปหน้ารายการ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              {% set match = row.match %}
+              <tr class="{% if row.status == 'locked' %}msc-row-locked{% elif row.is_draw %}msc-row-draw{% elif row.score_ready %}msc-row-scored{% else %}msc-row-waiting{% endif %}">
+                <td class="msc-event-name">
+                  {{ row.event.name }}
+                  <div class="text-muted small">{{ row.event.category or '-' }}{{ row.event.sex or '' }} | {{ row.event.age_group or '-' }}</div>
+                </td>
+                <td class="msc-field">{{ match.field or '-' }}</td>
+                <td class="msc-team text-end">{{ row.team1 }}</td>
+                <td class="text-center" style="min-width: 170px;">
+                  <input type="hidden" name="match_ids" value="{{ match.id }}">
+                  <input type="hidden" name="orig_{{ match.id }}_1" value="{{ match.team1_score if match.team1_score is not none else '' }}">
+                  <input type="hidden" name="orig_{{ match.id }}_2" value="{{ match.team2_score if match.team2_score is not none else '' }}">
+                  <input type="number" name="score_{{ match.id }}_1" min="0" max="13" class="form-control d-inline-block msc-score-input" value="{{ match.team1_score if match.team1_score is not none else '' }}" {% if match.is_locked %}readonly{% endif %}>
+                  <span class="fw-bold mx-1">-</span>
+                  <input type="number" name="score_{{ match.id }}_2" min="0" max="13" class="form-control d-inline-block msc-score-input" value="{{ match.team2_score if match.team2_score is not none else '' }}" {% if match.is_locked or match.team2_id is none %}readonly{% endif %}>
+                </td>
+                <td class="msc-team">{{ row.team2 }}</td>
+                <td class="text-center">
+                  {% if match.is_locked %}
+                    <span class="msc-badge msc-badge-locked">ล็อกแล้ว</span>
+                  {% elif row.is_draw %}
+                    <span class="msc-badge msc-badge-draw">เสมอ</span>
+                  {% elif row.score_ready %}
+                    <span class="msc-badge msc-badge-scored">กรอกแล้ว</span>
+                  {% else %}
+                    <span class="msc-badge msc-badge-waiting">รอคีย์</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <a href="{{ url_for('round_matches', event_id=row.event.id, round=selected_round) }}" target="_blank" class="btn btn-sm btn-outline-primary">เปิด</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted fw-bold">ยังไม่มีคู่ในเงื่อนไขนี้ หรือยังไม่ได้ประกบคู่รอบนี้</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if rows %}
+    <div class="sticky-actions">
+      <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+        <div class="text-muted fw-semibold">บันทึกลงระบบหลักทันทีและส่งสัญญาณเรียลไทม์ ถ้ามีอีกหน้าคีย์ก่อน ระบบจะกันคะแนนทับและให้รีเฟรชตรวจ</div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button type="submit" name="action" value="save_scores" class="btn btn-success fw-bold">บันทึกคะแนน</button>
+          <button type="submit" name="action" value="save_and_lock" class="btn btn-danger fw-bold" onclick="return confirm('บันทึกและล็อกผลเฉพาะคู่ที่กรอกคะแนนแล้ว ใช่หรือไม่?');">บันทึก + ล็อกคู่ที่กรอกแล้ว</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

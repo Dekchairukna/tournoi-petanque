@@ -129,6 +129,18 @@
         </li>
         {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
         <li class="nav-item">
+          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_score_center' %}active{% endif %}"
+            href="{{ url_for('multi_event_score_center') }}">
+            <i class="bi bi-pencil-square me-1"></i> คีย์หลายอีเว้นท์
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_manager' %}active{% endif %}"
+            href="{{ url_for('multi_event_manager') }}">
+            <i class="bi bi-diagram-3 me-1"></i> จัดการอีเว้นท์รวม
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link px-3 rounded {% if request.endpoint == 'admin_users' %}active{% endif %}"
             href="{{ url_for('admin_users') }}">
             <i class="bi bi-people-fill me-1"></i> {{ t('users') }}

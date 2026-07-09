@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang|default('th') }}">
+
+<head>
+  <meta charset="UTF-8">
+  <title>ใบบันทึกคะแนนรวม - ครั้งที่ {{ selected_round }}</title>
+
+  <style>
+    .small-font {
+      font-size: 13px;
+    }
+
+    .large-font {
+      font-size: 18px;
+    }
+
+    @media print {
+      .page-break {
+        page-break-after: always;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    body {
+      font-family: Tahoma, sans-serif;
+      font-size: 15px;
+      margin: 1px;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+      padding: 8px;
+      margin-bottom: 6px;
+    }
+
+    .toolbar button,
+    .toolbar a {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .toolbar button { background: #111827; color: #fff; }
+    .toolbar a { background: #6b7280; color: #fff; }
+
+    .score-sheet {
+      border: 3px solid #000;
+      padding: 5px;
+      margin-bottom: 0px;
+      height: 45%;
+      position: relative;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0;
+      padding: 0 5px;
+      line-height: 1.2;
+    }
+
+    .event-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .event-name {
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+
+    .event-details {
+      font-size: 14px;
+    }
+
+    .logo-wrapper {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .logo-on-sheet {
+      height: 40px;
+      width: 30px;
+      object-fit: contain;
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-start;
+      margin: 3px 0;
+    }
+
+    .label {
+      width: 50px;
+      min-width: 50px;
+      padding-top: 3px;
+    }
+
+    .outer-box {
+      border: 1px solid #000;
+      padding: 1px;
+    }
+
+    .boxes {
+      display: grid;
+      grid-template-columns: 170px repeat(14, 30px);
+      gap: 2px;
+    }
+
+    .box {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #000;
+      text-align: center;
+      line-height: 30px;
+      box-sizing: border-box;
+    }
+
+    .box:last-child {
+      width: 60px;
+    }
+
+    .team-name {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .team-name-box {
+      width: 170px;
+      height: 30px;
+      line-height: 30px;
+      padding-left: 5px;
+      border: 1px solid #000;
+      box-sizing: border-box;
+      text-align: left;
+      font-size: 13px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .signature {
+      margin-top: 5px;
+      line-height: 1.2;
+    }
+
+    .qr-scorecard-box {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .qr-scorecard-box img {
+      width: 65px;
+      height: 65px;
+      border: 1px solid #000;
+      padding: 0px;
+      background: #fff;
+      display: block;
+    }
+
+    .qr-scorecard-url {
+      max-width: 360px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="toolbar no-print">
+    <button onclick="window.print()">🖨️ พิมพ์สกอร์ชีททั้งหมด</button>
+    <a href="{{ url_for('multi_event_manager', events=request.args.get('events',''), round=selected_round) }}">← กลับบริหารรวม</a>
+    <span style="font-weight:700; color:#555;">ใช้หน้าตาเดียวกับสกอร์ชีทเดิม รวมเฉพาะอีเว้นท์ที่เลือก</span>
+  </div>
+
+  {% for row in rows %}
+    {% set event = row.event %}
+    {% set team_count = row.team_count %}
+    {% for match in row.matches %}
+  <div class="score-sheet">
+    <div class="header">
+      <div class="event-info">
+        <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">{{ event.name }}</div>
+
+        <div class="event-name {% if event.logo_list %}small-font{% else %}large-font{% endif %}">
+          {{ t('competition_type') }}: {{ event.category }}{{ event.sex }} &nbsp;&nbsp;
+          {{ t('age_group') }}: {{ event.age_group }} &nbsp;&nbsp;
+          {{ t('round') }}: {{ match.round }} &nbsp;&nbsp;
+          {{ t('field') }}: {{ match.field if match.field is not none else '__________' }}
+        </div>
+
+      </div>
+      <div class="logo-wrapper">
+        {% for logo in event.logo_list %}
+        <img src="{{ url_for('static', filename='logos/' + logo) }}" class="logo-on-sheet"
+          alt="โลโก้ของ {{ event.name }}">
+        {% endfor %}
+         {% if match.scorecard_token %}
+        <div class="qr-scorecard-box">
+          <img src="{{ url_for('public_scorecard_qr', token=match.scorecard_token) }}" alt="QR สกอร์การ์ดออนไลน์">
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="label"><strong>{{ t('team') }}:</strong></div>
+      <div class="boxes">
+        <div class="team-name-box"><span class="team-name">{{ match.team1.name if match.team1 else '-' }}</span></div>
+        {% for _ in range(13) %}
+        <div class="box"></div>
+        {% endfor %}
+        <div class="box"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="label"><strong>{{ t('score') }}:</strong></div>
+      <div class="boxes">
+        <div class="team-name-box"></div>
+        {% for i in range(1, 14) %}
+        <div class="box">{{ i }}</div>
+        {% endfor %}
+        <div class="box">{{ t('total') }}</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="label"><strong>{{ t('team') }}:</strong></div>
+      <div class="boxes">
+        <div class="team-name-box"><span class="team-name">{{ match.team2.name if match.team2 else t('bye') }}</span></div>
+        {% for _ in range(13) %}
+        <div class="box"></div>
+        {% endfor %}
+        <div class="box"></div>
+      </div>
+    </div>
+
+    <div class="signature">
+      ลงชื่อทีม : _________________________________&nbsp;&nbsp;&nbsp;
+      ลงชื่อทีม : ________________________________<br>
+      ทีม _________________ เปลี่ยนตัว: _____________________ แทน ______________________________<br>
+      ทีม _________________ เปลี่ยนตัว: _____________________ แทน ______________________________<br>
+      ลงชื่อกรรมการ: _________________________________________________________________________
+    </div>
+  </div>
+
+  {% if loop.index % ((team_count // 2)+1) == 0 %}
+  <div class="page-break"></div>
+  {% endif %}
+    {% endfor %}
+    {% if not loop.last %}
+  <div class="page-break"></div>
+    {% endif %}
+  {% endfor %}
+
+</body>
+<script>
+  function adjustFontSizeToFit(container, textElement, minFontSize = 8) {
+    let fontSize = parseFloat(window.getComputedStyle(textElement).fontSize);
+    const containerWidth = container.clientWidth;
+    while (textElement.scrollWidth > containerWidth && fontSize > minFontSize) {
+      fontSize -= 0.5;
+      textElement.style.fontSize = fontSize + 'px';
+    }
+  }
+
+  document.querySelectorAll('.team-name-box').forEach(box => {
+    const name = box.querySelector('.team-name');
+    if (name) {
+      adjustFontSizeToFit(box, name);
+    }
+  });
+</script>
+</html>

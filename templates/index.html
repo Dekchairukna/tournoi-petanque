@@ -208,9 +208,22 @@
 <div class="container-fluid my-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h4 class="fw-semibold">รายการแข่งขันทั้งหมด</h4>
-    <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal">
-      <i class="bi bi-plus-lg"></i> เพิ่มรายการ
-    </button>
+    <div class="d-flex flex-wrap gap-2 justify-content-end">
+      {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+      <a href="{{ url_for('download_event_import_template') }}" class="btn btn-dark-outline btn-custom">
+        <i class="bi bi-file-earmark-excel"></i> โหลดเทมเพลต
+      </a>
+      <button class="btn btn-green btn-custom" data-bs-toggle="modal" data-bs-target="#bulkImportEventModal">
+        <i class="bi bi-upload"></i> Import หลายอีเว้นท์
+      </button>
+      <a href="{{ url_for('multi_event_manager') }}" class="btn btn-blue btn-custom">
+        <i class="bi bi-diagram-3"></i> จัดการอีเว้นท์รวม
+      </a>
+      {% endif %}
+      <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal">
+        <i class="bi bi-plus-lg"></i> เพิ่มรายการ
+      </button>
+    </div>
   </div>
 
   <h5 class="mb-3">รายการแข่งขันที่กำลังจะมาถึง</h5>
@@ -242,6 +255,9 @@
               <i class="bi bi-box-arrow-in-right"></i> เข้าร่วม
             </a>
             {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+            <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1">
+              <i class="bi bi-pencil-square"></i> แก้ไข
+            </a>
             <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
               onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
               <i class="bi bi-trash"></i> ลบ
@@ -291,6 +307,9 @@
               <i class="bi bi-box-arrow-in-right"></i> ดูผล
             </a>
             {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+            <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1">
+              <i class="bi bi-pencil-square"></i> แก้ไข
+            </a>
             <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
               onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
               <i class="bi bi-trash"></i> ลบ
@@ -306,6 +325,41 @@
   {% else %}
   <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
   {% endif %}
+
+  <!-- Modal Import หลายอีเว้นท์ -->
+  <div class="modal fade" id="bulkImportEventModal" tabindex="-1" aria-labelledby="bulkImportEventModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <form method="POST" action="{{ url_for('import_events_from_excel') }}" enctype="multipart/form-data">
+        <div class="modal-content">
+          <div class="modal-header bg-success text-white">
+            <h5 class="modal-title" id="bulkImportEventModalLabel">
+              <i class="bi bi-file-earmark-excel"></i> Import Excel สร้างหลายอีเว้นท์พร้อมทีม
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info mb-3">
+              ใช้สำหรับสร้างรายการแข่งขันหลายรายการในครั้งเดียว พร้อมตั้งค่า จำนวนรอบ วันที่ ประเภท เพศ รุ่น สนาม และรายชื่อทีม/นักกีฬา
+              <br>แนะนำให้กด <strong>โหลดเทมเพลต</strong> แล้วกรอกตามหัวตาราง
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">ไฟล์ Excel (.xlsx/.xls)</label>
+              <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+            </div>
+            <div class="small text-muted">
+              คอลัมน์ที่รองรับ: event_key, event_name, rounds, date, location, category, sex, age_group, field_prefix, field_start, field_max, field_exclude, team_name
+              <br>ถ้า event_key เหมือนกัน ระบบจะรวมแถวเป็นอีเว้นท์เดียวและเพิ่มทีมจากแต่ละแถว
+            </div>
+          </div>
+          <div class="modal-footer">
+            <a href="{{ url_for('download_event_import_template') }}" class="btn btn-outline-secondary">โหลดเทมเพลต</a>
+            <button type="submit" class="btn btn-success fw-bold"><i class="bi bi-upload"></i> เริ่มนำเข้า</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Modal เพิ่มรายการใหม่ -->
   <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">

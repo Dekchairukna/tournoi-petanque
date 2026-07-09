@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-header bg-info text-white rounded-top-4">
+      <h4 class="mb-0"><i class="bi bi-pencil-square"></i> แก้ไขอีเว้นท์</h4>
+    </div>
+    <form method="POST" enctype="multipart/form-data">
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-12">
+            <label class="form-label fw-semibold">ชื่อรายการ</label>
+            <input type="text" class="form-control" name="name" value="{{ event.name }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">จำนวนรอบ</label>
+            <input type="number" class="form-control" name="rounds" min="1" value="{{ event.rounds or 1 }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">วันที่แข่งขัน</label>
+            <input type="date" class="form-control" name="date" value="{{ event.date.strftime('%Y-%m-%d') if event.date else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">สถานที่</label>
+            <input type="text" class="form-control" name="location" value="{{ event.location or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">ประเภท</label>
+            <select name="category" class="form-select">
+              {% for item in ['เดี่ยว', 'คู่', 'ทีม', 'คู่ผสม'] %}
+              <option value="{{ item }}" {% if event.category == item %}selected{% endif %}>{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">เพศ</label>
+            <select name="sex" class="form-select">
+              {% for item in ['ชาย', 'หญิง', 'ผสม'] %}
+              <option value="{{ item }}" {% if event.sex == item %}selected{% endif %}>{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">รุ่น</label>
+            <select name="age_group" class="form-select">
+              {% for item in ['อาวุโส', 'ประชาชน', 'นักศึกษา', 'เยาวชน', 'อายุไม่เกิน 18 ปี', 'อายุไม่เกิน 16 ปี', 'อายุไม่เกิน 14 ปี', 'อายุไม่เกิน 12 ปี'] %}
+              <option value="{{ item }}" {% if event.age_group == item %}selected{% endif %}>{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12"><hr><h6 class="fw-bold mb-0">ตั้งค่าสนามอัตโนมัติ</h6></div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">คำนำหน้าสนาม</label>
+            <input type="text" class="form-control" name="field_prefix" value="{{ event.field_prefix or '' }}" placeholder="เช่น A">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">สนามเริ่ม</label>
+            <input type="number" class="form-control" name="field_start" value="{{ event.field_start or 1 }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">จำนวนสนาม</label>
+            <input type="number" class="form-control" name="field_max" value="{{ event.field_max or 16 }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">สนามที่เว้น</label>
+            <input type="text" class="form-control" name="field_exclude" value="{{ event.field_exclude or '' }}" placeholder="เช่น 3,7,11">
+          </div>
+
+          <div class="col-12"><hr></div>
+          <div class="col-md-12">
+            <label class="form-label fw-semibold">เพิ่มโลโก้</label>
+            <input type="file" class="form-control" name="logo" accept="image/*" multiple>
+            {% if event.logo_list %}
+            <div class="form-text">มีโลโก้เดิม {{ event.logo_list|length }} ไฟล์ ระบบจะเก็บไว้และเพิ่มไฟล์ใหม่เข้าไป</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="card-footer d-flex gap-2 justify-content-end">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">ยกเลิก</a>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> บันทึกการแก้ไข</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

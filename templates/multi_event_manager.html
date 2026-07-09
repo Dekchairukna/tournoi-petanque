@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .manager-wrap { max-width: 1500px; margin: 1.25rem auto; }
+  .event-check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .55rem; max-height: 360px; overflow: auto; }
+  .event-check { border: 1px solid #dee2e6; border-radius: .85rem; padding: .65rem .75rem; background: #fff; }
+  .event-check.today { border-color: #0d6efd; background: #eef6ff; }
+  .stat-card { border-radius: 1rem; border: 0; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+  .sticky-actions { position: sticky; bottom: 0; z-index: 20; background: rgba(255,255,255,.95); backdrop-filter: blur(6px); border-top: 1px solid #dee2e6; padding: .75rem; }
+  .table td, .table th { vertical-align: middle; }
+  .event-title { font-weight: 700; }
+  @media print { .no-print { display:none !important; } }
+</style>
+
+<div class="manager-wrap">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-1">บริหารจัดการอีเว้นท์รวม</h2>
+      <div class="text-muted">เลือกหลายอีเว้นท์ แล้วสั่งจับคู่ครั้งที่ 1-4 / ระบุสนาม / พิมพ์ใบประกบคู่และสกอร์ชีทรวม</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('multi_event_score_center', events=selected_events_param, round=selected_round) }}">ไปหน้าคีย์หลายอีเว้นท์</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">กลับรายการอีเว้นท์</a>
+    </div>
+  </div>
+
+  <form method="post" id="managerForm">
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="card stat-card"><div class="card-body text-center"><div class="text-muted">อีเว้นท์ที่เลือก</div><div class="fs-3 fw-bold">{{ summary.events }}</div></div></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card"><div class="card-body text-center"><div class="text-muted">ทีมรวม</div><div class="fs-3 fw-bold">{{ summary.teams }}</div></div></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card"><div class="card-body text-center"><div class="text-muted">คู่ครั้งที่ {{ selected_round }}</div><div class="fs-3 fw-bold">{{ summary.matches }}</div><div class="small text-muted">สนามใช้ได้ {{ summary.usable_fields }}</div></div></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card"><div class="card-body text-center"><div class="text-muted">ยังไม่เลือกสนาม</div><div class="fs-3 fw-bold">{{ summary.unassigned_fields }}</div><div class="small text-muted">ยังไม่ล็อก {{ summary.waiting }}</div></div></div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-primary text-white fw-bold">1) เลือกอีเว้นท์</div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectTodayEvents()">เลือกเฉพาะวันนี้</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAllEvents(true)">เลือกทั้งหมด</button>
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="setAllEvents(false)">ล้างเลือก</button>
+          <button type="submit" name="action" value="refresh" class="btn btn-sm btn-success">โหลดรายการที่เลือก</button>
+        </div>
+        <div class="event-check-grid">
+          {% for event in all_events %}
+          <label class="event-check {% if event.date == today %}today{% endif %}">
+            <input class="form-check-input me-1 event-box" type="checkbox" name="event_ids" value="{{ event.id }}" data-today="{{ '1' if event.date == today else '0' }}" {% if event.id in selected_event_ids %}checked{% endif %}>
+            <span class="event-title">{{ event.name }}</span>
+            <div class="small text-muted">{{ event.date or '-' }} | {{ event.category or '-' }} {{ event.sex or '' }} {{ event.age_group or '' }}</div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-dark text-white fw-bold">2) ตั้งค่าครั้ง/สนาม</div>
+      <div class="card-body">
+        <div class="row g-2 align-items-end">
+          <div class="col-6 col-md-2">
+            <label class="form-label">ครั้ง/รอบ</label>
+            <select class="form-select" name="round">
+              {% for n in [1,2,3,4] %}
+              <option value="{{ n }}" {% if selected_round == n %}selected{% endif %}>ครั้งที่ {{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label">สนามเริ่ม</label>
+            <input type="number" class="form-control" name="field_start" value="{{ field_start }}" min="1">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label">จำนวนสนาม</label>
+            <input type="number" class="form-control" name="field_max" value="{{ field_max }}" min="1">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label">Prefix สนาม</label>
+            <input class="form-control" name="field_prefix" value="{{ field_prefix }}" placeholder="เช่น A">
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label">เว้นสนาม</label>
+            <input class="form-control" name="field_exclude" value="{{ field_exclude }}" placeholder="เช่น 3,7,11">
+          </div>
+          <div class="col-12 col-md-1">
+            <button type="submit" name="action" value="refresh" class="btn btn-primary w-100">ดู</button>
+          </div>
+        </div>
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name" {% if separate_same_name %}checked{% endif %}>
+          <label class="form-check-label" for="separate_same_name">พยายามกันทีมชื่อฐานเดียวกันไม่ให้เจอกัน</label>
+        </div>
+        {% if summary.matches > summary.usable_fields %}
+        <div class="alert alert-warning mt-3 mb-0">
+          คู่ครั้งนี้มี {{ summary.matches }} คู่ แต่สนามใช้ได้ {{ summary.usable_fields }} สนาม ระบบจะใส่สนามให้ได้แค่ {{ summary.usable_fields }} คู่ ที่เหลือจะขึ้น “ยังไม่เลือก” เพื่อกันหลายอีเว้นท์ชนสนามเดียวกัน
+        </div>
+        {% endif %}
+        <div class="small text-muted mt-2">
+          หมายเหตุ: การจับคู่ครั้งที่ 2/3/4 จะทำเฉพาะอีเว้นท์ที่รอบก่อนหน้าลงคะแนนและล็อกผลครบแล้ว ถ้ามีคู่ในครั้งนั้นอยู่แล้วระบบจะข้ามเพื่อกันลบงานเดิม ตอนใส่สนามระบบจะไม่ให้สนามเดียวกันถูกใช้ซ้ำในหลายอีเว้นท์ของครั้งเดียวกัน และจะพยายามไม่ให้ทีมกลับไปเล่นสนามเดิมที่เคยเล่นในอีเว้นท์นั้น
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-success text-white fw-bold">3) อีเว้นท์ที่เลือก</div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>อีเว้นท์</th>
+              <th class="text-center">ทีม</th>
+              <th class="text-center">มีรอบ</th>
+              <th class="text-center">คู่ครั้งนี้</th>
+              <th class="text-center">สนามครั้งนี้</th>
+              <th class="text-center">เตือนสนามซ้ำ</th>
+              <th class="text-center">ยังไม่ล็อก</th>
+              <th class="text-center">เปิด</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td><b>{{ row.event.name }}</b><br><span class="small text-muted">{{ row.event.date or '-' }} | {{ row.event.location or '-' }}</span></td>
+              <td class="text-center">{{ row.team_count }}</td>
+              <td class="text-center">{{ row.rounds|join(', ') if row.rounds else '-' }}</td>
+              <td class="text-center">{{ row.match_count }}</td>
+              <td class="text-center fw-bold">
+                {{ row.field_text }}
+                {% if row.field_unassigned_count %}
+                  <div><span class="badge bg-danger">ยังไม่เลือก {{ row.field_unassigned_count }}</span></div>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if row.field_repeat_count %}
+                  <span class="badge bg-warning text-dark">ซ้ำ {{ row.field_repeat_count }} คู่</span>
+                {% else %}
+                  <span class="badge bg-success">ไม่ซ้ำ</span>
+                {% endif %}
+              </td>
+              <td class="text-center">{{ row.waiting_count }}</td>
+              <td class="text-center"><a class="btn btn-sm btn-outline-primary" target="_blank" href="{{ url_for('event_detail', event_id=row.event.id) }}">ดู</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-muted py-4">ยังไม่ได้เลือกอีเว้นท์</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sticky-actions rounded shadow-sm d-flex flex-wrap gap-2 justify-content-between">
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" name="action" value="pair_selected_round" class="btn btn-warning fw-bold" onclick="return confirm('จับคู่ครั้งที่เลือกให้ทุกอีเว้นท์ที่เลือก? อีเว้นท์ที่มีคู่ในครั้งนี้แล้วจะถูกข้าม และครั้งที่ 2 ขึ้นไปต้องลงคะแนน/ล็อกผลรอบก่อนหน้าให้ครบ')">จับคู่ครั้งที่เลือก</button>
+        <button type="submit" name="action" value="assign_fields" class="btn btn-info fw-bold">ระบุสนามให้ครั้งที่เลือก</button>
+        <button type="submit" name="action" value="pair_and_assign_selected_round" class="btn btn-success fw-bold" onclick="return confirm('จับคู่ครั้งที่เลือกและใส่สนามต่อเนื่องให้ทุกอีเว้นท์ที่เลือก?')">จับคู่ครั้งที่เลือก + ใส่สนาม</button>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printPairsLink" href="{{ url_for('multi_event_print_pairings', events=selected_events_param, round=selected_round) }}">ปริ้นใบประกบคู่ทั้งหมด</a>
+        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printScoresLink" href="{{ url_for('multi_event_print_score_sheets', events=selected_events_param, round=selected_round) }}">ปริ้นสกอร์ชีททั้งหมด</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+function setAllEvents(checked) {
+  document.querySelectorAll('.event-box').forEach(cb => cb.checked = checked);
+}
+function selectTodayEvents() {
+  document.querySelectorAll('.event-box').forEach(cb => cb.checked = cb.dataset.today === '1');
+}
+</script>
+{% endblock %}

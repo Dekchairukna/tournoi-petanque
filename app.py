@@ -714,14 +714,14 @@ def index():
         if not is_finished:
             upcoming_events.append(event)
         else:
-            finished_events_by_year[event.date.year].append(event)
+            finished_events_by_year[(event.date.year if event.date else 0)].append(event)
 
     # เรียงปีจากใหม่ -> เก่า
     finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
 
     return render_template(
         "index.html",
-        upcoming_events=sorted(upcoming_events, key=lambda e: e.date),
+        upcoming_events=sorted(upcoming_events, key=lambda e: e.date or date.max),
         finished_events_by_year=finished_events_by_year,
         events=upcoming_events + [e for year in finished_events_by_year.values() for e in year]  # รวมรายการทั้งหมด
     )
@@ -1385,6 +1385,489 @@ def submit_score(event_id, match_id):
     match.team2_score = int(request.form.get("team2_score", 0))
     db.session.commit()
     return redirect(url_for("event_detail", event_id=event_id))
+
+
+
+
+# ---------- BETA: bulk event import / edit event ----------
+def _clean_excel_value(value, default=""):
+    """อ่านค่าจาก Excel ให้เป็นข้อความสะอาด ๆ ไม่ให้ nan หลุดไปแสดงในระบบ"""
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except Exception:
+        pass
+    text_value = str(value).strip()
+    if text_value.lower() == "nan":
+        return default
+    return text_value
+
+
+def _pick_excel_value(row, *names, default=""):
+    """รองรับชื่อคอลัมน์ทั้งอังกฤษและไทย เพื่อให้ทำไฟล์นำเข้าได้ง่าย"""
+    for name in names:
+        if name in row.index:
+            value = _clean_excel_value(row.get(name), default="")
+            if value != "":
+                return value
+    return default
+
+
+def _parse_event_import_date(value):
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if isinstance(value, (datetime, date)):
+        return value.date() if isinstance(value, datetime) else value
+    text_value = str(value).strip()
+    if not text_value or text_value.lower() == "nan":
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(text_value, fmt).date()
+        except ValueError:
+            pass
+    parsed = pd.to_datetime(text_value, errors="coerce", dayfirst=True)
+    if pd.isna(parsed):
+        return None
+    return parsed.date()
+
+
+def _parse_event_import_int(value, default=1):
+    text_value = _clean_excel_value(value, "")
+    if not text_value:
+        return default
+    try:
+        return int(float(text_value))
+    except Exception:
+        return default
+
+
+def _save_uploaded_logos(logo_files):
+    logo_filenames = []
+    upload_folder = os.path.join("static", "logos")
+    os.makedirs(upload_folder, exist_ok=True)
+
+    def remove_background(image, threshold=200):
+        image = image.convert("RGBA")
+        datas = image.getdata()
+        new_data = []
+        for item in datas:
+            if item[0] > threshold and item[1] > threshold and item[2] > threshold:
+                new_data.append((255, 255, 255, 0))
+            else:
+                new_data.append(item)
+        image.putdata(new_data)
+        return image
+
+    def resize_logo_fixed_height(image, fixed_height=60):
+        width, height = image.size
+        if not height:
+            return image
+        new_height = fixed_height
+        new_width = int((new_height / height) * width)
+        return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+    for logo_file in logo_files or []:
+        if logo_file and logo_file.filename:
+            filename = secure_filename(logo_file.filename)
+            logo_path = os.path.join(upload_folder, filename)
+            image = Image.open(logo_file)
+            image = remove_background(image, threshold=200)
+            image = resize_logo_fixed_height(image, fixed_height=60)
+            image.save(logo_path, format="PNG")
+            logo_filenames.append(filename)
+    return logo_filenames
+
+
+@app.route("/event/import-template")
+@login_required
+@roles_required('admin')
+def download_event_import_template():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "events_import"
+    headers = [
+        "event_key", "event_name", "rounds", "date", "location", "category", "sex", "age_group",
+        "field_prefix", "field_start", "field_max", "field_exclude", "team_name"
+    ]
+    ws.append(headers)
+    sample_rows = [
+        ["U18M_TEAM", "อบจ.ขอนแก่น U18 ทีมชาย", 3, "2026-07-08", "สนามเปตอง", "ทีม", "ชาย", "อายุไม่เกิน 18 ปี", "", 1, 27, "", "โรงเรียน ก"],
+        ["U18M_TEAM", "อบจ.ขอนแก่น U18 ทีมชาย", 3, "2026-07-08", "สนามเปตอง", "ทีม", "ชาย", "อายุไม่เกิน 18 ปี", "", 1, 27, "", "โรงเรียน ข"],
+        ["U16W_PAIR", "อบจ.ขอนแก่น U16 คู่หญิง", 3, "2026-07-09", "สนามเปตอง", "คู่", "หญิง", "อายุไม่เกิน 16 ปี", "", 1, 27, "", "โรงเรียน ค"],
+    ]
+    for row in sample_rows:
+        ws.append(row)
+    for idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=idx)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="4F81BD")
+        cell.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[get_column_letter(idx)].width = max(14, len(header) + 4)
+    ws.freeze_panes = "A2"
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="event_import_template.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@app.route("/event/import", methods=["POST"])
+@login_required
+@roles_required('admin')
+def import_events_from_excel():
+    file = request.files.get("file")
+    if not file or file.filename == "":
+        flash("กรุณาเลือกไฟล์ Excel สำหรับสร้างหลายอีเว้นท์", "danger")
+        return redirect(url_for("index"))
+    if not file.filename.lower().endswith((".xls", ".xlsx")):
+        flash("กรุณาอัปโหลดไฟล์ Excel (.xls หรือ .xlsx)", "danger")
+        return redirect(url_for("index"))
+
+    try:
+        df = pd.read_excel(file)
+        if df.empty:
+            flash("ไฟล์ Excel ไม่มีข้อมูล", "warning")
+            return redirect(url_for("index"))
+
+        required_any_name = {"event_name", "name", "ชื่อรายการ", "รายการ"}
+        required_any_team = {"team_name", "team", "ชื่อทีม", "ชื่อนักกีฬา"}
+        columns = set(str(c).strip() for c in df.columns)
+        if not columns.intersection(required_any_name):
+            flash("ไฟล์ต้องมีคอลัมน์ event_name หรือ ชื่อรายการ", "danger")
+            return redirect(url_for("index"))
+        if not columns.intersection(required_any_team):
+            flash("ไฟล์ต้องมีคอลัมน์ team_name หรือ ชื่อทีม/ชื่อนักกีฬา", "danger")
+            return redirect(url_for("index"))
+
+        created_events = 0
+        created_teams = 0
+        skipped_duplicate_teams = 0
+        groups = defaultdict(list)
+
+        for _, row in df.iterrows():
+            event_name = _pick_excel_value(row, "event_name", "name", "ชื่อรายการ", "รายการ")
+            if not event_name:
+                continue
+            event_key = _pick_excel_value(row, "event_key", "รหัสอีเว้นท์", "รหัสรายการ")
+            event_date = _parse_event_import_date(row.get("date") if "date" in row.index else row.get("วันที่") if "วันที่" in row.index else None)
+            group_key = event_key or "|".join([
+                event_name,
+                str(event_date or ""),
+                _pick_excel_value(row, "category", "ประเภท"),
+                _pick_excel_value(row, "sex", "เพศ"),
+                _pick_excel_value(row, "age_group", "รุ่น", "รุ่นอายุ"),
+            ])
+            groups[group_key].append(row)
+
+        for _, rows in groups.items():
+            first = rows[0]
+            event_name = _pick_excel_value(first, "event_name", "name", "ชื่อรายการ", "รายการ")
+            event_date = _parse_event_import_date(first.get("date") if "date" in first.index else first.get("วันที่") if "วันที่" in first.index else None)
+            rounds = _parse_event_import_int(first.get("rounds") if "rounds" in first.index else first.get("จำนวนรอบ") if "จำนวนรอบ" in first.index else None, 3)
+            field_start = _parse_event_import_int(first.get("field_start") if "field_start" in first.index else first.get("สนามเริ่ม") if "สนามเริ่ม" in first.index else None, 1)
+            field_max = _parse_event_import_int(first.get("field_max") if "field_max" in first.index else first.get("จำนวนสนาม") if "จำนวนสนาม" in first.index else None, 16)
+
+            new_event = Event(
+                name=event_name,
+                rounds=rounds,
+                date=event_date,
+                location=_pick_excel_value(first, "location", "สถานที่"),
+                category=_pick_excel_value(first, "category", "ประเภท"),
+                sex=_pick_excel_value(first, "sex", "เพศ"),
+                age_group=_pick_excel_value(first, "age_group", "รุ่น", "รุ่นอายุ"),
+                field_prefix=_pick_excel_value(first, "field_prefix", "คำนำหน้าสนาม"),
+                field_start=field_start,
+                field_max=field_max,
+                field_exclude=_pick_excel_value(first, "field_exclude", "สนามที่เว้น"),
+                creator_id=current_user.id,
+                logo_filename=json.dumps([]),
+            )
+            db.session.add(new_event)
+            db.session.flush()
+            created_events += 1
+
+            seen_team_names = set()
+            for row in rows:
+                team_name = _pick_excel_value(row, "team_name", "team", "ชื่อทีม", "ชื่อนักกีฬา")
+                if not team_name:
+                    continue
+                team_key = team_name.strip().casefold()
+                if team_key in seen_team_names:
+                    skipped_duplicate_teams += 1
+                    continue
+                seen_team_names.add(team_key)
+                db.session.add(Team(name=team_name, event_id=new_event.id))
+                created_teams += 1
+
+        db.session.commit()
+        flash(f"นำเข้าเรียบร้อย: สร้างอีเว้นท์ {created_events} รายการ / เพิ่มทีม {created_teams} ทีม / ข้ามชื่อซ้ำ {skipped_duplicate_teams} รายการ", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"นำเข้าไม่สำเร็จ: {str(e)}", "danger")
+    return redirect(url_for("index"))
+
+
+@app.route("/event/<int:event_id>/edit", methods=["GET", "POST"])
+@login_required
+@roles_required('admin')
+def edit_event(event_id):
+    event = Event.query.get_or_404(event_id)
+    if request.method == "POST":
+        try:
+            event.name = request.form.get("name", event.name).strip() or event.name
+            event.rounds = int(request.form.get("rounds", event.rounds or 1))
+            event.location = request.form.get("location", "")
+            event.category = request.form.get("category", "")
+            event.sex = request.form.get("sex", "")
+            event.age_group = request.form.get("age_group", "")
+            date_str = request.form.get("date")
+            event.date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else None
+            event.field_prefix = request.form.get("field_prefix", "")
+            event.field_start = int(request.form.get("field_start") or 1)
+            event.field_max = int(request.form.get("field_max") or 16)
+            event.field_exclude = request.form.get("field_exclude", "")
+
+            existing_logos = []
+            try:
+                existing_logos = json.loads(event.logo_filename) if event.logo_filename else []
+            except Exception:
+                existing_logos = []
+            new_logos = _save_uploaded_logos(request.files.getlist("logo"))
+            if new_logos:
+                event.logo_filename = json.dumps(existing_logos + new_logos)
+
+            db.session.commit()
+            flash("แก้ไขอีเว้นท์เรียบร้อยแล้ว", "success")
+            return redirect(url_for("index"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"แก้ไขอีเว้นท์ไม่สำเร็จ: {str(e)}", "danger")
+
+    try:
+        event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
+    except Exception:
+        event.logo_list = []
+    return render_template("edit_event.html", event=event)
+# ---------- end beta bulk event import / edit event ----------
+
+# ---------- BETA: multi-event score center ----------
+def _selected_event_ids_from_request():
+    """อ่านรายการ event id จาก checkbox/query string แล้วคืนเป็น list[int] แบบไม่ซ้ำ"""
+    raw_ids = []
+    raw_ids.extend(request.form.getlist("event_ids"))
+    raw_ids.extend(request.args.getlist("event_ids"))
+    comma_ids = request.args.get("events") or request.form.get("events") or ""
+    if comma_ids:
+        raw_ids.extend(comma_ids.split(","))
+
+    event_ids = []
+    seen = set()
+    for raw in raw_ids:
+        try:
+            event_id = int(str(raw).strip())
+        except Exception:
+            continue
+        if event_id not in seen:
+            event_ids.append(event_id)
+            seen.add(event_id)
+    return event_ids
+
+
+def _event_has_unlocked_matches(event_id):
+    return Match.query.filter_by(event_id=event_id, is_locked=False).count() > 0
+
+
+@app.route("/multi-score", methods=["GET", "POST"])
+@login_required
+@roles_required('admin')
+def multi_event_score_center():
+    """หน้าเดียวสำหรับเลือกหลายอีเว้นท์ แล้วคีย์คะแนนตามครั้ง/รอบรวมกัน"""
+    today = date.today()
+    selected_round = request.values.get("round", type=int) or 1
+    status_filter = request.values.get("status", "all")
+    field_query = (request.values.get("field") or "").strip()
+    selected_event_ids = _selected_event_ids_from_request()
+
+    events_query = Event.query.order_by(Event.date.desc().nullslast(), Event.id.desc())
+    all_events = events_query.all()
+
+    if not selected_event_ids:
+        # ค่าเริ่มต้น: เลือกรายการวันนี้ที่ยังไม่จบก่อน เพื่อลดงานในวันแข่ง
+        today_events = [e.id for e in all_events if e.date == today and _event_has_unlocked_matches(e.id)]
+        selected_event_ids = today_events[:12]
+
+    if request.method == "POST" and request.form.get("action") in {"save_scores", "save_and_lock"}:
+        action = request.form.get("action")
+        selected_matches = (
+            Match.query
+            .filter(Match.id.in_([int(x) for x in request.form.getlist("match_ids") if str(x).isdigit()]))
+            .all()
+        )
+        match_map = {m.id: m for m in selected_matches}
+        updated = 0
+        locked = 0
+        draw_matches = []
+        touched_rounds = set()
+
+        for match_id, match in match_map.items():
+            if match.is_locked:
+                continue
+            score1_raw = (request.form.get(f"score_{match_id}_1") or "").strip()
+            score2_raw = (request.form.get(f"score_{match_id}_2") or "").strip()
+            orig1_raw = (request.form.get(f"orig_{match_id}_1") or "").strip()
+            orig2_raw = (request.form.get(f"orig_{match_id}_2") or "").strip()
+
+            # ไม่กรอก = ข้ามแถวนั้น เพื่อให้คีย์แบบทยอยได้
+            if score1_raw == "" and score2_raw == "":
+                continue
+
+            def _norm_score(value):
+                return "" if value is None else str(value)
+
+            current1_raw = _norm_score(match.team1_score)
+            current2_raw = _norm_score(match.team2_score)
+            submitted_changed = (score1_raw != orig1_raw) or (score2_raw != orig2_raw)
+            db_changed_after_page_load = (current1_raw != orig1_raw) or (current2_raw != orig2_raw)
+            submitted_differs_from_db = (score1_raw != current1_raw) or (score2_raw != current2_raw)
+            if submitted_changed and db_changed_after_page_load and submitted_differs_from_db:
+                team1 = match.team1.name if match.team1 else "-"
+                team2 = match.team2.name if match.team2 else "BYE"
+                flash(f"กันคะแนนทับกัน: {match.event.name} สนาม {match.field or '-'} ({team1} - {team2}) มีการแก้จากอีกหน้าก่อนแล้ว กรุณารีเฟรชตรวจอีกครั้ง", "danger")
+                return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+
+            if match.team2_id is None:
+                # BYE/รายชื่อเดี่ยวในระบบเดิม ใช้คะแนนฝั่งแรก ฝั่งสองเป็น 0
+                if score1_raw == "":
+                    flash("มีรายการที่กรอกคะแนนไม่ครบ กรุณาตรวจช่องคะแนน", "danger")
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                try:
+                    match.team1_score = int(score1_raw)
+                    match.team2_score = 0
+                except Exception:
+                    flash("คะแนนต้องเป็นตัวเลขเท่านั้น", "danger")
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+            else:
+                if score1_raw == "" or score2_raw == "":
+                    flash("มีรายการที่กรอกคะแนนไม่ครบ กรุณาตรวจช่องคะแนน", "danger")
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                try:
+                    match.team1_score = int(score1_raw)
+                    match.team2_score = int(score2_raw)
+                except Exception:
+                    flash("คะแนนต้องเป็นตัวเลขเท่านั้น", "danger")
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+
+                if match.team1_score == match.team2_score:
+                    team1 = match.team1.name if match.team1 else "-"
+                    team2 = match.team2.name if match.team2 else "-"
+                    draw_matches.append(f"{match.event.name} | สนาม {match.field or '-'} | {team1} {match.team1_score}-{match.team2_score} {team2}")
+
+            updated += 1
+            touched_rounds.add((match.event_id, match.round))
+
+            if action == "save_and_lock":
+                match.is_locked = True
+                locked += 1
+
+        db.session.commit()
+
+        for event_id, round_no in touched_rounds:
+            _emit_round_live_changed(event_id, round_no, force_reload=(action == "save_and_lock"), reason="multi_score_center")
+            try:
+                for m in Match.query.filter_by(event_id=event_id, round=round_no).all():
+                    socketio.emit('score_updated', {
+                        'match_id': m.id,
+                        'team_a_score': m.team1_score,
+                        'team_b_score': m.team2_score,
+                        'pending_team_a_score': m.pending_team1_score,
+                        'pending_team_b_score': m.pending_team2_score,
+                        'has_pending': m.pending_team1_score is not None or m.pending_team2_score is not None,
+                        'pending_is_submitted': bool(m.pending_is_submitted),
+                        'updated_by_username': current_user.username,
+                        'timestamp': datetime.utcnow().isoformat(),
+                    })
+            except Exception:
+                pass
+
+        if draw_matches:
+            flash("บันทึกแล้ว แต่พบคู่เสมอ {} คู่: {}".format(len(draw_matches), " | ".join(draw_matches[:8])), "draw-warning")
+        elif action == "save_and_lock":
+            flash(f"บันทึกและล็อกผลแล้ว {locked} คู่", "success")
+        else:
+            flash(f"บันทึกคะแนนแล้ว {updated} คู่", "success")
+
+        return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+
+    selected_events = [e for e in all_events if e.id in set(selected_event_ids)]
+    selected_events.sort(key=lambda e: (e.date or date.min, e.name or "", e.id))
+
+    matches = []
+    if selected_event_ids:
+        matches = (
+            Match.query
+            .filter(Match.event_id.in_(selected_event_ids), Match.round == selected_round)
+            .order_by(Match.field.asc().nullslast(), Match.event_id.asc(), Match.id.asc())
+            .all()
+        )
+
+    rows = []
+    for m in matches:
+        score_ready = (m.team1_score is not None and (m.team2_id is None or m.team2_score is not None))
+        is_draw = bool(m.team2_id is not None and m.team1_score is not None and m.team2_score is not None and m.team1_score == m.team2_score)
+        row_status = "locked" if m.is_locked else ("draw" if is_draw else ("scored" if score_ready else "waiting"))
+        if status_filter == "waiting" and row_status != "waiting":
+            continue
+        if status_filter == "scored" and row_status not in {"scored", "locked", "draw"}:
+            continue
+        if status_filter == "draw" and not is_draw:
+            continue
+        if field_query and field_query not in str(m.field or ""):
+            continue
+        rows.append({
+            "match": m,
+            "event": m.event,
+            "team1": m.team1.name if m.team1 else "-",
+            "team2": m.team2.name if m.team2 else "BYE",
+            "status": row_status,
+            "is_draw": is_draw,
+            "score_ready": score_ready,
+        })
+
+    summary = {
+        "events": len(selected_events),
+        "matches": len(rows),
+        "waiting": sum(1 for r in rows if r["status"] == "waiting"),
+        "scored": sum(1 for r in rows if r["status"] in {"scored", "locked", "draw"}),
+        "locked": sum(1 for r in rows if r["status"] == "locked"),
+        "draw": sum(1 for r in rows if r["is_draw"]),
+    }
+
+    return render_template(
+        "multi_score_center.html",
+        all_events=all_events,
+        selected_events=selected_events,
+        selected_event_ids=selected_event_ids,
+        selected_round=selected_round,
+        status_filter=status_filter,
+        field_query=field_query,
+        rows=rows,
+        summary=summary,
+        today=today,
+    )
+# ---------- end beta multi-event score center ----------
+
 
 
 @app.route("/event/<int:event_id>/lock", methods=["POST"])
@@ -5856,6 +6339,483 @@ def api_public_event_report(event_id):
         "latest_results": [_lr_match_payload(m) for m in matches if m.is_locked][-20:],
         "standings": standings[:32],
     })
+
+
+# ---------- BETA: multi-event manager ----------
+def _beta_field_labels(prefix='', start=1, field_max=27, exclude_text='', count=0):
+    """สร้างเลขสนามตามลำดับ ใช้กับหน้าบริหารหลายอีเว้นท์"""
+    prefix = prefix or ''
+    try:
+        start = int(start or 1)
+    except Exception:
+        start = 1
+    try:
+        field_max = int(field_max or 27)
+    except Exception:
+        field_max = 27
+    exclude = set(x.strip() for x in (exclude_text or '').split(',') if x.strip())
+    labels = []
+    n = start
+    guard = 0
+    while len(labels) < count and guard < max(200, field_max * 20):
+        label = f"{prefix}{n}"
+        if label not in exclude:
+            labels.append(label)
+        n += 1
+        guard += 1
+    return labels
+
+
+def _beta_field_pool(prefix='', start=1, field_max=27, exclude_text=''):
+    """คืนรายการสนามที่ใช้ได้ เช่น 1..27 โดยตัดสนามที่เว้นออก ใช้สำหรับวนจัดสนาม"""
+    prefix = prefix or ''
+    try:
+        start = int(start or 1)
+    except Exception:
+        start = 1
+    try:
+        field_max = int(field_max or 27)
+    except Exception:
+        field_max = 27
+    exclude = set(x.strip() for x in (exclude_text or '').split(',') if x.strip())
+    labels = []
+    for n in range(start, start + max(field_max, 1)):
+        label = f"{prefix}{n}"
+        if label not in exclude and str(n) not in exclude:
+            labels.append(label)
+    return labels or [str(start)]
+
+
+def _beta_match_team_ids(match):
+    ids = []
+    if getattr(match, 'team1_id', None):
+        ids.append(match.team1_id)
+    if getattr(match, 'team2_id', None):
+        ids.append(match.team2_id)
+    return ids
+
+
+def _beta_team_used_fields(event_id, exclude_match_ids=None):
+    """สร้าง map team_id -> set(สนามที่เคยเล่น) เพื่อหลีกเลี่ยงซ้ำสนามเดิมในรอบต่อไป"""
+    exclude_match_ids = set(exclude_match_ids or [])
+    used = {}
+    qs = Match.query.filter_by(event_id=event_id).all()
+    for m in qs:
+        if m.id in exclude_match_ids or m.field in (None, ''):
+            continue
+        field_label = str(m.field)
+        for tid in _beta_match_team_ids(m):
+            used.setdefault(tid, set()).add(field_label)
+    return used
+
+
+def _beta_assign_fields_to_matches(matches, prefix='', start=1, field_max=27, exclude_text='', continue_numbering=True, avoid_team_repeat=True):
+    """กำหนดเลขสนามให้ match list ของหลายอีเว้นท์พร้อมกัน
+    - สนามหนึ่งใช้ได้แค่ 1 คู่ต่อครั้งที่เลือก เพื่อกันหลายอีเว้นท์ชนสนามกัน
+    - ถ้าเป็นไปได้ จะไม่ให้ทีมกลับไปเล่นสนามที่เคยเล่นในอีเว้นท์เดิม
+    - ถ้าจำนวนคู่มากกว่าจำนวนสนาม จะปล่อยคู่ที่เกินเป็นค่าว่าง/ยังไม่เลือก ไม่วนซ้ำสนาม
+    """
+    if not matches:
+        return 0
+    labels = _beta_field_pool(prefix, start, field_max, exclude_text)
+    assigned = 0
+    used_global = set()
+
+    # ล้างสนามเดิมของชุดที่เลือกก่อน แล้วค่อยจัดใหม่แบบรวมทุกอีเว้นท์
+    current_ids = {m.id for m in matches if getattr(m, 'id', None)}
+    team_used_cache = {}
+
+    for match in matches:
+        match.field = None
+
+    for match in matches:
+        available_labels = [label for label in labels if label not in used_global]
+        if not available_labels:
+            # สนามไม่พอสำหรับแข่งพร้อมกัน: ไม่ใส่เลขสนาม เพื่อให้ขึ้นว่า "ยังไม่เลือก"
+            match.field = None
+            continue
+
+        event_id = match.event_id
+        if event_id not in team_used_cache:
+            team_used_cache[event_id] = _beta_team_used_fields(event_id, exclude_match_ids=current_ids) if avoid_team_repeat else {}
+        used_by_team = team_used_cache[event_id]
+        team_ids = _beta_match_team_ids(match)
+
+        chosen = None
+        if avoid_team_repeat and team_ids:
+            candidates = []
+            for label in available_labels:
+                conflict = any(label in used_by_team.get(tid, set()) for tid in team_ids)
+                if not conflict:
+                    candidates.append(label)
+            if candidates:
+                chosen = candidates[0]
+
+        if chosen is None:
+            chosen = available_labels[0]
+
+        match.field = chosen
+        used_global.add(chosen)
+        for tid in team_ids:
+            used_by_team.setdefault(tid, set()).add(str(chosen))
+        assigned += 1
+
+    return assigned
+
+
+def _beta_match_field_repeat_count(event_id, round_no):
+    """นับคู่ในรอบที่เลือกที่มีทีมเคยเล่นสนามนี้มาก่อนแล้ว ใช้โชว์เตือนในหน้าบริหารรวม"""
+    matches = Match.query.filter_by(event_id=event_id, round=round_no).all()
+    if not matches:
+        return 0
+    current_ids = {m.id for m in matches}
+    before_used = _beta_team_used_fields(event_id, exclude_match_ids=current_ids)
+    repeat = 0
+    for m in matches:
+        if m.field in (None, ''):
+            continue
+        label = str(m.field)
+        if any(label in before_used.get(tid, set()) for tid in _beta_match_team_ids(m)):
+            repeat += 1
+    return repeat
+
+
+def _beta_event_round_field_text(event_id, round_no):
+    fields = [str(m.field) for m in Match.query.filter_by(event_id=event_id, round=round_no).all() if m.field not in (None, '')]
+    if not fields:
+        return '-'
+    def sort_key(x):
+        try:
+            return (0, int(x))
+        except Exception:
+            return (1, x)
+    fields = sorted(set(fields), key=sort_key)
+    if len(fields) <= 8:
+        return ', '.join(fields)
+    return f"{fields[0]}-{fields[-1]} ({len(fields)} สนาม)"
+
+
+def _beta_event_round_unassigned_count(event_id, round_no):
+    """นับคู่ในรอบที่เลือกที่ยังไม่มีเลขสนาม"""
+    return Match.query.filter(
+        Match.event_id == event_id,
+        Match.round == round_no,
+        (Match.field == None) | (Match.field == '')
+    ).count()
+
+
+def _beta_pair_first_round(event, separate_same_name=False):
+    """จับคู่รอบแรกให้ 1 อีเว้นท์ คืน (ok, message, count) ไม่ redirect"""
+    existing_matches = Match.query.filter_by(event_id=event.id, round=1).count()
+    if existing_matches > 0:
+        return False, "มีคู่รอบแรกอยู่แล้ว", existing_matches
+
+    teams = Team.query.filter_by(event_id=event.id).all()
+    if len(teams) < 2:
+        return False, "ทีมไม่พอสำหรับจับคู่", 0
+
+    def extract_base_name(name):
+        return re.split(r'[\s\-]*\d+$', (name or '').strip())[0]
+
+    teams = teams[:]
+    random.shuffle(teams)
+    pairings = []
+    used_ids = set()
+
+    for i, team1 in enumerate(teams):
+        if team1.id in used_ids:
+            continue
+        for j in range(i + 1, len(teams)):
+            team2 = teams[j]
+            if team2.id in used_ids:
+                continue
+            if separate_same_name and extract_base_name(team1.name) == extract_base_name(team2.name):
+                continue
+            pairings.append((team1, team2))
+            used_ids.add(team1.id)
+            used_ids.add(team2.id)
+            break
+
+    remaining = [t for t in teams if t.id not in used_ids]
+    if remaining:
+        pairings.append((remaining[0], None))
+
+    team_lookup = {team.id: team for team in teams}
+    created = 0
+    for team1, team2 in pairings:
+        team1_id, team2_id = _order_pair_by_alphabet(team1.id, team2.id if team2 else None, team_lookup)
+        match = Match(event_id=event.id, round=1, team1_id=team1_id, team2_id=team2_id, is_locked=False)
+        if team2_id is None:
+            match.team1_score = 1
+            match.team2_score = 0
+            match.is_locked = True
+        db.session.add(match)
+        created += 1
+    return True, "จับคู่รอบแรกแล้ว", created
+
+
+
+
+def _beta_pair_selected_round(event, target_round=1, separate_same_name=False):
+    """จับคู่ครั้งที่เลือกให้ 1 อีเว้นท์แบบปลอดภัย
+    - ครั้งที่ 1 ใช้ตัวจับรอบแรกเดิมของหน้า beta
+    - ครั้งที่ 2+ ใช้ swiss_pairing เดิมของระบบ
+    - ถ้ารอบเป้าหมายมีคู่แล้ว จะข้ามเพื่อกันลบงานเดิม
+    คืน (ok, message, count)
+    """
+    try:
+        target_round = int(target_round or 1)
+    except Exception:
+        target_round = 1
+    if target_round <= 1:
+        return _beta_pair_first_round(event, separate_same_name=separate_same_name)
+
+    existing_target = Match.query.filter_by(event_id=event.id, round=target_round).count()
+    if existing_target > 0:
+        return False, f"มีคู่ครั้งที่ {target_round} อยู่แล้ว", existing_target
+
+    previous_round = target_round - 1
+    previous_count = Match.query.filter_by(event_id=event.id, round=previous_round).count()
+    if previous_count <= 0:
+        return False, f"ยังไม่มีคู่ครั้งที่ {previous_round}", 0
+
+    unlocked_count = Match.query.filter_by(event_id=event.id, round=previous_round, is_locked=False).count()
+    if unlocked_count > 0:
+        return False, f"ครั้งที่ {previous_round} ยังลงคะแนน/ล็อกผลไม่ครบ เหลือ {unlocked_count} คู่", 0
+
+    if getattr(event, 'rounds', None) and target_round > int(event.rounds or 0):
+        return False, f"เกินจำนวนรอบที่ตั้งไว้ ({event.rounds})", 0
+
+    ok, msg = swiss_pairing(event.id, target_round, separate_same_name=separate_same_name)
+    if not ok:
+        return False, msg, 0
+
+    created = Match.query.filter_by(event_id=event.id, round=target_round).count()
+    return True, f"จับคู่ครั้งที่ {target_round} แล้ว", created
+
+def _beta_selected_manage_events(selected_event_ids):
+    if not selected_event_ids:
+        return []
+    events = Event.query.filter(Event.id.in_(selected_event_ids)).all()
+    events.sort(key=lambda e: (e.date or date.min, e.name or '', e.id))
+    return events
+
+
+@app.route('/multi-manage', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin')
+def multi_event_manager():
+    """บริหารจัดการหลายอีเว้นท์: เลือกอีเว้นท์ จับคู่รอบแรก ใส่สนาม และไปพิมพ์รวม"""
+    today = date.today()
+    selected_round = request.values.get('round', type=int) or 1
+    selected_event_ids = _selected_event_ids_from_request()
+    field_start = request.values.get('field_start', type=int) or 1
+    field_max = request.values.get('field_max', type=int) or 27
+    field_prefix = (request.values.get('field_prefix') or '').strip()
+    field_exclude = (request.values.get('field_exclude') or '').strip()
+    separate_same_name = request.values.get('separate_same_name') == 'on'
+
+    all_events = Event.query.order_by(Event.date.desc().nullslast(), Event.id.desc()).all()
+    if not selected_event_ids:
+        selected_event_ids = [e.id for e in all_events if e.date == today][:12]
+
+    selected_events = _beta_selected_manage_events(selected_event_ids)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        selected_events = _beta_selected_manage_events(selected_event_ids)
+        selected_round = request.form.get('round', type=int) or selected_round
+        field_start = request.form.get('field_start', type=int) or field_start
+        field_max = request.form.get('field_max', type=int) or field_max
+        field_prefix = (request.form.get('field_prefix') or '').strip()
+        field_exclude = (request.form.get('field_exclude') or '').strip()
+        separate_same_name = request.form.get('separate_same_name') == 'on'
+
+        if not selected_events:
+            flash('กรุณาเลือกอีเว้นท์ก่อน', 'warning')
+            return redirect(url_for('multi_event_manager'))
+
+        if action in ('pair_first_round', 'pair_selected_round'):
+            ok_count = skip_count = match_count = 0
+            messages = []
+            for event in selected_events:
+                if action == 'pair_first_round':
+                    target_round = 1
+                    ok, msg, created = _beta_pair_first_round(event, separate_same_name=separate_same_name)
+                else:
+                    target_round = selected_round
+                    ok, msg, created = _beta_pair_selected_round(event, target_round=selected_round, separate_same_name=separate_same_name)
+                if ok:
+                    ok_count += 1
+                    match_count += created
+                else:
+                    skip_count += 1
+                    messages.append(f"{event.name}: {msg}")
+            db.session.commit()
+            for event in selected_events:
+                try:
+                    _emit_round_live_changed(event.id, target_round, force_reload=True, reason='multi_event_manager_pair_selected_round')
+                except Exception:
+                    pass
+            round_label = 1 if action == 'pair_first_round' else selected_round
+            if messages:
+                flash(f"จับคู่ครั้งที่ {round_label} สำเร็จ {ok_count} อีเว้นท์ / ข้าม {skip_count} อีเว้นท์ | " + ' | '.join(messages[:8]), 'warning')
+            else:
+                flash(f"จับคู่ครั้งที่ {round_label} สำเร็จ {ok_count} อีเว้นท์ รวม {match_count} คู่", 'success')
+
+        elif action == 'assign_fields':
+            all_matches = []
+            for event in selected_events:
+                event.auto_field_enabled = True
+                event.field_start = field_start
+                event.field_max = field_max
+                event.field_prefix = field_prefix
+                event.field_exclude = field_exclude
+                matches = Match.query.filter_by(event_id=event.id, round=selected_round).order_by(Match.id.asc()).all()
+                all_matches.extend(matches)
+            if not all_matches:
+                flash(f'ยังไม่มีคู่แข่งขันครั้งที่ {selected_round} ในอีเว้นท์ที่เลือก', 'warning')
+            else:
+                assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude)
+                unassigned = len(all_matches) - assigned
+                db.session.commit()
+                for event in selected_events:
+                    try:
+                        _emit_round_live_changed(event.id, selected_round, force_reload=True, reason='multi_event_manager_assign_fields')
+                    except Exception:
+                        pass
+                flash(f'กำหนดเลขสนามครั้งที่ {selected_round} ให้แล้ว {assigned} คู่ / ยังไม่เลือกสนาม {unassigned} คู่' + (' (สนามไม่พอหรือเว้นสนามไว้)' if unassigned else ''), 'success' if not unassigned else 'warning')
+
+        elif action in ('pair_and_assign_first_round', 'pair_and_assign_selected_round'):
+            target_round = 1 if action == 'pair_and_assign_first_round' else selected_round
+            ok_count = skip_count = match_count = 0
+            messages = []
+            for event in selected_events:
+                if action == 'pair_and_assign_first_round':
+                    ok, msg, created = _beta_pair_first_round(event, separate_same_name=separate_same_name)
+                else:
+                    ok, msg, created = _beta_pair_selected_round(event, target_round=target_round, separate_same_name=separate_same_name)
+                if ok:
+                    ok_count += 1
+                    match_count += created
+                else:
+                    skip_count += 1
+                    messages.append(f"{event.name}: {msg}")
+            db.session.flush()
+            all_matches = []
+            for event in selected_events:
+                event.auto_field_enabled = True
+                event.field_start = field_start
+                event.field_max = field_max
+                event.field_prefix = field_prefix
+                event.field_exclude = field_exclude
+                all_matches.extend(Match.query.filter_by(event_id=event.id, round=target_round).order_by(Match.id.asc()).all())
+            assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude)
+            unassigned = len(all_matches) - assigned
+            db.session.commit()
+            for event in selected_events:
+                try:
+                    _emit_round_live_changed(event.id, target_round, force_reload=True, reason='multi_event_manager_pair_assign_selected')
+                except Exception:
+                    pass
+            tail = (' | ' + ' | '.join(messages[:8])) if messages else ''
+            flash(f'จับคู่+กำหนดสนามครั้งที่ {target_round} เสร็จ: จับใหม่ {ok_count} อีเว้นท์ / ข้าม {skip_count} / ใส่สนาม {assigned} คู่ / ยังไม่เลือกสนาม {unassigned} คู่{tail}', 'success' if ok_count and not unassigned else 'warning')
+
+        query = {
+            'events': ','.join(map(str, selected_event_ids)),
+            'round': selected_round,
+            'field_start': field_start,
+            'field_max': field_max,
+            'field_prefix': field_prefix,
+            'field_exclude': field_exclude,
+        }
+        if separate_same_name:
+            query['separate_same_name'] = 'on'
+        return redirect(url_for('multi_event_manager', **query))
+
+    rows = []
+    for event in selected_events:
+        rounds = [r[0] for r in db.session.query(Match.round).filter_by(event_id=event.id).distinct().order_by(Match.round.asc()).all()]
+        match_count = Match.query.filter_by(event_id=event.id, round=selected_round).count()
+        waiting_count = Match.query.filter_by(event_id=event.id, round=selected_round, is_locked=False).count()
+        team_count = Team.query.filter_by(event_id=event.id).count()
+        rows.append({
+            'event': event,
+            'team_count': team_count,
+            'rounds': rounds,
+            'match_count': match_count,
+            'waiting_count': waiting_count,
+            'field_text': _beta_event_round_field_text(event.id, selected_round),
+            'field_repeat_count': _beta_match_field_repeat_count(event.id, selected_round),
+            'field_unassigned_count': _beta_event_round_unassigned_count(event.id, selected_round),
+        })
+
+    selected_events_param = ','.join(map(str, selected_event_ids))
+    summary = {
+        'events': len(selected_events),
+        'teams': sum(r['team_count'] for r in rows),
+        'matches': sum(r['match_count'] for r in rows),
+        'waiting': sum(r['waiting_count'] for r in rows),
+        'unassigned_fields': sum(r['field_unassigned_count'] for r in rows),
+        'usable_fields': len(_beta_field_pool(field_prefix, field_start, field_max, field_exclude)),
+    }
+
+    return render_template(
+        'multi_event_manager.html',
+        all_events=all_events,
+        selected_events=selected_events,
+        selected_event_ids=selected_event_ids,
+        selected_events_param=selected_events_param,
+        selected_round=selected_round,
+        rows=rows,
+        summary=summary,
+        today=today,
+        field_start=field_start,
+        field_max=field_max,
+        field_prefix=field_prefix,
+        field_exclude=field_exclude,
+        separate_same_name=separate_same_name,
+    )
+
+
+@app.route('/multi-manage/print-pairings')
+@login_required
+@roles_required('admin')
+def multi_event_print_pairings():
+    selected_round = request.args.get('round', type=int) or 1
+    selected_event_ids = _selected_event_ids_from_request()
+    events = _beta_selected_manage_events(selected_event_ids)
+    rows = []
+    for event in events:
+        try:
+            event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
+        except Exception:
+            event.logo_list = []
+        matches = Match.query.filter_by(event_id=event.id, round=selected_round).order_by(Match.field.asc().nullslast(), Match.id.asc()).all()
+        teams = {t.id: t.name for t in Team.query.filter_by(event_id=event.id).all()}
+        rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams)})
+    return render_template('multi_event_print_pairings.html', events=events, rows=rows, selected_round=selected_round)
+
+
+@app.route('/multi-manage/print-score-sheets')
+@login_required
+@roles_required('admin')
+def multi_event_print_score_sheets():
+    selected_round = request.args.get('round', type=int) or 1
+    selected_event_ids = _selected_event_ids_from_request()
+    events = _beta_selected_manage_events(selected_event_ids)
+    rows = []
+    for event in events:
+        try:
+            event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []
+        except Exception:
+            event.logo_list = []
+        matches = Match.query.filter_by(event_id=event.id, round=selected_round).order_by(Match.field.asc().nullslast(), Match.id.asc()).all()
+        ensure_match_tokens(matches)
+        teams = {t.id: t.name for t in Team.query.filter_by(event_id=event.id).all()}
+        rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams)})
+    return render_template('multi_event_print_score_sheets.html', events=events, rows=rows, selected_round=selected_round)
+# ---------- end beta multi-event manager ----------
 
 
 if __name__ == '__main__':
