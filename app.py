@@ -6470,8 +6470,8 @@ def _beta_assign_fields_to_matches(matches, prefix='', start=1, field_max=27, ex
         if chosen is None:
             chosen = available_labels[0]
 
-        match.field = chosen
-        used_global.add(chosen)
+        match.field = _beta_db_field_value(chosen)
+        used_global.add(str(chosen))
         for tid in team_ids:
             used_by_team.setdefault(tid, set()).add(str(chosen))
         assigned += 1
@@ -6511,15 +6511,30 @@ def _beta_event_round_field_text(event_id, round_no):
     return f"{fields[0]}-{fields[-1]} ({len(fields)} สนาม)"
 
 
+def _beta_db_field_value(label):
+    """แปลงเลขสนามก่อนบันทึกลง DB
+    field ในฐานข้อมูลเดิมเป็น Integer หลายเครื่อง/หลาย DB โดยเฉพาะ PostgreSQL จะ Error ถ้าส่งค่าว่างหรือข้อความเข้าไป
+    ดังนั้นถ้าเป็นเลขล้วนให้เก็บเป็น int ถ้าไม่ใช่เลขล้วนค่อยเก็บเป็นข้อความสำหรับ DB ที่รองรับ
+    """
+    if label in (None, ''):
+        return None
+    label_s = str(label).strip()
+    if label_s.isdigit():
+        return int(label_s)
+    return label_s
+
+
 def _beta_event_round_unassigned_count(event_id, round_no):
-    """นับเฉพาะคู่ที่ต้องแข่งจริงแต่ยังไม่มีเลขสนาม; คู่ BYE ไม่ต้องใส่สนาม"""
-    return Match.query.filter(
+    """นับเฉพาะคู่ที่ต้องแข่งจริงแต่ยังไม่มีเลขสนาม; คู่ BYE ไม่ต้องใส่สนาม
+    ห้าม query เทียบ Match.field == '' เพราะ PostgreSQL จะ Internal Server Error เมื่อ field เป็น Integer
+    """
+    matches = Match.query.filter(
         Match.event_id == event_id,
         Match.round == round_no,
         Match.team1_id != None,
         Match.team2_id != None,
-        (Match.field == None) | (Match.field == '')
-    ).count()
+    ).all()
+    return sum(1 for m in matches if getattr(m, 'field', None) in (None, ''))
 
 
 def _beta_pair_first_round(event, separate_same_name=False):
