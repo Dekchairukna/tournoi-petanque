@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>สแตนดิ้งรวมหลายอีเว้นท์</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-family: Tahoma, sans-serif; background:#f8fafc; }
+    .event-page { background:#fff; border-radius: 14px; padding: 18px; margin: 16px auto; max-width: 1100px; box-shadow:0 6px 20px rgba(15,23,42,.08); }
+    table { width:100%; border-collapse: collapse; }
+    th,td { border:1px solid #dee2e6; padding:6px 8px; vertical-align:middle; }
+    th { background:#111827; color:#fff; text-align:center; }
+    .direct td { background:#fff3cd !important; }
+    .qualified-a td { background:#d7ecff !important; }
+    .qualified-b td { background:#d4edda !important; }
+    .qualified td { background:#d4edda !important; }
+    .eliminated td { background:#f8d7da !important; }
+    .toolbar { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #ddd; padding:10px; }
+    @media print { .no-print{display:none!important;} body{background:#fff;} .event-page{box-shadow:none; margin:0; border-radius:0; page-break-after:always;} .event-page:last-child{page-break-after:auto;} }
+  </style>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+</head>
+<body>
+  <div class="toolbar no-print d-flex gap-2 justify-content-end">
+    <button class="btn btn-dark" onclick="window.print()">🖨️ พิมพ์สแตนดิ้งที่เลือก</button>
+    <button class="btn btn-success" onclick="saveStandingImage()">📸 บันทึกภาพสแตนดิ้งรวม</button>
+    <button class="btn btn-secondary" onclick="history.back()">กลับ</button>
+  </div>
+  {% for row in rows %}
+  <section class="event-page">
+    <h3 class="fw-bold text-center mb-1">รายงานสแตนดิ้ง / ทีมเข้ารอบ</h3>
+    <h4 class="fw-bold text-center mb-1">{{ row.event.name }}</h4>
+    <div class="text-center mb-3">{{ row.event.date or '-' }} | {{ row.event.category or '-' }}{{ row.event.sex or '' }} | {{ row.event.age_group or '-' }}</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:7%">อันดับ</th>
+          <th>ชื่อทีม</th>
+          <th style="width:10%">คะแนน</th>
+          <th style="width:10%">BHN</th>
+          <th style="width:10%">fBHN</th>
+          <th style="width:12%">แต้มได้:เสีย</th>
+          <th style="width:18%">สถานะ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for team in row.standings %}
+          {% set rank = loop.index %}
+          {% if rank <= row.direct_advance_count %}
+            {% set cls = 'direct' %}{% set status = 'ตัวแทน/เข้ารอบอัตโนมัติ' %}
+          {% elif rank <= row.num_qualified_teams %}
+            {% set order = rank - row.direct_advance_count %}
+            {% if row.competition_type in ['ab_ladder','regional64_ladder'] %}
+              {% if order <= row.ab_a_team_count %}{% set cls = 'qualified-a' %}{% set status = 'เข้ารอบ กลุ่ม A' %}{% else %}{% set cls = 'qualified-b' %}{% set status = 'เข้ารอบ กลุ่ม B' %}{% endif %}
+            {% else %}
+              {% set cls = 'qualified' %}{% set status = 'เข้ารอบ/ไปเพลย์ออฟ' %}
+            {% endif %}
+          {% else %}
+            {% set cls = 'eliminated' %}{% set status = 'ตกรอบ' %}
+          {% endif %}
+        <tr class="{{ cls }}">
+          <td class="text-center fw-bold">{{ rank }}</td>
+          <td class="fw-bold">{{ team.team_name }}</td>
+          <td class="text-center">{{ team.score }}</td>
+          <td class="text-center">{{ team.buchholz }}</td>
+          <td class="text-center">{{ team.final_buchholz }}</td>
+          <td class="text-center">{{ team.point_for }}:{{ team.point_against }}</td>
+          <td class="text-center fw-bold">{{ status }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted">ยังไม่มีข้อมูล Standing</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endfor %}
+<script>
+async function saveStandingImage(){
+  const pages = Array.from(document.querySelectorAll('.event-page'));
+  if(!pages.length) return;
+  document.querySelectorAll('.no-print').forEach(el => el.style.display = 'none');
+  const wrapper = document.createElement('div');
+  wrapper.style.background = '#f8fafc';
+  wrapper.style.padding = '16px';
+  pages.forEach(p => wrapper.appendChild(p.cloneNode(true)));
+  document.body.appendChild(wrapper);
+  const canvas = await html2canvas(wrapper, {scale: 2, backgroundColor: '#f8fafc'});
+  const a = document.createElement('a');
+  a.download = 'multi-standings.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+  wrapper.remove();
+  document.querySelectorAll('.no-print').forEach(el => el.style.display = '');
+}
+</script>
+</body>
+</html>

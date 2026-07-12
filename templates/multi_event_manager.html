@@ -122,10 +122,12 @@
               <th class="text-center">ทีม</th>
               <th class="text-center">จัดการรอบ</th>
               <th class="text-center">มีรอบ</th>
+              <th class="text-center">เริ่มสนาม</th>
               <th class="text-center">คู่รอบนี้</th>
               <th class="text-center">สนามครั้งนี้</th>
               <th class="text-center">เตือนสนามซ้ำ</th>
               <th class="text-center">ยังไม่ล็อก</th>
+              <th class="text-center">ระบบจัดต่อ</th>
               <th class="text-center">เปิด</th>
             </tr>
           </thead>
@@ -142,6 +144,11 @@
                 </select>
               </td>
               <td class="text-center">{{ row.rounds|join(', ') if row.rounds else '-' }}</td>
+              <td class="text-center" style="min-width:110px;">
+                <input type="number" min="1" class="form-control form-control-sm event-field-start"
+                       name="event_field_start_{{ row.event.id }}" data-event-id="{{ row.event.id }}"
+                       value="{{ event_field_start_map.get(row.event.id, '') }}" placeholder="อัตโนมัติ">
+              </td>
               <td class="text-center">{{ row.match_count }}</td>
               <td class="text-center fw-bold">
                 {{ row.field_text }}
@@ -157,13 +164,111 @@
                 {% endif %}
               </td>
               <td class="text-center">{{ row.waiting_count }}</td>
+              <td class="text-center">
+                {% if row.playoff_count %}
+                  <span class="badge bg-primary">มีแล้ว {{ row.playoff_count }}</span>
+                  {% if row.latest_playoff_id %}<div><a class="small" target="_blank" href="{{ url_for('playoff_detail', playoff_id=row.latest_playoff_id) }}">เปิดล่าสุด</a></div>{% endif %}
+                {% else %}
+                  <span class="badge bg-secondary">ยังไม่มี</span>
+                {% endif %}
+              </td>
               <td class="text-center"><a class="btn btn-sm btn-outline-primary" target="_blank" href="{{ url_for('event_detail', event_id=row.event.id) }}">ดู</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-center text-muted py-4">ยังไม่ได้เลือกอีเว้นท์</td></tr>
+            <tr><td colspan="11" class="text-center text-muted py-4">ยังไม่ได้เลือกอีเว้นท์</td></tr>
             {% endfor %}
           </tbody>
         </table>
+      </div>
+    </div>
+
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-warning fw-bold">4) จัดการหน้าสแตนดิ้ง / ทีมเข้ารอบ / สร้างระบบจัดต่อ แบบแยกอีเว้นท์</div>
+      <div class="card-body">
+        <div class="alert alert-info mb-3">
+          หน้านี้ใช้หลังแข่ง Swiss ครบแล้ว: เลือกจำนวนทีมจาก Standing และเลือกระบบจัดต่อแยกทีละอีเว้นท์ได้ในแถวเดียวกัน เช่น U12 เป็น Knockout, U14 เป็น Double Knockout, U16 สร้าง Swiss ใหม่
+        </div>
+
+        <div class="border rounded-3 p-3 mb-3 bg-light">
+          <div class="fw-bold mb-2">ตั้งค่าทั้งหมดก่อน แล้วค่อยแก้เฉพาะแถวที่ต่าง</div>
+          <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-1"><label class="form-label small">อันดับดีสุด</label><input type="number" id="bulkDirect" min="0" class="form-control form-control-sm" value="0"></div>
+            <div class="col-6 col-md-1"><label class="form-label small">อันดับถัดไป</label><input type="number" id="bulkContinue" min="0" class="form-control form-control-sm" value="4"></div>
+            <div class="col-12 col-md-2"><label class="form-label small">ระบบจัดต่อ</label><select id="bulkCompetition" class="form-select form-select-sm"><option value="knockout">Knockout</option><option value="double_knockout">Double Knockout</option><option value="round_robin">Round Robin</option><option value="swiss">สร้าง Swiss ใหม่</option><option value="ab_ladder">A/B Ladder</option><option value="regional64_ladder">A/B คัดตัวแทน</option></select></div>
+            <div class="col-12 col-md-2"><label class="form-label small">วิธีวางคู่</label><select id="bulkPairing" class="form-select form-select-sm"><option value="seed">ตามอันดับ</option><option value="bracket">Bracket</option><option value="random">สุ่ม</option></select></div>
+            <div class="col-12 col-md-2"><label class="form-label small">ชื่อรอบใหม่</label><input id="bulkStageName" class="form-control form-control-sm" value="รอบต่อไป"></div>
+            <div class="col-6 col-md-1"><label class="form-label small">A/B A</label><input type="number" id="bulkAbA" min="0" class="form-control form-control-sm" value="4"></div>
+            <div class="col-6 col-md-1"><label class="form-label small">Swiss รอบ</label><input type="number" id="bulkSwissRounds" min="1" class="form-control form-control-sm" value="3"></div>
+            <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-warning fw-bold w-100" onclick="applyBulkStandingSettings()">ใช้ค่านี้กับทุกอีเว้นท์</button></div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead class="table-light text-center">
+              <tr>
+                <th style="min-width:220px;">อีเว้นท์</th>
+                <th>อันดับดีสุด</th>
+                <th>อันดับถัดไป</th>
+                <th>ระบบจัดต่อ</th>
+                <th>วิธีวางคู่</th>
+                <th>ชื่อรอบใหม่</th>
+                <th>A/B: จำนวน A</th>
+                <th>Swiss รอบ</th>
+                <th>ตัวเลือก</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr>
+                <td>
+                  <b>{{ row.event.name }}</b>
+                  <div class="small text-muted">ทีม {{ row.team_count }} | ยังไม่ล็อก {{ row.waiting_count }} | จัดต่อแล้ว {{ row.playoff_count }}</div>
+                </td>
+                <td style="width:95px;"><input type="number" min="0" class="form-control form-control-sm standing-direct" name="event_direct_count_{{ row.event.id }}" value="0" data-event-id="{{ row.event.id }}"></td>
+                <td style="width:95px;"><input type="number" min="0" class="form-control form-control-sm standing-continue" name="event_continue_count_{{ row.event.id }}" value="8" data-event-id="{{ row.event.id }}"></td>
+                <td style="min-width:150px;">
+                  <select class="form-select form-select-sm event-competition-type" name="event_competition_type_{{ row.event.id }}" data-event-id="{{ row.event.id }}">
+                    <option value="knockout">Knockout</option>
+                    <option value="double_knockout">Double Knockout</option>
+                    <option value="round_robin">Round Robin</option>
+                    <option value="swiss">สร้าง Swiss ใหม่</option>
+                    <option value="ab_ladder">A/B Ladder</option>
+                    <option value="regional64_ladder">A/B คัดตัวแทน</option>
+                  </select>
+                </td>
+                <td style="min-width:130px;">
+                  <select class="form-select form-select-sm event-pairing-method" name="event_pairing_method_{{ row.event.id }}" data-event-id="{{ row.event.id }}">
+                    <option value="seed">ตามอันดับ</option>
+                    <option value="bracket">Bracket</option>
+                    <option value="random">สุ่ม</option>
+                  </select>
+                </td>
+                <td style="min-width:170px;"><input class="form-control form-control-sm event-stage-name" name="event_next_stage_name_{{ row.event.id }}" value="รอบต่อไป" placeholder="เช่น รอบ 8 ทีม"></td>
+                <td style="width:110px;"><input type="number" min="0" class="form-control form-control-sm standing-ab-a" name="event_ab_a_count_{{ row.event.id }}" value="4" data-event-id="{{ row.event.id }}"></td>
+                <td style="width:95px;"><input type="number" min="1" class="form-control form-control-sm event-swiss-rounds" name="event_swiss_rounds_{{ row.event.id }}" value="3"></td>
+                <td style="min-width:190px;">
+                  <label class="d-block small"><input type="checkbox" name="event_add_bye_{{ row.event.id }}"> เติม BYE ให้เต็มสาย</label>
+                  <label class="d-block small"><input type="checkbox" name="event_include_direct_{{ row.event.id }}"> เอาอันดับดีสุดลงแข่งด้วย</label>
+                  <label class="d-block small text-danger"><input type="checkbox" name="event_allow_duplicate_next_{{ row.event.id }}"> สร้างซ้ำได้</label>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="9" class="text-center text-muted py-3">เลือกอีเว้นท์ก่อน</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <a class="btn btn-outline-warning fw-bold" target="_blank" id="printStandingsLink" href="#">ปริ้นสแตนดิ้ง/ทีมเข้ารอบที่เลือก</a>
+          <a class="btn btn-outline-primary fw-bold" target="_blank" id="playoffScoreLink" href="#">คีย์เพลย์ออฟรวม</a>
+          <button type="submit" name="action" value="create_next_competitions" class="btn btn-warning fw-bold" onclick="return confirm('สร้างระบบจัดต่อจาก Standing ให้แต่ละอีเว้นท์ตามค่าที่ตั้งในแถว?')">สร้างระบบจัดต่อจาก Standing</button>
+        </div>
+        <div class="small text-muted mt-2">ระบบจะข้ามอีเว้นท์ที่ยังลงคะแนน/ล็อกผลไม่ครบ หรือมีเพลย์ออฟเดิมอยู่แล้ว เว้นแต่ติ๊ก “สร้างซ้ำได้” ในแถวนั้น</div>
+        <input type="hidden" id="directAdvanceCount" value="0">
+        <input type="hidden" id="continueCount" value="8">
+        <input type="hidden" id="abATeamCount" value="4">
+        <input type="hidden" id="competitionType" value="">
       </div>
     </div>
 
@@ -196,17 +301,53 @@ function selectedEventIds() {
 function eventRoundsParam() {
   return Array.from(document.querySelectorAll('.event-round-select')).map(sel => `${sel.dataset.eventId}:${sel.value}`).join(',');
 }
+function eventFieldStartsParam() {
+  return Array.from(document.querySelectorAll('.event-field-start'))
+    .filter(inp => (inp.value || '').trim() !== '')
+    .map(inp => `${inp.dataset.eventId}:${inp.value}`).join(',');
+}
+function collectStandingParams() {
+  const params = [];
+  document.querySelectorAll('.standing-direct').forEach(inp => params.push(`event_direct_count_${inp.dataset.eventId}=${encodeURIComponent(inp.value || '0')}`));
+  document.querySelectorAll('.standing-continue').forEach(inp => params.push(`event_continue_count_${inp.dataset.eventId}=${encodeURIComponent(inp.value || '0')}`));
+  document.querySelectorAll('.standing-ab-a').forEach(inp => params.push(`event_ab_a_count_${inp.dataset.eventId}=${encodeURIComponent(inp.value || '0')}`));
+  document.querySelectorAll('.event-competition-type').forEach(sel => params.push(`event_competition_type_${sel.dataset.eventId}=${encodeURIComponent(sel.value || '')}`));
+  return params.join('&');
+}
+function applyBulkStandingSettings() {
+  const direct = document.getElementById('bulkDirect')?.value ?? '0';
+  const cont = document.getElementById('bulkContinue')?.value ?? '4';
+  const comp = document.getElementById('bulkCompetition')?.value ?? 'knockout';
+  const pairing = document.getElementById('bulkPairing')?.value ?? 'seed';
+  const stage = document.getElementById('bulkStageName')?.value ?? 'รอบต่อไป';
+  const abA = document.getElementById('bulkAbA')?.value ?? '4';
+  const swissRounds = document.getElementById('bulkSwissRounds')?.value ?? '3';
+  document.querySelectorAll('.standing-direct').forEach(inp => inp.value = direct);
+  document.querySelectorAll('.standing-continue').forEach(inp => inp.value = cont);
+  document.querySelectorAll('.event-competition-type').forEach(sel => sel.value = comp);
+  document.querySelectorAll('.event-pairing-method').forEach(sel => sel.value = pairing);
+  document.querySelectorAll('.event-stage-name').forEach(inp => inp.value = stage);
+  document.querySelectorAll('.standing-ab-a').forEach(inp => inp.value = abA);
+  document.querySelectorAll('.event-swiss-rounds').forEach(inp => inp.value = swissRounds);
+  refreshPrintLinks();
+}
 function refreshPrintLinks() {
   const events = encodeURIComponent(selectedEventIds());
   const round = encodeURIComponent(document.querySelector('select[name="round"]')?.value || '{{ selected_round }}');
   const eventRounds = encodeURIComponent(eventRoundsParam());
+  const fieldStarts = encodeURIComponent(eventFieldStartsParam());
   const pairs = document.getElementById('printPairsLink');
   const scores = document.getElementById('printScoresLink');
+  const standings = document.getElementById('printStandingsLink');
+  const playoffScore = document.getElementById('playoffScoreLink');
+  const standingParams = collectStandingParams();
   if (pairs) pairs.href = `{{ url_for('multi_event_print_pairings') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
   if (scores) scores.href = `{{ url_for('multi_event_print_score_sheets') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
+  if (standings) standings.href = `{{ url_for('multi_event_print_standings') }}?events=${events}&${standingParams}`;
+  if (playoffScore) playoffScore.href = `{{ url_for('multi_playoff_score_center') }}?events=${events}`;
 }
 document.addEventListener('change', function(e) {
-  if (e.target.matches('.event-box, .event-round-select, select[name="round"]')) refreshPrintLinks();
+  if (e.target.matches('.event-box, .event-round-select, .event-field-start, select[name="round"], .standing-direct, .standing-continue, .standing-ab-a, .event-competition-type, .event-pairing-method, .event-stage-name, .event-swiss-rounds, #directAdvanceCount, #continueCount, #abATeamCount, #competitionType')) refreshPrintLinks();
 });
 document.addEventListener('DOMContentLoaded', refreshPrintLinks);
 </script>

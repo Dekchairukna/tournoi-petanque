@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .wrap { max-width: 1500px; margin: 1.25rem auto; }
+  .event-check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); gap:.5rem; max-height:310px; overflow:auto; }
+  .event-check { border:1px solid #dee2e6; border-radius:.8rem; padding:.55rem .7rem; background:#fff; }
+  .score-input { width:70px; display:inline-block; text-align:center; font-weight:700; }
+  .event-cell { min-width: 240px; font-weight:700; }
+</style>
+<div class="wrap">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="mb-1">คีย์เพลย์ออฟรวม</h2>
+      <div class="text-muted">รวมรอบเพลย์ออฟล่าสุดของอีเว้นท์ที่เลือกไว้หน้าเดียว คล้ายหน้าคีย์ Swiss รวม</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('multi_event_manager', events=selected_event_ids|join(',')) }}">กลับจัดการอีเว้นท์รวม</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">รายการอีเว้นท์</a>
+    </div>
+  </div>
+
+  <form method="get" class="card shadow-sm mb-3">
+    <div class="card-header bg-primary text-white fw-bold">เลือกอีเว้นท์</div>
+    <div class="card-body">
+      <div class="event-check-grid mb-3">
+        {% for event in all_events %}
+        <label class="event-check">
+          <input type="checkbox" class="form-check-input me-1" name="event_ids" value="{{ event.id }}" {% if event.id in selected_event_ids %}checked{% endif %}>
+          <b>{{ event.name }}</b>
+          <div class="small text-muted">{{ event.date or '-' }} | {{ event.category or '-' }}{{ event.sex or '' }} {{ event.age_group or '' }}</div>
+        </label>
+        {% endfor %}
+      </div>
+      <button class="btn btn-primary fw-bold">โหลดเพลย์ออฟที่เลือก</button>
+    </div>
+  </form>
+
+  <form method="post">
+    {% for eid in selected_event_ids %}<input type="hidden" name="event_ids" value="{{ eid }}">{% endfor %}
+    <div class="card shadow-sm">
+      <div class="card-header bg-dark text-white fw-bold">คู่เพลย์ออฟล่าสุด</div>
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle mb-0">
+          <thead class="table-light text-center">
+            <tr>
+              <th>อีเว้นท์</th>
+              <th>ระบบ/รอบ</th>
+              <th>สนาม</th>
+              <th>ทีมซ้าย</th>
+              <th>คะแนน</th>
+              <th>ทีมขวา</th>
+              <th>เปิด</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td class="event-cell">
+                {{ row.source_event.name if row.source_event else '-' }}
+                <div class="small text-muted">{{ row.source_event.date if row.source_event else '' }}</div>
+              </td>
+              <td class="text-center">
+                <b>{{ row.playoff.title }}</b>
+                <div class="small text-muted">{{ row.round.round_name }} | สาย {{ row.group_no }}</div>
+              </td>
+              <td class="text-center fw-bold">{{ row.court or '-' }}</td>
+              <td class="text-end fw-bold">{{ row.a.team_name }}</td>
+              <td class="text-center" style="min-width:180px;">
+                <input class="form-control score-input" type="number" min="0" max="13"
+                       name="score_{{ row.playoff.id }}_{{ row.round.id }}_{{ row.group_no }}_{{ row.a.slot_no }}_{{ row.stage_no }}"
+                       value="{{ row.score_a if row.score_a is not none else '' }}">
+                <span class="fw-bold mx-1">-</span>
+                <input class="form-control score-input" type="number" min="0" max="13"
+                       name="score_{{ row.playoff.id }}_{{ row.round.id }}_{{ row.group_no }}_{{ row.b.slot_no }}_{{ row.stage_no }}"
+                       value="{{ row.score_b if row.score_b is not none else '' }}">
+              </td>
+              <td class="fw-bold">{{ row.b.team_name }}</td>
+              <td class="text-center"><a target="_blank" class="btn btn-sm btn-outline-primary" href="{{ url_for('playoff_detail', playoff_id=row.playoff.id) }}#round-{{ row.round.id }}-group-{{ row.group_no }}">เปิด</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">ยังไม่มีเพลย์ออฟในอีเว้นท์ที่เลือก หรือรอบล่าสุดไม่มีคู่ที่ต้องคีย์</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if rows %}
+    <div class="sticky-bottom bg-white border rounded shadow-sm p-3 mt-3 d-flex justify-content-end">
+      <button class="btn btn-success fw-bold" onclick="return confirm('บันทึกคะแนนเพลย์ออฟรวม?')">บันทึกคะแนนเพลย์ออฟรวม</button>
+    </div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

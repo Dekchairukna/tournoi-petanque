@@ -259,9 +259,6 @@
     </div>
   </div>
 
-  {% if loop.index % ((team_count // 2)+1) == 0 %}
-  <div class="page-break"></div>
-  {% endif %}
     {% endfor %}
     {% if not loop.last %}
   <div class="page-break"></div>

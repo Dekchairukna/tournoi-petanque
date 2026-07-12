@@ -89,12 +89,17 @@
             {% for event in all_events %}
             <label class="msc-event-item d-flex gap-2 align-items-start">
               <input class="form-check-input mt-1" type="checkbox" name="event_ids" value="{{ event.id }}" {% if event.id in selected_event_ids %}checked{% endif %}>
-              <span>
+              <span class="flex-grow-1">
                 <span class="fw-bold">{{ event.name }}</span>
                 <span class="text-muted small d-block">
                   {{ event.date or '-' }} | {{ event.category or '-' }}{{ event.sex or '' }} | {{ event.age_group or '-' }}
                 </span>
               </span>
+              <select class="form-select form-select-sm" name="event_round_{{ event.id }}" style="width:100px;" onclick="event.stopPropagation();">
+                {% for r in [1,2,3,4] %}
+                <option value="{{ r }}" {% if event_round_map.get(event.id, selected_round) == r %}selected{% endif %}>ครั้ง {{ r }}</option>
+                {% endfor %}
+              </select>
             </label>
             {% endfor %}
           </div>
@@ -102,7 +107,7 @@
         <div class="col-lg-6">
           <div class="row g-2">
             <div class="col-md-4">
-              <label class="form-label fw-bold">ครั้ง / รอบ</label>
+              <label class="form-label fw-bold">รอบตั้งต้น</label>
               <select name="round" class="form-select">
                 {% for r in [1,2,3,4] %}
                 <option value="{{ r }}" {% if selected_round == r %}selected{% endif %}>ครั้งที่ {{ r }}</option>
@@ -124,7 +129,7 @@
             </div>
           </div>
           <div class="alert alert-info mt-3 mb-0">
-            แนะนำหน้างาน: เลือกเฉพาะรายการที่แข่งพร้อมกัน แล้วเลือกครั้งที่ 1/2/3/4 เพื่อดูคู่ที่ต้องลงคะแนนรวมกันทั้งหมด
+            เลือกรอบแยกได้ข้างชื่ออีเว้นท์ ถ้าไม่เลือกจะใช้รอบตั้งต้นนี้ เช่น U12 ครั้ง 2 / U14 ครั้ง 3 ในหน้าเดียว
           </div>
           <button type="submit" class="btn btn-primary fw-bold mt-3">แสดงคู่ที่ต้องคีย์</button>
         </div>
@@ -132,15 +137,16 @@
     </div>
   </form>
 
-  <form method="POST" action="{{ url_for('multi_event_score_center') }}?round={{ selected_round }}&status={{ status_filter }}&field={{ field_query }}">
+  <form method="POST" action="{{ url_for('multi_event_score_center') }}?round={{ selected_round }}&status={{ status_filter }}&field={{ field_query }}&event_rounds={{ event_rounds_param }}">
     {% for eid in selected_event_ids %}<input type="hidden" name="event_ids" value="{{ eid }}">{% endfor %}
+    <input type="hidden" name="event_rounds" value="{{ event_rounds_param }}">
     <input type="hidden" name="round" value="{{ selected_round }}">
     <input type="hidden" name="status" value="{{ status_filter }}">
     <input type="hidden" name="field" value="{{ field_query }}">
 
     <div class="card shadow-sm">
       <div class="card-header bg-primary text-white fw-bold">
-        คู่แข่งขันรวม ครั้งที่ {{ selected_round }}
+        คู่แข่งขันรวมตามรอบที่เลือกแยกอีเว้นท์
       </div>
       <div class="card-body p-0">
         {% if rows %}
@@ -163,7 +169,7 @@
               <tr class="{% if row.status == 'locked' %}msc-row-locked{% elif row.is_draw %}msc-row-draw{% elif row.score_ready %}msc-row-scored{% else %}msc-row-waiting{% endif %}">
                 <td class="msc-event-name">
                   {{ row.event.name }}
-                  <div class="text-muted small">{{ row.event.category or '-' }}{{ row.event.sex or '' }} | {{ row.event.age_group or '-' }}</div>
+                  <div class="text-muted small">ครั้งที่ {{ match.round }} | {{ row.event.category or '-' }}{{ row.event.sex or '' }} | {{ row.event.age_group or '-' }}</div>
                 </td>
                 <td class="msc-field">{{ match.field or '-' }}</td>
                 <td class="msc-team text-end">{{ row.team1 }}</td>
@@ -188,7 +194,7 @@
                   {% endif %}
                 </td>
                 <td class="text-center">
-                  <a href="{{ url_for('round_matches', event_id=row.event.id, round=selected_round) }}" target="_blank" class="btn btn-sm btn-outline-primary">เปิด</a>
+                  <a href="{{ url_for('round_matches', event_id=row.event.id, round=match.round) }}" target="_blank" class="btn btn-sm btn-outline-primary">เปิด</a>
                 </td>
               </tr>
               {% endfor %}

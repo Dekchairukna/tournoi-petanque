@@ -1027,6 +1027,36 @@ def auto_pair_late_entries(event_id, target_round=None):
     return paired, len(late)
 
 
+
+def finalize_single_late_entry_as_bye(event_id, target_round=None):
+    """ถ้าเพิ่มทีมมาทีมเดียวหลังมีการจับคู่แล้ว และไม่มีคู่ให้ประกบ ให้ถือว่าได้ BYE ทันที
+    ใช้เฉพาะรายการเพิ่มภายหลังแบบ team2 ว่าง ไม่แตะคู่แข่งขันจริงเดิม
+    """
+    if target_round is None:
+        target_round = get_latest_round_for_event(event_id)
+    if not target_round:
+        return 0
+    late = _late_entry_matches(event_id, target_round)
+    if len(late) != 1:
+        return 0
+    late_match = late[0]
+    # ถ้ายังมีคู่จริงที่ยังไม่ล็อก ให้ยังไม่ล็อก BYE เพื่อให้ผู้จัดการตรวจเองก่อน
+    real_unlocked = Match.query.filter(
+        Match.event_id == event_id,
+        Match.round == target_round,
+        Match.id != late_match.id,
+        Match.team2_id != None,
+        Match.is_locked == False,
+    ).count()
+    if real_unlocked > 0:
+        return 0
+    late_match.team1_score = 1
+    late_match.team2_score = 0
+    late_match.is_locked = True
+    late_match.field = None
+    return 1
+
+
 @app.route('/event/<int:event_id>/add_team', methods=['POST'])
 @login_required
 @roles_required('admin', 'superadmin')
@@ -1053,12 +1083,22 @@ def add_team_route(event_id):
         create_late_entry_match(event_id, new_team, latest_round)
         late_pair_mode = request.form.get('late_pair_mode', 'ask')
         paired = remaining = 0
+        bye_locked = 0
         if late_pair_mode == 'auto':
             paired, remaining = auto_pair_late_entries(event_id, latest_round)
+            bye_locked = finalize_single_late_entry_as_bye(event_id, latest_round)
+        else:
+            # ถ้าเพิ่มมาแค่ทีมเดียวหลังคู่เดิมลงผล/ล็อกครบแล้ว ให้เป็น BYE ทันที ไม่ทำให้รอบค้าง
+            bye_locked = finalize_single_late_entry_as_bye(event_id, latest_round)
         db.session.commit()
-        if late_pair_mode == 'auto' and paired:
+        if paired:
             flash(
                 f'เพิ่ม {team_name} เรียบร้อยแล้ว และระบบประกบทีมเพิ่มใหม่ให้อัตโนมัติ {paired} คู่ โดยไม่กระทบคู่เดิม',
+                'success'
+            )
+        elif bye_locked:
+            flash(
+                f'เพิ่ม {team_name} เรียบร้อยแล้ว และให้ BYE ในรอบที่ {latest_round} อัตโนมัติ เพราะไม่มีคู่ใหม่ให้ประกบ',
                 'success'
             )
         else:
@@ -1488,7 +1528,7 @@ def _save_uploaded_logos(logo_files):
 
 @app.route("/event/import-template")
 @login_required
-@roles_required('admin')
+@roles_required('superadmin')
 def download_event_import_template():
     wb = Workbook()
     ws = wb.active
@@ -1525,7 +1565,7 @@ def download_event_import_template():
 
 @app.route("/event/import", methods=["POST"])
 @login_required
-@roles_required('admin')
+@roles_required('superadmin')
 def import_events_from_excel():
     file = request.files.get("file")
     if not file or file.filename == "":
@@ -1691,7 +1731,7 @@ def _event_has_unlocked_matches(event_id):
 
 @app.route("/multi-score", methods=["GET", "POST"])
 @login_required
-@roles_required('admin')
+@roles_required('superadmin')
 def multi_event_score_center():
     """หน้าเดียวสำหรับเลือกหลายอีเว้นท์ แล้วคีย์คะแนนตามครั้ง/รอบรวมกัน"""
     today = date.today()
@@ -1707,6 +1747,12 @@ def multi_event_score_center():
         # ค่าเริ่มต้น: เลือกรายการวันนี้ที่ยังไม่จบก่อน เพื่อลดงานในวันแข่ง
         today_events = [e.id for e in all_events if e.date == today and _event_has_unlocked_matches(e.id)]
         selected_event_ids = today_events[:12]
+
+    selected_events = [e for e in all_events if e.id in set(selected_event_ids)]
+    selected_events.sort(key=lambda e: (e.date or date.min, e.name or "", e.id))
+    # เลือกรอบแยกต่ออีเว้นท์ได้ เช่น U12 คีย์ครั้งที่ 2 แต่ U14 คีย์ครั้งที่ 3 ในหน้าเดียว
+    event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
+    event_rounds_param = _beta_event_rounds_param(event_round_map)
 
     if request.method == "POST" and request.form.get("action") in {"save_scores", "save_and_lock"}:
         action = request.form.get("action")
@@ -1745,29 +1791,29 @@ def multi_event_score_center():
                 team1 = match.team1.name if match.team1 else "-"
                 team2 = match.team2.name if match.team2 else "BYE"
                 flash(f"กันคะแนนทับกัน: {match.event.name} สนาม {match.field or '-'} ({team1} - {team2}) มีการแก้จากอีกหน้าก่อนแล้ว กรุณารีเฟรชตรวจอีกครั้ง", "danger")
-                return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
 
             if match.team2_id is None:
                 # BYE/รายชื่อเดี่ยวในระบบเดิม ใช้คะแนนฝั่งแรก ฝั่งสองเป็น 0
                 if score1_raw == "":
                     flash("มีรายการที่กรอกคะแนนไม่ครบ กรุณาตรวจช่องคะแนน", "danger")
-                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
                 try:
                     match.team1_score = int(score1_raw)
                     match.team2_score = 0
                 except Exception:
                     flash("คะแนนต้องเป็นตัวเลขเท่านั้น", "danger")
-                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
             else:
                 if score1_raw == "" or score2_raw == "":
                     flash("มีรายการที่กรอกคะแนนไม่ครบ กรุณาตรวจช่องคะแนน", "danger")
-                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
                 try:
                     match.team1_score = int(score1_raw)
                     match.team2_score = int(score2_raw)
                 except Exception:
                     flash("คะแนนต้องเป็นตัวเลขเท่านั้น", "danger")
-                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
 
                 if match.team1_score == match.team2_score:
                     team1 = match.team1.name if match.team1 else "-"
@@ -1808,19 +1854,24 @@ def multi_event_score_center():
         else:
             flash(f"บันทึกคะแนนแล้ว {updated} คู่", "success")
 
-        return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query))
-
-    selected_events = [e for e in all_events if e.id in set(selected_event_ids)]
-    selected_events.sort(key=lambda e: (e.date or date.min, e.name or "", e.id))
+        return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
 
     matches = []
     if selected_event_ids:
-        matches = (
-            Match.query
-            .filter(Match.event_id.in_(selected_event_ids), Match.round == selected_round)
-            .order_by(Match.field.asc().nullslast(), Match.event_id.asc(), Match.id.asc())
-            .all()
-        )
+        # ดึงเป็นกลุ่มต่ออีเว้นท์ เพื่อให้คีย์หลายอีเว้นท์แบบละเอียดและไม่กระโดดข้ามรายการ
+        event_lookup = {e.id: e for e in selected_events}
+        for eid in selected_event_ids:
+            event = event_lookup.get(eid)
+            if not event:
+                continue
+            round_no = event_round_map.get(eid, selected_round)
+            event_matches = (
+                Match.query
+                .filter_by(event_id=eid, round=round_no)
+                .order_by(Match.field.asc(), Match.id.asc())
+                .all()
+            )
+            matches.extend(event_matches)
 
     rows = []
     for m in matches:
@@ -1860,6 +1911,8 @@ def multi_event_score_center():
         selected_events=selected_events,
         selected_event_ids=selected_event_ids,
         selected_round=selected_round,
+        event_round_map=event_round_map,
+        event_rounds_param=event_rounds_param,
         status_filter=status_filter,
         field_query=field_query,
         rows=rows,
@@ -3076,6 +3129,69 @@ def _round_robin_pairs(selected_rows):
     return pairs
 
 
+def _round_robin_round_groups(selected_rows):
+    """สร้างพบกันหมดแบบเป็นรอบจริง: รอบหนึ่งมีหลายคู่, ทีมคี่พัก BYE แต่ไม่สร้างคู่ BYE"""
+    teams = [_row_to_seed_payload(row, idx) for idx, row in enumerate((selected_rows or []), start=1)]
+    if len(teams) < 2:
+        return []
+    if len(teams) % 2 == 1:
+        teams.append(None)
+    n = len(teams)
+    rounds = []
+    arr = teams[:]
+    for round_no in range(1, n):
+        pairs = []
+        for i in range(n // 2):
+            a = arr[i]
+            b = arr[n - 1 - i]
+            if a is None or b is None:
+                continue
+            pairs.append([a, b])
+        rounds.append(pairs)
+        arr = [arr[0]] + [arr[-1]] + arr[1:-1]
+    return rounds
+
+
+def _create_round_robin_competition(source_event, selected_rows, title, direct_rows=None):
+    """สร้างระบบ Round Robin บน playoff tables เดิม เพื่อให้ใช้หน้าคีย์/รายงานร่วมกันได้"""
+    ensure_playoff_tables()
+    config = {
+        'direct_qualified': [
+            {
+                'rank': idx,
+                'team_id': row.get('team_id'),
+                'team_name': row.get('team_name'),
+                'seed': row.get('seed') or row.get('rank') or idx,
+            }
+            for idx, row in enumerate((direct_rows or []), start=1)
+        ],
+        'round_robin': True,
+    }
+    res = db.session.execute(text("""
+        INSERT INTO playoff_competitions (source_event_id, title, competition_type, pairing_method, config_json)
+        VALUES (:source_event_id, :title, :competition_type, :pairing_method, :config_json)
+    """), {
+        'source_event_id': source_event.id if source_event else None,
+        'title': title or 'Round Robin',
+        'competition_type': 'round_robin',
+        'pairing_method': 'round_robin',
+        'config_json': json.dumps(config, ensure_ascii=False),
+    })
+    db.session.flush()
+    if db.engine.dialect.name == 'postgresql':
+        playoff_id = db.session.execute(text("SELECT currval(pg_get_serial_sequence('playoff_competitions','id')) AS id")).mappings().first()['id']
+    else:
+        playoff_id = res.lastrowid
+
+    rr_rounds = _round_robin_round_groups(selected_rows)
+    if not rr_rounds:
+        raise ValueError('Round Robin ต้องมีทีมอย่างน้อย 2 ทีม')
+    for round_no, pairs in enumerate(rr_rounds, start=1):
+        _create_playoff_round(playoff_id, round_no, f'Round Robin ครั้งที่ {round_no}', 'round_robin', pairs)
+    db.session.commit()
+    return playoff_id
+
+
 def _active_playoffs_for_event(event_id):
     # รายการเพลย์ออฟที่สร้างจาก Event นี้ เพื่อให้กลับเข้าไปทำงานต่อได้ถ้าเผลอออกจากหน้า
     try:
@@ -3494,8 +3610,13 @@ def create_next_competition(event_id):
         return redirect(url_for('playoff_detail', playoff_id=playoff_id))
 
     if competition_type == 'round_robin':
-        flash('Round Robin ยังติดไว้ก่อน เดี๋ยวมาพัฒนาต่อ', 'warning')
-        return redirect(url_for('event_standings', event_id=event_id))
+        try:
+            playoff_id = _create_round_robin_competition(source_event, selected_rows, next_stage_name, direct_rows=direct_rows_for_report)
+        except ValueError as exc:
+            flash(str(exc), 'warning')
+            return redirect(url_for('event_standings', event_id=event_id))
+        flash('สร้าง Round Robin พบกันหมดแล้ว สามารถคีย์คะแนนและสร้างรอบต่อไปได้', 'success')
+        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
 
     if competition_type in {'knockout', 'double_knockout'}:
         if pairing_method == 'manual':
@@ -6029,8 +6150,13 @@ def create_playoff_next_round(playoff_id):
             flash('สร้าง Swiss ใหม่จากทีมที่ผ่านเข้ารอบแล้ว', 'success')
             return redirect(url_for('event_detail', event_id=new_event.id))
     if next_type == 'round_robin':
-        flash('Round Robin ยังติดไว้ก่อน', 'warning')
-        return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+        try:
+            new_rr_id = _create_round_robin_competition(source_event, participants, round_name, direct_rows=None)
+        except Exception as exc:
+            flash(f'สร้าง Round Robin ไม่สำเร็จ: {exc}', 'warning')
+            return redirect(url_for('playoff_detail', playoff_id=playoff_id))
+        flash('สร้าง Round Robin รอบถัดไปแล้ว', 'success')
+        return redirect(url_for('playoff_detail', playoff_id=new_rr_id))
     rows = [{'team_id': p.get('team_id'), 'team_name': p.get('team_name'), 'rank': idx, 'seed': idx} for idx, p in enumerate(participants, start=1)]
     if pairing_method == 'manual' and len(participants) > 2:
         session[f'playoff_next_round_manual_{playoff_id}'] = {
@@ -6476,6 +6602,107 @@ def _beta_assign_fields_to_matches(matches, prefix='', start=1, field_max=27, ex
             used_by_team.setdefault(tid, set()).add(str(chosen))
         assigned += 1
 
+
+    return assigned
+
+
+def _beta_event_field_start_map_from_request(events, default_start=1):
+    """อ่านช่องกำหนดสนามเริ่มรายอีเว้นท์จากหน้า multi-manage
+    ถ้าไม่กรอก จะให้ระบบต่อเลขสนามอัตโนมัติจากอีเว้นท์ก่อนหน้า
+    """
+    mapping = {}
+    raw_param = request.values.get('event_field_starts') or ''
+    for item in raw_param.split(','):
+        if ':' not in item:
+            continue
+        eid_s, st_s = item.split(':', 1)
+        try:
+            value = int(float(st_s))
+            if value > 0:
+                mapping[int(eid_s)] = value
+        except Exception:
+            pass
+    for event in events or []:
+        raw = request.values.get(f'event_field_start_{event.id}')
+        if raw is None or str(raw).strip() == '':
+            continue
+        try:
+            value = int(float(str(raw).strip()))
+            if value > 0:
+                mapping[event.id] = value
+        except Exception:
+            pass
+    return mapping
+
+
+def _beta_event_field_starts_param(start_map):
+    return ','.join(f'{int(eid)}:{int(st)}' for eid, st in (start_map or {}).items())
+
+
+def _beta_assign_fields_by_event_groups(event_match_groups, prefix='', start=1, field_max=27, exclude_text='', event_start_map=None):
+    """จัดสนามแบบแบ่งเป็นบล็อกต่ออีเว้นท์
+    - อีเว้นท์หนึ่งจะได้เลขสนามเรียงติดกัน ไม่กระโดดสลับกับอีเว้นท์อื่น
+    - ถ้ากรอกสนามเริ่มรายอีเว้นท์ จะเริ่มตามนั้น
+    - ถ้าไม่กรอก จะต่อเลขอัตโนมัติจากอีเว้นท์ก่อนหน้า
+    - คู่ BYE ไม่กินเลขสนาม
+    """
+    event_start_map = event_start_map or {}
+    try:
+        start = int(start or 1)
+    except Exception:
+        start = 1
+    try:
+        field_max = int(field_max or 27)
+    except Exception:
+        field_max = 27
+    prefix = prefix or ''
+    exclude = set(x.strip() for x in (exclude_text or '').split(',') if x.strip())
+    min_num = start
+    max_num = start + max(field_max, 1) - 1
+    used_global = set()
+    assigned = 0
+    next_auto = start
+
+    def make_label(n):
+        return f"{prefix}{n}"
+
+    def is_allowed(n):
+        label = make_label(n)
+        return n <= max_num and label not in exclude and str(n) not in exclude and str(label) not in used_global
+
+    for event, matches in event_match_groups:
+        matches = list(matches or [])
+        for match in matches:
+            match.field = None
+
+        current = int(event_start_map.get(getattr(event, 'id', None), next_auto) or next_auto)
+        if current < min_num:
+            current = min_num
+
+        for match in matches:
+            if _beta_is_bye_match(match):
+                match.field = None
+                continue
+            n = current
+            while n <= max_num and not is_allowed(n):
+                n += 1
+            if n > max_num:
+                match.field = None
+                current = n
+                continue
+            label = make_label(n)
+            match.field = _beta_db_field_value(label)
+            used_global.add(str(label))
+            assigned += 1
+            current = n + 1
+
+        # ถ้าไม่ได้ระบุสนามเริ่มของอีเว้นท์ถัดไป ให้ต่อจากเลขสุดท้ายของอีเว้นท์นี้
+        if getattr(event, 'id', None) not in event_start_map:
+            next_auto = max(next_auto, current)
+        else:
+            # กรณีระบุเอง ให้ระบบอัตโนมัติตัวถัดไปต่อจากช่วงที่ใช้จริงด้วย เพื่อกันชนกัน
+            next_auto = max(next_auto, current)
+
     return assigned
 
 
@@ -6666,6 +6893,118 @@ def _beta_safe_int_field_order_value(value):
     except Exception:
         return 999999
 
+
+def _beta_playoff_count_for_event(event_id):
+    try:
+        row = db.session.execute(text('SELECT COUNT(*) AS c FROM playoff_competitions WHERE source_event_id=:eid'), {'eid': event_id}).mappings().first()
+        return int((row or {}).get('c') or 0)
+    except Exception:
+        return 0
+
+
+def _beta_first_playoff_id_for_event(event_id):
+    try:
+        row = db.session.execute(text('SELECT id FROM playoff_competitions WHERE source_event_id=:eid ORDER BY id DESC LIMIT 1'), {'eid': event_id}).mappings().first()
+        return int(row['id']) if row else None
+    except Exception:
+        return None
+
+
+def _beta_event_all_matches_locked(event_id):
+    total = Match.query.filter_by(event_id=event_id).count()
+    if total <= 0:
+        return False, 'ยังไม่มีคู่แข่งขัน'
+    unlocked = Match.query.filter_by(event_id=event_id, is_locked=False).count()
+    if unlocked > 0:
+        return False, f'ยังมีคู่ที่ยังไม่ล็อกผล {unlocked} คู่'
+    return True, ''
+
+
+def _beta_int_form(name, default=0, minimum=0):
+    try:
+        val = int(request.form.get(name, default) or default)
+    except Exception:
+        val = default
+    return max(minimum, val)
+
+
+def _beta_multi_create_next_for_event(event):
+    """สร้างระบบจัดต่อจาก Standing สำหรับ 1 อีเว้นท์ตามค่าที่กรอกในแถว multi-manage"""
+    eid = event.id
+    allow_duplicate = request.form.get(f'event_allow_duplicate_next_{eid}') == 'on'
+    existing = _beta_playoff_count_for_event(eid)
+    if existing and not allow_duplicate:
+        return False, f'มีเพลย์ออฟ/รอบต่ออยู่แล้ว {existing} รายการ', None
+
+    ok_locked, locked_msg = _beta_event_all_matches_locked(eid)
+    if not ok_locked:
+        return False, locked_msg, None
+
+    standings_rows = calculate_standings(eid)
+    if not standings_rows:
+        return False, 'ยังไม่มี Standing', None
+
+    direct_count = _beta_int_form(f'event_direct_count_{eid}', 0, 0)
+    continue_count = _beta_int_form(f'event_continue_count_{eid}', 8, 0)
+    ab_a_count = _beta_int_form(f'event_ab_a_count_{eid}', max(1, continue_count // 2) if continue_count else 0, 0)
+    swiss_rounds = _beta_int_form(f'event_swiss_rounds_{eid}', 3, 1)
+
+    competition_type = (request.form.get(f'event_competition_type_{eid}') or 'knockout').strip()
+    if competition_type not in {'knockout', 'double_knockout', 'swiss', 'ab_ladder', 'regional64_ladder', 'round_robin'}:
+        competition_type = 'knockout'
+    pairing_method = (request.form.get(f'event_pairing_method_{eid}') or 'seed').strip()
+    if pairing_method not in {'seed', 'random', 'bracket', 'national_qualifier'}:
+        pairing_method = 'seed'
+    if competition_type == 'regional64_ladder':
+        pairing_method = 'national_qualifier'
+    add_bye = request.form.get(f'event_add_bye_{eid}') == 'on'
+    include_direct = request.form.get(f'event_include_direct_{eid}') == 'on'
+    next_stage_name = (request.form.get(f'event_next_stage_name_{eid}') or '').strip() or 'รอบต่อไป'
+
+    total_rows = len(standings_rows)
+    direct_count = max(0, min(direct_count, total_rows))
+    continue_count = max(0, min(continue_count, total_rows - direct_count))
+
+    direct_rows = [dict(r, rank=i+1) for i, r in enumerate(standings_rows[:direct_count])]
+    selected_rows = [dict(r, rank=direct_count+i+1) for i, r in enumerate(standings_rows[direct_count:direct_count+continue_count])]
+
+    if include_direct and direct_rows:
+        merged = []
+        seen = set()
+        for row in direct_rows + selected_rows:
+            key = row.get('team_id') or row.get('team_name')
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(row)
+        selected_rows = merged
+        direct_rows_for_report = []
+    else:
+        direct_rows_for_report = direct_rows
+
+    if not selected_rows:
+        return False, 'ไม่มีทีมสำหรับจัดต่อ กรุณาตั้งอันดับถัดไปมากกว่า 0', None
+
+    try:
+        if competition_type == 'round_robin':
+            playoff_id = _create_round_robin_competition(event, selected_rows, next_stage_name, direct_rows=direct_rows_for_report)
+            return True, f'สร้าง Round Robin #{playoff_id}', ('playoff', playoff_id)
+        if competition_type == 'swiss':
+            new_event = _make_next_event_from_selected(event, selected_rows, next_stage_name, rounds=swiss_rounds)
+            return True, f'สร้าง Swiss ใหม่ #{new_event.id}', ('event', new_event.id)
+        if competition_type in {'ab_ladder', 'regional64_ladder'}:
+            if competition_type == 'regional64_ladder':
+                playoff_id = _create_ab_ladder_competition(event, selected_rows, next_stage_name, 'national_qualifier', 32, 8, 12, direct_rows=direct_rows_for_report, special_mode='regional64_ladder')
+            else:
+                playoff_id = _create_ab_ladder_competition(event, selected_rows, next_stage_name, pairing_method, ab_a_count or max(1, len(selected_rows)//2), 0, 0, direct_rows=direct_rows_for_report)
+            return True, f'สร้าง A/B #{playoff_id}', ('playoff', playoff_id)
+        playoff_id = _create_playoff_competition(event, selected_rows, next_stage_name, competition_type, pairing_method, add_bye=add_bye, direct_rows=direct_rows_for_report)
+        return True, f'สร้างเพลย์ออฟ #{playoff_id}', ('playoff', playoff_id)
+    except Exception as exc:
+        db.session.rollback()
+        return False, str(exc), None
+
+
 def _beta_selected_manage_events(selected_event_ids):
     if not selected_event_ids:
         return []
@@ -6676,7 +7015,7 @@ def _beta_selected_manage_events(selected_event_ids):
 
 @app.route('/multi-manage', methods=['GET', 'POST'])
 @login_required
-@roles_required('admin')
+@roles_required('superadmin')
 def multi_event_manager():
     """บริหารจัดการหลายอีเว้นท์: เลือกอีเว้นท์ จับคู่ ใส่สนาม ลบคู่ และพิมพ์รวม
     รองรับกรณีที่แต่ละอีเว้นท์อยู่คนละรอบ โดยเลือกครั้ง/รอบแยกต่ออีเว้นท์ได้
@@ -6691,6 +7030,7 @@ def multi_event_manager():
     field_exclude = (request.values.get('field_exclude') or '').strip()
     separate_same_name = request.values.get('separate_same_name') == 'on'
     force_delete_locked = request.values.get('force_delete_locked') == 'on'
+    event_field_start_map = _beta_event_field_start_map_from_request([], field_start)
 
     # ใช้ order_by แบบปลอดภัยกับ SQLite/Railway หลายเวอร์ชัน ไม่ใช้ nullslast() กัน Internal Server Error
     all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
@@ -6699,6 +7039,7 @@ def multi_event_manager():
 
     selected_events = _beta_selected_manage_events(selected_event_ids)
     event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
+    event_field_start_map = _beta_event_field_start_map_from_request(selected_events, field_start)
 
     if request.method == 'POST':
         action = request.form.get('action') or 'refresh'
@@ -6712,6 +7053,7 @@ def multi_event_manager():
         separate_same_name = request.form.get('separate_same_name') == 'on'
         force_delete_locked = request.form.get('force_delete_locked') == 'on'
         event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
+        event_field_start_map = _beta_event_field_start_map_from_request(selected_events, field_start)
 
         if not selected_events:
             flash('กรุณาเลือกอีเว้นท์ก่อน', 'warning')
@@ -6750,23 +7092,25 @@ def multi_event_manager():
                 flash(f"จับคู่สำเร็จ {ok_count} อีเว้นท์ รวม {match_count} คู่", 'success')
 
         elif action == 'assign_fields':
+            event_match_groups = []
             all_matches = []
             changed = []
             for event in selected_events:
                 event.auto_field_enabled = True
-                event.field_start = field_start
+                event.field_start = event_field_start_map.get(event.id, field_start)
                 event.field_max = field_max
                 event.field_prefix = field_prefix
                 event.field_exclude = field_exclude
                 round_no = event_round_map.get(event.id, selected_round)
                 matches = Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all()
+                event_match_groups.append((event, matches))
                 all_matches.extend(matches)
                 if matches:
                     changed.append((event.id, round_no))
             if not all_matches:
                 flash('ยังไม่มีคู่แข่งขันในอีเว้นท์/ครั้งที่เลือก', 'warning')
             else:
-                assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude)
+                assigned = _beta_assign_fields_by_event_groups(event_match_groups, field_prefix, field_start, field_max, field_exclude, event_field_start_map)
                 unassigned = _beta_assignable_match_count(all_matches) - assigned
                 db.session.commit()
                 for event_id, round_no in changed:
@@ -6795,16 +7139,19 @@ def multi_event_manager():
                     skip_count += 1
                     messages.append(f"{event.name} ครั้งที่ {target_round}: {msg}")
             db.session.flush()
+            event_match_groups = []
             all_matches = []
             for event in selected_events:
                 event.auto_field_enabled = True
-                event.field_start = field_start
+                event.field_start = event_field_start_map.get(event.id, field_start)
                 event.field_max = field_max
                 event.field_prefix = field_prefix
                 event.field_exclude = field_exclude
                 round_no = event_round_map.get(event.id, selected_round)
-                all_matches.extend(Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all())
-            assigned = _beta_assign_fields_to_matches(all_matches, field_prefix, field_start, field_max, field_exclude) if all_matches else 0
+                matches = Match.query.filter_by(event_id=event.id, round=round_no).order_by(Match.id.asc()).all()
+                event_match_groups.append((event, matches))
+                all_matches.extend(matches)
+            assigned = _beta_assign_fields_by_event_groups(event_match_groups, field_prefix, field_start, field_max, field_exclude, event_field_start_map) if all_matches else 0
             unassigned = _beta_assignable_match_count(all_matches) - assigned if all_matches else 0
             db.session.commit()
             for event_id, round_no in set(changed):
@@ -6863,6 +7210,19 @@ def multi_event_manager():
             tail = (' | ' + ' | '.join(skipped[:8])) if skipped else ''
             flash(f'ลบคู่ในครั้งที่เลือกแล้ว {deleted} คู่{tail}', 'warning' if skipped else 'success')
 
+        elif action == 'create_next_competitions':
+            ok_count = skip_count = 0
+            messages = []
+            for event in selected_events:
+                ok, msg, created_ref = _beta_multi_create_next_for_event(event)
+                if ok:
+                    ok_count += 1
+                else:
+                    skip_count += 1
+                messages.append(f'{event.name}: {msg}')
+            level = 'success' if ok_count and not skip_count else ('warning' if ok_count else 'danger')
+            flash(f'สร้างระบบจัดต่อสำเร็จ {ok_count} อีเว้นท์ / ข้าม {skip_count} อีเว้นท์ | ' + ' | '.join(messages[:10]), level)
+
         query = {
             'events': ','.join(map(str, selected_event_ids)),
             'round': selected_round,
@@ -6871,6 +7231,7 @@ def multi_event_manager():
             'field_prefix': field_prefix,
             'field_exclude': field_exclude,
             'event_rounds': _beta_event_rounds_param(event_round_map),
+            'event_field_starts': _beta_event_field_starts_param(event_field_start_map),
         }
         if separate_same_name:
             query['separate_same_name'] = 'on'
@@ -6895,10 +7256,13 @@ def multi_event_manager():
             'field_text': _beta_event_round_field_text(event.id, round_no),
             'field_repeat_count': _beta_match_field_repeat_count(event.id, round_no),
             'field_unassigned_count': _beta_event_round_unassigned_count(event.id, round_no),
+            'playoff_count': _beta_playoff_count_for_event(event.id),
+            'latest_playoff_id': _beta_first_playoff_id_for_event(event.id),
         })
 
     selected_events_param = ','.join(map(str, selected_event_ids))
     event_rounds_param = _beta_event_rounds_param(event_round_map)
+    event_field_starts_param = _beta_event_field_starts_param(event_field_start_map)
     summary = {
         'events': len(selected_events),
         'teams': sum(r['team_count'] for r in rows),
@@ -6915,6 +7279,8 @@ def multi_event_manager():
         selected_event_ids=selected_event_ids,
         selected_events_param=selected_events_param,
         event_rounds_param=event_rounds_param,
+        event_field_starts_param=event_field_starts_param,
+        event_field_start_map=event_field_start_map,
         event_round_map=event_round_map,
         selected_round=selected_round,
         rows=rows,
@@ -6931,7 +7297,7 @@ def multi_event_manager():
 
 @app.route('/multi-manage/print-pairings')
 @login_required
-@roles_required('admin')
+@roles_required('superadmin')
 def multi_event_print_pairings():
     selected_round = request.args.get('round', type=int) or 1
     selected_event_ids = _selected_event_ids_from_request()
@@ -6953,7 +7319,7 @@ def multi_event_print_pairings():
 
 @app.route('/multi-manage/print-score-sheets')
 @login_required
-@roles_required('admin')
+@roles_required('superadmin')
 def multi_event_print_score_sheets():
     selected_round = request.args.get('round', type=int) or 1
     selected_event_ids = _selected_event_ids_from_request()
@@ -6972,6 +7338,170 @@ def multi_event_print_score_sheets():
         teams = {t.id: t.name for t in Team.query.filter_by(event_id=event.id).all()}
         rows.append({'event': event, 'matches': matches, 'teams': teams, 'team_count': len(teams), 'selected_round': round_no})
     return render_template('multi_event_print_score_sheets.html', events=events, rows=rows, selected_round=selected_round, event_round_map=event_round_map)
+
+
+@app.route('/multi-manage/print-standings')
+@login_required
+@roles_required('superadmin')
+def multi_event_print_standings():
+    selected_event_ids = _selected_event_ids_from_request()
+    events = _beta_selected_manage_events(selected_event_ids)
+    direct_advance_count = request.args.get('direct_advance_count', type=int) or 0
+    continue_count = request.args.get('continue_count', type=int) or 8
+    ab_a_team_count = request.args.get('ab_a_team_count', type=int)
+    competition_type = request.args.get('competition_type', '')
+    rows = []
+    for event in events:
+        standings_data = calculate_standings(event.id)
+        total_rows = len(standings_data)
+        ev_direct = request.args.get(f'event_direct_count_{event.id}', type=int)
+        ev_continue = request.args.get(f'event_continue_count_{event.id}', type=int)
+        ev_ab = request.args.get(f'event_ab_a_count_{event.id}', type=int)
+        ev_comp = (request.args.get(f'event_competition_type_{event.id}') or competition_type or '').strip()
+        dac = max(0, min(total_rows, int(ev_direct if ev_direct is not None else (direct_advance_count or 0))))
+        cc = max(0, min(total_rows - dac, int(ev_continue if ev_continue is not None else (continue_count or 0))))
+        num_qualified = dac + cc
+        a_count = ev_ab if ev_ab is not None else ab_a_team_count
+        if a_count is None:
+            a_count = (cc // 2) if cc > 1 else min(1, cc)
+        a_count = max(0, min(cc, int(a_count or 0)))
+        rows.append({
+            'event': event,
+            'standings': standings_data,
+            'direct_advance_count': dac,
+            'continue_count': cc,
+            'num_qualified_teams': num_qualified,
+            'ab_a_team_count': a_count,
+            'competition_type': ev_comp,
+        })
+    return render_template(
+        'multi_event_print_standings.html',
+        rows=rows,
+        direct_advance_count=direct_advance_count,
+        continue_count=continue_count,
+        ab_a_team_count=ab_a_team_count,
+        competition_type=competition_type,
+    )
+
+
+
+def _beta_latest_playoffs_for_events(event_ids):
+    if not event_ids:
+        return []
+    ids = []
+    for x in event_ids:
+        try:
+            ids.append(int(x))
+        except Exception:
+            pass
+    if not ids:
+        return []
+    placeholders = ','.join(f':eid{i}' for i in range(len(ids)))
+    params = {f'eid{i}': eid for i, eid in enumerate(ids)}
+    rows = db.session.execute(text(f"""
+        SELECT pc.*
+        FROM playoff_competitions pc
+        JOIN (
+            SELECT source_event_id, MAX(id) AS max_id
+            FROM playoff_competitions
+            WHERE source_event_id IN ({placeholders})
+            GROUP BY source_event_id
+        ) latest ON latest.max_id = pc.id
+        ORDER BY pc.source_event_id, pc.id
+    """), params).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _beta_playoff_pairs_for_round(playoff_id, round_id):
+    comp = db.session.execute(text("SELECT * FROM playoff_competitions WHERE id=:id"), {'id': playoff_id}).mappings().first()
+    rnd = db.session.execute(text("SELECT * FROM playoff_rounds WHERE id=:rid"), {'rid': round_id}).mappings().first()
+    slots = db.session.execute(text("SELECT * FROM playoff_slots WHERE round_id=:rid ORDER BY group_no, slot_no"), {'rid': round_id}).mappings().all()
+    score_rows = db.session.execute(text("SELECT * FROM playoff_scores WHERE round_id=:rid"), {'rid': round_id}).mappings().all()
+    score_map = {(int(s['group_no']), int(s['slot_no']), int(s['stage_no'])): s['score'] for s in score_rows}
+    by_group = {}
+    for slot in slots:
+        by_group.setdefault(int(slot['group_no']), []).append(dict(slot))
+    pairs = []
+    for group_no, gslots in by_group.items():
+        by_slot = {int(s['slot_no']): s for s in gslots}
+        # แสดงคู่ที่ต้องคีย์แบบง่าย: คู่ 1-2 และถ้ามี 3-4 ก็แสดงด้วย
+        for a_no, b_no, stage_no, label in ((1, 2, 1, 'คู่ที่ 1'), (3, 4, 1, 'คู่ที่ 2')):
+            a = by_slot.get(a_no); b = by_slot.get(b_no)
+            if not a or not b:
+                continue
+            if a.get('is_bye') and b.get('is_bye'):
+                continue
+            if a.get('is_bye') or b.get('is_bye'):
+                continue
+            pairs.append({
+                'playoff': comp, 'round': rnd, 'group_no': group_no, 'stage_no': stage_no,
+                'pair_label': label, 'a': a, 'b': b,
+                'score_a': score_map.get((group_no, a_no, stage_no)),
+                'score_b': score_map.get((group_no, b_no, stage_no)),
+                'court': a.get('court_name') or b.get('court_name') or '',
+            })
+    return pairs
+
+
+@app.route('/multi-playoff-score', methods=['GET', 'POST'])
+@login_required
+@roles_required('superadmin')
+def multi_playoff_score_center():
+    selected_event_ids = _selected_event_ids_from_request()
+    all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
+    if not selected_event_ids:
+        today = date.today()
+        selected_event_ids = [e.id for e in all_events if e.date == today][:12]
+    selected_events = _beta_selected_manage_events(selected_event_ids)
+    playoffs = _beta_latest_playoffs_for_events(selected_event_ids)
+
+    if request.method == 'POST':
+        saved = 0
+        changed_playoffs = set()
+        for key, raw in request.form.items():
+            if not key.startswith('score_'):
+                continue
+            # score_<playoff_id>_<round_id>_<group_no>_<slot_no>_<stage_no>
+            parts = key.split('_')
+            if len(parts) != 6:
+                continue
+            _, pid_s, rid_s, group_s, slot_s, stage_s = parts
+            pid = _as_int(pid_s); rid = _as_int(rid_s); group_no = _as_int(group_s); slot_no = _as_int(slot_s); stage_no = _as_int(stage_s)
+            db.session.execute(text("DELETE FROM playoff_scores WHERE round_id=:rid AND group_no=:g AND slot_no=:s AND stage_no=:st"), {'rid': rid, 'g': group_no, 's': slot_no, 'st': stage_no})
+            raw = (raw or '').strip()
+            if raw != '':
+                try:
+                    val = max(0, min(13, int(raw)))
+                except Exception:
+                    continue
+                db.session.execute(text("""
+                    INSERT INTO playoff_scores (round_id, group_no, slot_no, stage_no, score)
+                    VALUES (:rid, :g, :s, :st, :score)
+                """), {'rid': rid, 'g': group_no, 's': slot_no, 'st': stage_no, 'score': val})
+                saved += 1
+            changed_playoffs.add(pid)
+        db.session.commit()
+        for pid in changed_playoffs:
+            try:
+                socketio.emit('playoff_reload', {'playoff_id': pid}, to=f'playoff_{pid}')
+            except Exception:
+                pass
+        flash(f'บันทึกคะแนนเพลย์ออฟรวมแล้ว {saved} ช่อง', 'success')
+        return redirect(url_for('multi_playoff_score_center', events=','.join(map(str, selected_event_ids))))
+
+    rows = []
+    for comp in playoffs:
+        source_event = Event.query.get(comp.get('source_event_id'))
+        latest_round = db.session.execute(text("SELECT * FROM playoff_rounds WHERE playoff_id=:pid ORDER BY round_no DESC, id DESC LIMIT 1"), {'pid': comp['id']}).mappings().first()
+        if not latest_round:
+            continue
+        pairs = _beta_playoff_pairs_for_round(comp['id'], latest_round['id'])
+        for pair in pairs:
+            pair['source_event'] = source_event
+            rows.append(pair)
+    return render_template('multi_playoff_score_center.html', all_events=all_events, selected_event_ids=selected_event_ids, selected_events=selected_events, rows=rows)
+
+
 # ---------- end beta multi-event manager ----------
 
 
