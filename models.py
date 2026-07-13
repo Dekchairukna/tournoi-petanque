@@ -20,8 +20,12 @@ class User(UserMixin, db.Model):
     def has_roles(self, *roles):
         return self.role in roles
     
-    events = db.relationship("Event", backref="creator", lazy=True)
-
+    events = db.relationship(
+    "Event",
+    foreign_keys="Event.creator_id",
+    backref="creator",
+    lazy=True
+)
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
@@ -59,6 +63,11 @@ class Event(db.Model):
     field_max = db.Column(db.Integer, default=16)
     field_exclude = db.Column(db.String, default='')  # เช่น '3,7,11
     logo_filename = db.Column(db.Text)  # เก็บเป็น JSON list
+
+    # สถานะจบอีเว้นท์แบบ manual: ไม่เดาจากรอบล่าสุดล็อกครบแล้ว
+    is_finished = db.Column(db.Boolean, default=False, nullable=False)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    finished_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
     created_at = db.Column(db.DateTime, server_default=text('CURRENT_TIMESTAMP'), nullable=True)
 

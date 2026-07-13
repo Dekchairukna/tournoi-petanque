@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>รายงานผลการแข่งขัน - {{ source_event.name if source_event else view.competition.title }}</title>
+  <title>รายงานผลการแข่งขันรวมทุกอีเว้นท์</title>
   <style>
     :root{
       --ink:#111827;--muted:#64748b;--line:#111827;--soft:#f8fafc;
@@ -45,27 +45,71 @@
       .report-table th,.report-table td,.report-direct td,.report-qualified td,.report-eliminated td,.summary-banner,.match-card,.match-head,.match-score,.match-result,.final-card td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
     }
   </style>
+  <style>
+    .report-book-cover{page-break-after:always!important;break-after:page!important;display:flex;flex-direction:column;justify-content:center;text-align:center}
+    .report-book-cover h1{font-size:30px;margin:0 0 12px}
+    .report-book-cover h2{font-size:21px;margin:0 0 18px}
+    .book-event-list{max-width:760px;margin:20px auto 0;text-align:left}
+    .book-event-list li{padding:5px 0;font-size:15px}
+    .missing-box{max-width:760px;margin:18px auto;padding:12px 16px;border:1px solid #f59e0b;background:#fffbeb;text-align:left}
+    .event-divider{height:0;page-break-before:always;break-before:page}
+    @media print{.event-divider{display:block}}
+  </style>
 </head>
 <body>
   <div class="toolbar">
     <div>
-      <div class="toolbar-title">รายงานผลการแข่งขัน</div>
-      <div class="toolbar-sub">เลือกพิมพ์เฉพาะส่วน หรือพิมพ์รายงานทั้งหมดเป็นชุดเดียว</div>
+      <div class="toolbar-title">รายงานผลการแข่งขันรวมทุกอีเว้นท์</div>
+      <div class="toolbar-sub">รวมจากหน้า Print Report ล่าสุดของแต่ละอีเว้นท์ และพิมพ์/บันทึก PDF ครั้งเดียว</div>
     </div>
     <div class="toolbar-actions">
-      <select id="section-select" onchange="window.location.href=this.value">
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='all') }}" {% if report_type == 'all' %}selected{% endif %}>รายงานทั้งหมด</option>
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='summary') }}" {% if report_type == 'summary' %}selected{% endif %}>รายชื่อนักกีฬา / ทีมทั้งหมด</option>
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='standings') }}" {% if report_type == 'standings' %}selected{% endif %}>ตาราง Standing</option>
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='swiss') }}" {% if report_type == 'swiss' %}selected{% endif %}>ผลรอบแรก Swiss</option>
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='playoff') }}" {% if report_type == 'playoff' %}selected{% endif %}>รายงาน A/B หรือเพลย์ออฟ</option>
-        <option value="{{ url_for('playoff_print_report', playoff_id=view.competition.id, section='final') }}" {% if report_type == 'final' %}selected{% endif %}>ผลสรุป Final</option>
+      <select id="section-select" onchange="changeSection(this.value)">
+        <option value="all" {% if report_type == 'all' %}selected{% endif %}>รายงานทั้งหมด</option>
+        <option value="summary" {% if report_type == 'summary' %}selected{% endif %}>รายชื่อนักกีฬา / ทีมทั้งหมด</option>
+        <option value="standings" {% if report_type == 'standings' %}selected{% endif %}>ตาราง Standing</option>
+        <option value="swiss" {% if report_type == 'swiss' %}selected{% endif %}>ผลรอบแรก Swiss</option>
+        <option value="playoff" {% if report_type == 'playoff' %}selected{% endif %}>รายงาน A/B หรือเพลย์ออฟ</option>
+        <option value="final" {% if report_type == 'final' %}selected{% endif %}>ผลสรุป Final</option>
       </select>
-      <a class="btn btn-back" href="{{ url_for('playoff_detail', playoff_id=view.competition.id) }}#report">← กลับหน้าเพลย์ออฟ</a>
-      <button class="btn btn-print" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+      <a class="btn btn-back" href="{{ url_for('multi_event_manager', events=selected_event_ids|join(',')) }}">← กลับหน้าหลายอีเว้นท์</a>
+      <button class="btn btn-print" onclick="window.print()">พิมพ์ / บันทึก PDF ทั้งหมด</button>
     </div>
   </div>
 
-  {% include "_playoff_report_sections.html" %}
+  <main class="print-wrap">
+    <section class="report-page report-book-cover">
+      <h1>รายงานผลการแข่งขันรวม</h1>
+      <h2>ทั้งหมด {{ reports|length }} อีเว้นท์</h2>
+      <ol class="book-event-list">
+        {% for report in reports %}
+        <li>{{ report.source_event.name if report.source_event else report.view.competition.title }}</li>
+        {% endfor %}
+      </ol>
+      {% if missing_events %}
+      <div class="missing-box">
+        <b>อีเว้นท์ที่ยังไม่ถูกรวม เพราะยังไม่มีระบบจัดต่อ/Print Report:</b>
+        {% for event in missing_events %}<div>• {{ event.name }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="page-footer">สารบัญรายงานรวม</div>
+    </section>
+  </main>
+
+  {% for report in reports %}
+    {% if not loop.first %}<div class="event-divider"></div>{% endif %}
+    {% with view=report.view, source_event=report.source_event, source_teams=report.source_teams,
+            source_report=report.source_report, playoff_report_pages=report.playoff_report_pages,
+            final_ranking_preview=report.final_ranking_preview, report_type=report.report_type %}
+      {% include "_playoff_report_sections.html" %}
+    {% endwith %}
+  {% endfor %}
+
+  <script>
+    function changeSection(section) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('section', section);
+      window.location.search = params.toString();
+    }
+  </script>
 </body>
 </html>

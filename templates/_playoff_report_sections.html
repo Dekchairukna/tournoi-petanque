@@ -1,0 +1,104 @@
+  {% macro header(extra='') %}
+    <div class="report-header">
+      <h1>{{ source_event.name if source_event else view.competition.title }}</h1>
+      <h2>{{ extra }}</h2>
+      {% if source_event %}<div class="meta">ประเภท {{ source_event.category or '-' }} · เพศ {{ source_event.sex or '-' }} · รุ่น {{ source_event.age_group or '-' }}</div>{% endif %}
+    </div>
+  {% endmacro %}
+
+  <main class="print-wrap">
+    {% if report_type in ['all','summary'] %}
+    <section class="report-page">
+      {{ header('รายชื่อนักกีฬา / ทีมทั้งหมด') }}
+      {% if view.competition.report_note %}<div class="report-note">{{ view.competition.report_note }}</div>{% endif %}
+      {% set summary_rows = source_report.teams if source_report and source_report.teams else source_teams %}
+      <div class="summary-banner">รายชื่อนักกีฬา / ทีมทั้งหมด {{ summary_rows|length }} คน / ทีม</div>
+      <div class="team-list-grid">
+        {% for team in summary_rows %}
+          <div><span class="no">{{ loop.index }}.</span>{{ team.team_name if team.team_name is defined else team.name }}</div>
+        {% else %}<div class="empty">ยังไม่มีรายชื่อนักกีฬา / ทีม</div>{% endfor %}
+      </div>
+      <div class="page-footer">รายชื่อนักกีฬา / ทีมทั้งหมด</div>
+    </section>
+    {% endif %}
+
+    {% if report_type in ['all','standings'] and source_report.standings %}
+      {% for standing_page in source_report.standings|batch(38, none) %}
+      <section class="report-page">
+        {{ header('รายงานผลจัดลำดับ / Standing') }}
+        <table class="report-table standing-table">
+          <thead><tr><th>อันดับ</th><th>ชื่อทีม / นักกีฬา</th><th>คะแนน</th><th>BHN</th><th>fBHN</th><th>Point Diff</th><th>หมายเหตุ</th></tr></thead>
+          <tbody>
+          {% for row in standing_page if row %}
+            {% set st = (row.status or '')|trim %}
+            <tr class="{% if st.startswith('ตัวแทน') %}report-direct{% elif 'เข้ารอบ' in st or 'จัดแข่งต่อ' in st or 'อยู่ในสาย' in st %}report-qualified{% else %}report-eliminated{% endif %}">
+              <td>{{ row.rank }}</td><td class="team">{{ row.team_name }}</td><td>{{ row.score }}</td><td>{{ row.buchholz }}</td><td>{{ row.final_buchholz }}</td><td>{{ row.point_for }} : {{ row.point_against }}</td><td><b>{{ row.status }}</b></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <div class="note">สีเขียว = ไปต่อ · สีเหลือง = ได้สิทธิ์ตามเงื่อนไข · สีแดง = ตกรอบ</div>
+        <div class="page-footer">Standing หน้า {{ loop.index }}</div>
+      </section>
+      {% endfor %}
+    {% endif %}
+
+    {% if report_type in ['all','swiss'] %}
+      {% for sr in source_report.rounds %}
+      <section class="report-page">
+        {{ header('ผลการแข่งขันรอบแรก Swiss · ครั้งที่ ' ~ sr.round_no) }}
+        <table class="report-table swiss-table">
+          <thead><tr><th>สนาม</th><th>ทีม 1</th><th>ทีม 2</th><th>คะแนน</th><th>ผลการแข่งขัน</th></tr></thead>
+          <tbody>{% for m in sr.matches %}<tr><td>{{ m.field }}</td><td class="team">{{ m.team1 }}</td><td class="team">{{ m.team2 }}</td><td>{{ m.score }}</td><td>{{ m.result }}</td></tr>{% endfor %}</tbody>
+        </table>
+        <div class="page-footer">Swiss ครั้งที่ {{ sr.round_no }}</div>
+      </section>
+      {% endfor %}
+    {% endif %}
+
+    {% if report_type in ['all','playoff'] %}
+      {% for page in playoff_report_pages %}
+      <section class="report-page round-page">
+        {{ header(page.round_name) }}
+        <div class="round-meta">ระบบ {{ page.system }}{% if page.pairing_method %} · การประกบคู่ {{ page.pairing_method }}{% endif %}</div>
+        <div class="match-grid">
+          {% for row in page.rows %}
+          <article class="match-card {% if 'A/B' in page.system %}{% if 'B' in row.label %}ab-b{% else %}ab-a{% endif %}{% elif 'ดับเบิ้ล' in page.system %}double{% else %}knockout{% endif %}">
+            <div class="match-head">
+              <div>สาย {{ row.group_no }}</div>
+              <div>{% if row.court %}สนาม {{ row.court }}{% else %}สนาม ........{% endif %}<div class="match-label">{{ row.label }}</div></div>
+              <div class="match-head-result">ผลการแข่งขัน</div>
+            </div>
+            {% set score_parts = row.score.split(' - ') %}
+            <div class="match-body">
+              <div class="match-team {{ row.team1_class|default('') }}">{{ row.team1 }}</div><div class="match-score {% if row.result == row.team1 %}winner{% endif %}">{{ score_parts[0] if score_parts else '' }}</div>
+              <div class="match-team {{ row.team2_class|default('') }}">{{ row.team2 }}</div><div class="match-score {% if row.result == row.team2 %}winner{% endif %}">{{ score_parts[1] if score_parts|length > 1 else '' }}</div>
+            </div>
+            <div class="match-result">ผู้ชนะ: <b>{{ row.result or '................................' }}</b></div>
+          </article>
+          {% else %}<div class="empty">ยังไม่มีข้อมูลการแข่งขันรอบนี้</div>{% endfor %}
+        </div>
+        <div class="page-footer">{{ page.round_name }}</div>
+      </section>
+      {% endfor %}
+    {% endif %}
+
+    {% if report_type in ['all','final'] %}
+    <section class="report-page">
+      {{ header('สรุปผลการแข่งขัน Final') }}
+      <div class="final-card">
+        <table class="report-table">
+          <thead><tr><th>{% if view.competition.competition_type == 'ab_ladder' %}ลำดับผู้ผ่านการคัดเลือก{% else %}อันดับ{% endif %}</th><th>ชื่อทีม / นักกีฬา</th></tr></thead>
+          <tbody>
+          {% if final_ranking_preview %}
+            {% for row in final_ranking_preview %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td><td>{{ row.team_name }}</td></tr>{% endfor %}
+          {% else %}
+            {% for n in range(1,5) %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ {{ n }}{% else %}อันดับ {{ n }}{% endif %}</td><td>................................................................................</td></tr>{% endfor %}
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="page-footer">สรุปผลการแข่งขัน</div>
+    </section>
+    {% endif %}
+  </main>

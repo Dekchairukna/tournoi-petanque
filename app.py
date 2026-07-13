@@ -167,7 +167,18 @@ def ensure_runtime_columns():
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS score_ends TEXT"))
         db.session.execute(text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS scorecard_token VARCHAR(80)"))
         db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_matches_scorecard_token ON matches (scorecard_token)"))
+        db.session.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS is_finished BOOLEAN DEFAULT FALSE NOT NULL"))
+        db.session.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS finished_at TIMESTAMP"))
+        db.session.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS finished_by_id INTEGER"))
     else:
+        event_existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(events)"))}
+        if 'is_finished' not in event_existing:
+            db.session.execute(text("ALTER TABLE events ADD COLUMN is_finished BOOLEAN DEFAULT 0 NOT NULL"))
+        if 'finished_at' not in event_existing:
+            db.session.execute(text("ALTER TABLE events ADD COLUMN finished_at DATETIME"))
+        if 'finished_by_id' not in event_existing:
+            db.session.execute(text("ALTER TABLE events ADD COLUMN finished_by_id INTEGER"))
+
         existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
         if 'pending_team1_score' not in existing:
             db.session.execute(text("ALTER TABLE matches ADD COLUMN pending_team1_score INTEGER"))
@@ -698,35 +709,28 @@ def manual_pairing(event_id, round_num):
 
 @app.route("/")
 def index():
-    today = date.today()
-
     all_events = Event.query.order_by(Event.date.desc()).all()
 
-    upcoming_events = []
+    active_events = []
     finished_events_by_year = defaultdict(list)
 
     for event in all_events:
-        latest_round = db.session.query(db.func.max(Match.round)).filter(Match.event_id == event.id).scalar()
-        matches = Match.query.filter_by(event_id=event.id, round=latest_round).all()
-
-        is_finished = all(m.is_locked for m in matches) if matches else False
-
-        if not is_finished:
-            upcoming_events.append(event)
-        else:
+        # ใช้สถานะจบอีเว้นท์ที่กดเองเท่านั้น
+        # ไม่เดาจากรอบล่าสุดล็อกครบแล้ว เพื่อกันรายการที่เพิ่งคีย์ครบบางรอบโดดลงกลุ่มจบเอง
+        if getattr(event, 'is_finished', False):
             finished_events_by_year[(event.date.year if event.date else 0)].append(event)
+        else:
+            active_events.append(event)
 
-    # เรียงปีจากใหม่ -> เก่า
     finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
 
     return render_template(
         "index.html",
-        upcoming_events=sorted(upcoming_events, key=lambda e: e.date or date.max),
+        upcoming_events=sorted(active_events, key=lambda e: (e.date or date.max, e.name or '', e.id)),
         finished_events_by_year=finished_events_by_year,
-        events=upcoming_events + [e for year in finished_events_by_year.values() for e in year]  # รวมรายการทั้งหมด
+        events=active_events + [e for year in finished_events_by_year.values() for e in year]
     )
 
-    
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -847,6 +851,40 @@ def event_detail(event_id):
         matches_round_1=matches_round_1,  # ✅ ส่งไปด้วยหากใช้
         active_playoffs=active_playoffs
     )
+
+
+@app.route('/event/<int:event_id>/finish', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def finish_event(event_id):
+    event = db.session.get(Event, event_id)
+    if not event:
+        flash('ไม่พบอีเว้นท์', 'warning')
+        return redirect(url_for('index'))
+
+    event.is_finished = True
+    event.finished_at = datetime.now()
+    event.finished_by_id = current_user.id
+    db.session.commit()
+    flash(f'จบอีเว้นท์แล้ว: {event.name}', 'success')
+    return redirect(url_for('event_detail', event_id=event.id))
+
+
+@app.route('/event/<int:event_id>/reopen', methods=['POST'])
+@login_required
+@roles_required('admin', 'superadmin')
+def reopen_event(event_id):
+    event = db.session.get(Event, event_id)
+    if not event:
+        flash('ไม่พบอีเว้นท์', 'warning')
+        return redirect(url_for('index'))
+
+    event.is_finished = False
+    event.finished_at = None
+    event.finished_by_id = None
+    db.session.commit()
+    flash(f'เปิดอีเว้นท์กลับมาใช้งานแล้ว: {event.name}', 'success')
+    return redirect(url_for('event_detail', event_id=event.id))
 
 
 from flask import flash
@@ -5827,30 +5865,88 @@ def playoff_detail(playoff_id):
     )
 
 
-@app.route('/playoff/<int:playoff_id>/print')
-@login_required
-def playoff_print_report(playoff_id):
+def _playoff_print_report_context(playoff_id, report_type='all'):
+    """Build the existing playoff print-report data without rendering a page.
+
+    The single-event report and the multi-event report book both use this helper,
+    so report logic stays in one place and the old report remains unchanged.
+    """
     view = _fetch_playoff(playoff_id)
     if not view:
-        flash('ไม่พบระบบแข่งขันต่อ', 'danger')
-        return redirect(url_for('index'))
+        return None
     source_event = Event.query.get(view['competition']['source_event_id'])
     source_teams = _playoff_source_teams(playoff_id)
     qualified_ids = [t.get('id') for t in source_teams]
     source_status_map = _playoff_source_status_map(view, qualified_ids)
-    source_report = _source_event_full_report(source_event.id if source_event else None, qualified_ids, source_status_map)
-    report_type = (request.args.get('section') or 'all').strip().lower()
+    source_report = _source_event_full_report(
+        source_event.id if source_event else None,
+        qualified_ids,
+        source_status_map,
+    )
     allowed_report_types = {'all', 'summary', 'standings', 'swiss', 'playoff', 'final'}
+    report_type = (report_type or 'all').strip().lower()
     if report_type not in allowed_report_types:
         report_type = 'all'
+    return {
+        'playoff_id': playoff_id,
+        'view': view,
+        'source_event': source_event,
+        'source_teams': source_teams,
+        'source_report': source_report,
+        'playoff_report_pages': _playoff_round_report_pages(view),
+        'final_ranking_preview': _final_ranking_preview(view),
+        'report_type': report_type,
+    }
+
+
+@app.route('/playoff/<int:playoff_id>/print')
+@login_required
+def playoff_print_report(playoff_id):
+    context = _playoff_print_report_context(playoff_id, request.args.get('section') or 'all')
+    if not context:
+        flash('ไม่พบระบบแข่งขันต่อ', 'danger')
+        return redirect(url_for('index'))
+    return render_template('playoff_print_report.html', **context)
+
+
+@app.route('/multi-manage/print-final-reports')
+@login_required
+@roles_required('superadmin')
+def multi_event_print_final_reports():
+    """Print one report book containing the latest playoff report of each selected event."""
+    selected_event_ids = _selected_event_ids_from_request()
+    events = _beta_selected_manage_events(selected_event_ids)
+    report_type = (request.args.get('section') or 'all').strip().lower()
+
+    latest_playoffs = _beta_latest_playoffs_for_events(selected_event_ids)
+    playoff_by_event = {
+        int(row['source_event_id']): int(row['id'])
+        for row in latest_playoffs
+        if row.get('source_event_id') is not None and row.get('id') is not None
+    }
+
+    reports = []
+    missing_events = []
+    for event in events:
+        playoff_id = playoff_by_event.get(int(event.id))
+        if not playoff_id:
+            missing_events.append(event)
+            continue
+        context = _playoff_print_report_context(playoff_id, report_type)
+        if context:
+            reports.append(context)
+        else:
+            missing_events.append(event)
+
+    if not reports:
+        flash('อีเว้นท์ที่เลือกยังไม่มีระบบจัดต่อ/รายงานเพลย์ออฟสำหรับพิมพ์', 'warning')
+        return redirect(url_for('multi_event_manager', events=','.join(map(str, selected_event_ids))))
+
     return render_template(
-        'playoff_print_report.html',
-        view=view,
-        source_event=source_event,
-        source_teams=source_teams,
-        source_report=source_report,
-        playoff_report_pages=_playoff_round_report_pages(view),
-        final_ranking_preview=_final_ranking_preview(view),
+        'multi_event_print_final_reports.html',
+        reports=reports,
+        missing_events=missing_events,
+        selected_event_ids=selected_event_ids,
         report_type=report_type,
     )
 

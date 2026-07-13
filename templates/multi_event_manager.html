@@ -283,6 +283,7 @@
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-outline-dark fw-bold" target="_blank" id="printPairsLink" href="{{ url_for('multi_event_print_pairings', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นใบประกบคู่ทั้งหมด</a>
         <a class="btn btn-outline-dark fw-bold" target="_blank" id="printScoresLink" href="{{ url_for('multi_event_print_score_sheets', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นสกอร์ชีททั้งหมด</a>
+        <a class="btn btn-primary fw-bold" target="_blank" id="printFinalReportsLink" href="{{ url_for('multi_event_print_final_reports', events=selected_events_param, section='all') }}">รายงานผลรวมทุกอีเว้นท์</a>
       </div>
     </div>
   </form>
@@ -340,11 +341,13 @@ function refreshPrintLinks() {
   const scores = document.getElementById('printScoresLink');
   const standings = document.getElementById('printStandingsLink');
   const playoffScore = document.getElementById('playoffScoreLink');
+  const finalReports = document.getElementById('printFinalReportsLink');
   const standingParams = collectStandingParams();
   if (pairs) pairs.href = `{{ url_for('multi_event_print_pairings') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
   if (scores) scores.href = `{{ url_for('multi_event_print_score_sheets') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
   if (standings) standings.href = `{{ url_for('multi_event_print_standings') }}?events=${events}&${standingParams}`;
   if (playoffScore) playoffScore.href = `{{ url_for('multi_playoff_score_center') }}?events=${events}`;
+  if (finalReports) finalReports.href = `{{ url_for('multi_event_print_final_reports') }}?events=${events}&section=all`;
 }
 document.addEventListener('change', function(e) {
   if (e.target.matches('.event-box, .event-round-select, .event-field-start, select[name="round"], .standing-direct, .standing-continue, .standing-ab-a, .event-competition-type, .event-pairing-method, .event-stage-name, .event-swiss-rounds, #directAdvanceCount, #continueCount, #abATeamCount, #competitionType')) refreshPrintLinks();
