@@ -118,35 +118,59 @@
       <h5><span class="status-dot"></span>กำลังดำเนินการแข่งขัน</h5>
       <span class="badge rounded-pill text-bg-success">{{ upcoming_events|length }} อีเว้นท์</span>
     </div>
-    <div class="table-responsive">
-      <table class="table table-borderless table-custom">
-        <thead>
-          <tr>
-            <th>ชื่อรายการ</th><th>จำนวน<br>รอบ</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th>
-          </tr>
-        </thead>
-        <tbody class="filter-scope">
-          {% for event in upcoming_events %}
-          <tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}">
-            <td data-label="ชื่อรายการ" class="event-name-cell">{{ event.name }}</td>
-            <td data-label="จำนวนรอบ">{{ event.rounds }}</td>
-            <td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-            <td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td>
-            <td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td>
-            <td data-label="รุ่น">{{ event.age_group or '-' }}</td>
-            <td data-label="จัดการ" class="action-cell">
-              <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1"><i class="bi bi-box-arrow-in-right"></i> เข้าร่วม</a>
-              {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
-              <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1"><i class="bi bi-pencil-square"></i> แก้ไข</a>
-              <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')"><i class="bi bi-trash"></i> ลบ</a>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}<tr><td colspan="7" class="text-center text-muted">ไม่มีรายการแข่งขันที่กำลังดำเนินการ</td></tr>{% endfor %}
-          <tr class="filter-empty"><td colspan="7" class="text-center text-muted">ไม่พบอีเว้นท์ที่ตรงกับตัวกรอง</td></tr>
-        </tbody>
-      </table>
+
+    {% if active_events_by_month %}
+    <div id="activeMonthCarousel" class="carousel slide month-shell" data-bs-interval="false" data-bs-touch="true">
+      <div class="carousel-inner">
+        {% for month_data in active_events_by_month %}
+        <div class="carousel-item {% if loop.first %}active{% endif %}">
+          <div class="month-header">
+            <div>
+              <p class="month-title">{{ month_data.month_name }} {{ month_data.year + 543 if month_data.year else '' }}</p>
+              <div class="small text-muted">ล่าสุดก่อน · {{ month_data.event_count }} อีเว้นท์ · เดือนที่ {{ loop.index }} จาก {{ active_events_by_month|length }}</div>
+            </div>
+            {% if active_events_by_month|length > 1 %}
+            <div class="month-nav no-print">
+              <button type="button" data-bs-target="#activeMonthCarousel" data-bs-slide="prev" aria-label="เดือนก่อนหน้า"><i class="bi bi-chevron-left"></i></button>
+              <button type="button" data-bs-target="#activeMonthCarousel" data-bs-slide="next" aria-label="เดือนถัดไป"><i class="bi bi-chevron-right"></i></button>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-borderless table-custom">
+              <thead>
+                <tr><th>ชื่อรายการ</th><th>จำนวน<br>รอบ</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th></tr>
+              </thead>
+              <tbody class="filter-scope">
+                {% for event in month_data.events %}
+                <tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}">
+                  <td data-label="ชื่อรายการ" class="event-name-cell">{{ event.name }}</td>
+                  <td data-label="จำนวนรอบ">{{ event.rounds }}</td>
+                  <td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+                  <td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td>
+                  <td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td>
+                  <td data-label="รุ่น">{{ event.age_group or '-' }}</td>
+                  <td data-label="จัดการ" class="action-cell">
+                    <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1"><i class="bi bi-box-arrow-in-right"></i> เข้าร่วม</a>
+                    {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+                    <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1"><i class="bi bi-pencil-square"></i> แก้ไข</a>
+                    <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')"><i class="bi bi-trash"></i> ลบ</a>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+                <tr class="filter-empty"><td colspan="7" class="text-center text-muted">ไม่พบอีเว้นท์ในเดือนนี้ที่ตรงกับตัวกรอง</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
     </div>
+    {% else %}
+    <div class="empty-state">ไม่มีรายการแข่งขันที่กำลังดำเนินการ</div>
+    {% endif %}
   </section>
 
   <section class="section-panel">

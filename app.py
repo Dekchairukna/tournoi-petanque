@@ -753,10 +753,15 @@ def index():
         else:
             active_events.append(event)
 
-    # เรียงอีเว้นท์กำลังดำเนินการ: วันที่ใกล้สุดก่อน และรายการไม่มีวันที่ไว้ท้ายสุด
+    # เรียงอีเว้นท์กำลังดำเนินการ: รายการล่าสุดขึ้นก่อน และรายการไม่มีวันที่ไว้ท้ายสุด
     active_events = sorted(
         active_events,
-        key=lambda e: (e.date is None, e.date or date.max, (e.name or '').casefold(), e.id)
+        key=lambda e: (
+            e.date is not None,
+            e.date or date.min,
+            e.id,
+        ),
+        reverse=True,
     )
 
     thai_months = {
@@ -764,6 +769,28 @@ def index():
         4: 'เมษายน', 5: 'พฤษภาคม', 6: 'มิถุนายน', 7: 'กรกฎาคม',
         8: 'สิงหาคม', 9: 'กันยายน', 10: 'ตุลาคม', 11: 'พฤศจิกายน', 12: 'ธันวาคม'
     }
+
+    # จัดกลุ่มอีเว้นท์ที่กำลังดำเนินการตามปี/เดือน โดยเดือนล่าสุดอยู่ก่อน
+    active_nested = defaultdict(list)
+    for event in active_events:
+        year = event.date.year if event.date else 0
+        month = event.date.month if event.date else 0
+        active_nested[(year, month)].append(event)
+
+    active_events_by_month = []
+    for year, month in sorted(active_nested.keys(), reverse=True):
+        month_events = sorted(
+            active_nested[(year, month)],
+            key=lambda e: (e.date or date.min, e.id),
+            reverse=True,
+        )
+        active_events_by_month.append({
+            'year': year,
+            'month': month,
+            'month_name': thai_months.get(month, 'ไม่ระบุเดือน'),
+            'events': month_events,
+            'event_count': len(month_events),
+        })
 
     finished_events_by_year_month = {}
     for year in sorted(finished_nested.keys(), reverse=True):
@@ -790,6 +817,7 @@ def index():
     return render_template(
         "index.html",
         upcoming_events=active_events,
+        active_events_by_month=active_events_by_month,
         finished_events_by_year_month=finished_events_by_year_month,
         category_options=category_options,
         sex_options=sex_options,
