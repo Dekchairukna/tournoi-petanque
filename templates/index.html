@@ -3,328 +3,239 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap');
 
-  body {
-    font-family: 'Prompt', 'Segoe UI', sans-serif;
-    font-size: clamp(14px, 1.5vw, 18px);
-    line-height: 1.6;
-    color: #333;
-    background-color: #f9f9fb;
-    padding: 0;
-    margin: 0;
-  }
+  body { font-family: 'Prompt', 'Segoe UI', sans-serif; background: #f5f7fb; color: #273142; }
+  .event-home { max-width: 1500px; margin: 0 auto; padding: 1.25rem; }
+  .page-title { font-weight: 700; margin: 0; }
+  .page-subtitle { color: #6c757d; margin: .25rem 0 0; }
+  .btn-custom { border-radius: .7rem; padding: .48rem .9rem; font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; }
+  .btn-yellow { background: #fff3bf; color: #664d03; border: 0; }
+  .btn-blue { background: #d0ebff; color: #084298; border: 0; }
+  .btn-red { background: #ffc9c9; color: #842029; border: 0; }
+  .btn-green { background: #d3f9d8; color: #2b8a3e; border: 0; }
+  .btn-dark-outline { background: #fff; color: #212529; border: 1px solid #ced4da; }
+  .section-panel { background: #fff; border: 1px solid #e7ebf1; border-radius: 1rem; box-shadow: 0 6px 22px rgba(36, 52, 71, .06); padding: 1.1rem; }
+  .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+  .section-heading h5 { margin: 0; font-weight: 700; }
+  .status-dot { width: .65rem; height: .65rem; border-radius: 50%; display: inline-block; background: #20c997; box-shadow: 0 0 0 5px rgba(32,201,151,.13); margin-right: .5rem; }
 
-  h2,
-  h3,
-  h4,
-  .modal-title {
-    font-weight: 700;
-    color: #212529;
-    font-size: clamp(1.25rem, 2vw, 2rem);
-  }
+  .filter-bar { display: grid; grid-template-columns: minmax(240px, 1fr) 180px 180px auto; gap: .65rem; align-items: center; }
+  .filter-bar .form-control, .filter-bar .form-select { border-radius: .75rem; min-height: 44px; }
 
-  .card-header {
-    font-weight: 600;
-    font-size: clamp(1rem, 1.5vw, 1.2rem);
-  }
+  .table-responsive { overflow-x: auto; max-width: 100%; background: #f8f9fa; padding: 1rem; border-radius: .75rem; margin-bottom: 1rem; }
+  .table-custom { border-collapse: separate !important; border-spacing: 0 .5rem; width: 100%; background-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.05); border-radius: .5rem; overflow: hidden; }
+  .table-custom thead tr { background: #fff; color: #212529; }
+  .table-custom thead th { padding: .9rem 1rem; border: none; text-align: center; font-weight: 700; vertical-align: middle; }
+  .table-custom tbody tr { background: #fff; transition: background .2s ease; }
+  .table-custom tbody tr:hover { background: #e9f5ff; }
+  .table-custom tbody td { padding: .9rem 1rem; word-break: normal; overflow-wrap: anywhere; white-space: normal; text-align: center; vertical-align: middle; font-size: 1rem; }
+  .table-custom .event-name-cell { min-width: 310px; }
+  .table-custom .location-cell { min-width: 250px; }
+  .table-custom .date-cell { min-width: 115px; }
+  .table-custom .action-cell { min-width: 125px; }
+  .table-custom .btn-custom { justify-content: center; }
 
-  .form-label {
-    font-weight: 600;
-    color: #495057;
-    font-size: clamp(0.85rem, 1vw, 1rem);
-  }
+  .year-tabs { display: flex; flex-wrap: wrap; gap: .45rem; margin-bottom: 1rem; }
+  .year-tab { border: 1px solid #dbe2ea; background: #fff; border-radius: 999px; padding: .5rem 1rem; font-weight: 700; color: #495057; }
+  .year-tab.active { background: #212529; color: #fff; border-color: #212529; }
+  .year-pane { display: none; }
+  .year-pane.active { display: block; }
 
-  .container {
-    max-width: 1140px;
-    margin: 0 auto;
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
+  .month-shell { border-radius: 1rem; overflow: hidden; }
+  .month-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; background: linear-gradient(135deg,#eef4ff,#f8f1ff); padding: 1rem; border-radius: .9rem; margin-bottom: 1rem; }
+  .month-title { font-weight: 700; font-size: 1.2rem; margin: 0; }
+  .month-nav { display: flex; gap: .45rem; }
+  .month-nav button { width: 42px; height: 42px; border-radius: 50%; border: 1px solid #d5dce5; background: #fff; }
+  .month-stats { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: .65rem; margin-bottom: 1rem; }
+  .stat-card { background: #fff; border: 1px solid #e6ebf1; border-radius: .85rem; padding: .8rem; text-align: center; }
+  .stat-number { font-size: 1.35rem; font-weight: 700; }
+  .stat-label { color: #6c757d; font-size: .84rem; }
+  .carousel-item { padding: .15rem .1rem .5rem; }
+  .empty-state { text-align: center; color: #6c757d; padding: 2rem 1rem; border: 1px dashed #ccd4de; border-radius: .85rem; background: #fbfcfe; }
+  .filter-empty { display: none; }
 
-  .table-custom {
-    border-collapse: separate !important;
-    border-spacing: 0 0.5rem;
-    width: 100%;
-    background-color: #fff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    border-radius: 0.5rem;
-    overflow: hidden;
+  @media (max-width: 900px) {
+    .filter-bar { grid-template-columns: 1fr 1fr; }
+    .filter-bar .search-box { grid-column: 1 / -1; }
+    .month-stats { grid-template-columns: repeat(2, 1fr); }
   }
-
-  .table-custom thead tr {
-    background: #343a40;
-    color: #fff;
-    text-transform: uppercase;
-  }
-
-  .table-custom thead th {
-    padding: 0.75rem 1rem;
-    border: none;
-    text-align: center;
-  }
-
-  .table-custom tbody tr {
-    background: #fff;
-    transition: background 0.3s ease;
-  }
-
-  .table-custom tbody tr:hover {
-    background: #e9f5ff;
-  }
-
-  .table-custom tbody td {
-    padding: 0.75rem 1rem;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    white-space: normal;
-    text-align: left;
-    max-width: 100%;
-    font-size: 1rem;
-  }
-
-  .btn-custom {
-    font-size: 0.9rem;
-    border-radius: 0.65rem;
-    padding: 0.4rem 1rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.25s ease;
-  }
-
-  .btn-yellow {
-    background: #fff3bf;
-    color: #664d03;
-  }
-
-  .btn-yellow:hover {
-    background: #ffe066;
-    color: #000;
-  }
-
-  .btn-blue {
-    background: #d0ebff;
-    color: #084298;
-  }
-
-  .btn-blue:hover {
-    background: #74c0fc;
-    color: #fff;
-  }
-
-  .btn-red {
-    background: #ffc9c9;
-    color: #842029;
-  }
-
-  .btn-red:hover {
-    background: #ff6b6b;
-    color: #fff;
-  }
-
-  .btn-green {
-    background: #d3f9d8;
-    color: #2b8a3e;
-  }
-
-  .btn-green:hover {
-    background: #69db7c;
-    color: #fff;
-  }
-
-  .btn-dark-outline {
-    background: transparent;
-    color: #212529;
-    border: 1px solid #212529;
-  }
-
-  .btn-dark-outline:hover {
-    background: #212529;
-    color: #fff;
-  }
-
-  .modal-content {
-    border-radius: 1rem;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
-  }
-
-  .modal-header.bg-info {
-    background: linear-gradient(135deg, #7b4397, #dc2430);
-    color: #fff;
-  }
-
-  .table-responsive {
-    overflow-x: auto;
-    max-width: 100%;
-    background: #f8f9fa;
-    padding: 1rem;
-    border-radius: 0.75rem;
-    margin-bottom: 2rem;
-  }
-
   @media (max-width: 767.98px) {
-    .table-custom thead {
-      display: none;
-    }
-
-    .table-custom tbody tr {
-      display: block;
-      margin-bottom: 1rem;
-      border-radius: 0.5rem;
-      padding: 1rem;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-
-    .table-custom tbody td {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid #ddd;
-      font-size: 0.85rem;
-    }
-
-    .table-custom tbody td:last-child {
-      border-bottom: none;
-    }
-
-    .table-custom tbody td::before {
-      content: attr(data-label);
-      font-weight: 600;
-      color: #6c757d;
-      flex: 0 0 40%;
-      white-space: nowrap;
-      padding-right: 0.5rem;
-    }
-
-    .table-custom tbody td>* {
-      flex: 1 1 60%;
-      min-width: 0;
-    }
+    .event-home { padding: .8rem; }
+    .filter-bar { grid-template-columns: 1fr; }
+    .filter-bar .search-box { grid-column: auto; }
+    .month-stats { grid-template-columns: repeat(2, 1fr); }
+    .section-heading { align-items: flex-start; flex-direction: column; }
+    .table-custom thead { display: none; }
+    .table-custom tbody tr { display: block; margin-bottom: 1rem; border-radius: .5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .table-custom tbody td { display: flex; justify-content: space-between; align-items: flex-start; padding: .5rem 0; border-bottom: 1px solid #ddd; font-size: .9rem; min-width: 0 !important; }
+    .table-custom tbody td:last-child { border-bottom: none; }
+    .table-custom tbody td::before { content: attr(data-label); font-weight: 600; color: #6c757d; flex: 0 0 40%; white-space: nowrap; padding-right: .5rem; text-align: left; }
+    .table-custom tbody td > * { flex: 1 1 60%; min-width: 0; }
+  }
+  @media print {
+    .no-print, .filter-bar, .year-tabs, .month-nav { display: none !important; }
+    .year-pane { display: block !important; }
+    .carousel-item { display: block !important; opacity: 1 !important; position: static !important; float: none !important; }
+    .table-custom tbody tr { break-inside: avoid; }
   }
 </style>
 
-
-<div class="container-fluid my-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="fw-semibold">รายการแข่งขันทั้งหมด</h4>
+<div class="event-home">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4 no-print">
+    <div>
+      <h3 class="page-title">รายการแข่งขัน</h3>
+      <p class="page-subtitle">จัดการอีเว้นท์ที่กำลังแข่งขัน และเปิดดูประวัติตามปีและเดือน</p>
+    </div>
     <div class="d-flex flex-wrap gap-2 justify-content-end">
       {% if current_user.is_authenticated and current_user.role == 'superadmin' %}
-      <a href="{{ url_for('download_event_import_template') }}" class="btn btn-dark-outline btn-custom">
-        <i class="bi bi-file-earmark-excel"></i> โหลดเทมเพลต
-      </a>
-      <button class="btn btn-green btn-custom" data-bs-toggle="modal" data-bs-target="#bulkImportEventModal">
-        <i class="bi bi-upload"></i> Import หลายอีเว้นท์
-      </button>
-      <a href="{{ url_for('multi_event_manager') }}" class="btn btn-blue btn-custom">
-        <i class="bi bi-diagram-3"></i> จัดการอีเว้นท์รวม
-      </a>
+      <a href="{{ url_for('download_event_import_template') }}" class="btn btn-dark-outline btn-custom"><i class="bi bi-file-earmark-excel"></i> โหลดเทมเพลต</a>
+      <button class="btn btn-green btn-custom" data-bs-toggle="modal" data-bs-target="#bulkImportEventModal"><i class="bi bi-upload"></i> Import หลายอีเว้นท์</button>
+      <a href="{{ url_for('multi_event_manager') }}" class="btn btn-blue btn-custom"><i class="bi bi-diagram-3"></i> จัดการอีเว้นท์รวม</a>
       {% endif %}
-      <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal">
-        <i class="bi bi-plus-lg"></i> เพิ่มรายการ
-      </button>
+      <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal"><i class="bi bi-plus-lg"></i> เพิ่มรายการ</button>
     </div>
   </div>
 
-  <h5 class="mb-3">รายการแข่งขันที่กำลังจะมาถึง</h5>
-  <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
-    <table class="table table-borderless table-custom">
-      <thead>
-        <tr>
-          <th>ชื่อรายการ</th>
-          <th>จำนวนรอบ</th>
-          <th>วันที่</th>
-          <th>สถานที่</th>
-          <th>ประเภท</th>
-          <th>รุ่น</th>
-          <th>จัดการ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for event in upcoming_events %}
-        <tr>
-          <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
-          <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
-          <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-          <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
-          <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}{{ event.sex or '-' }}</td>
-          
-          <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
-          <td data-label="จัดการ" class="text-center">
-            <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
-              <i class="bi bi-box-arrow-in-right"></i> เข้าร่วม
-            </a>
-            {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
-            <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1">
-              <i class="bi bi-pencil-square"></i> แก้ไข
-            </a>
-            <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
-              onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
-              <i class="bi bi-trash"></i> ลบ
-            </a>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="7" class="text-center text-muted">ไม่มีรายการแข่งขันที่กำลังจะมาถึง</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="section-panel mb-4 no-print">
+    <div class="filter-bar">
+      <div class="search-box position-relative">
+        <i class="bi bi-search position-absolute top-50 translate-middle-y ms-3 text-muted"></i>
+        <input id="eventSearch" type="search" class="form-control ps-5" placeholder="ค้นหาชื่อรายการ สถานที่ รุ่น หรือประเภท">
+      </div>
+      <select id="categoryFilter" class="form-select">
+        <option value="">ทุกประเภท</option>
+        {% for category in category_options %}<option value="{{ category|lower }}">{{ category }}</option>{% endfor %}
+      </select>
+      <select id="sexFilter" class="form-select">
+        <option value="">ทุกเพศ</option>
+        {% for sex in sex_options %}<option value="{{ sex|lower }}">{{ sex }}</option>{% endfor %}
+      </select>
+      <button id="clearFilters" type="button" class="btn btn-outline-secondary btn-custom"><i class="bi bi-arrow-counterclockwise"></i> ล้างตัวกรอง</button>
+    </div>
   </div>
 
-  <h5 class="mb-3">รายการแข่งขันที่จบแล้ว</h5>
-  {% if finished_events_by_year %}
-  {% for year, events_in_year in finished_events_by_year.items() %}
-  <h6 class="mt-4">{{ year }}</h6>
-  <div class="table-responsive bg-light p-3 rounded shadow-sm mb-4">
-    <table class="table table-borderless table-custom">
-      <thead>
-        <tr>
-          <th>ชื่อรายการ</th>
-          <th>จำนวนรอบ</th>
-          <th>วันที่</th>
-          <th>สถานที่</th>
-          <th>ประเภท</th>
-          <th>เพศ</th>
-          <th>รุ่น</th>
-          <th>จัดการ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for event in events_in_year %}
-        <tr>
-          <td data-label="ชื่อรายการ" class="text-center">{{ event.name }}</td>
-          <td data-label="จำนวนรอบ" class="text-center">{{ event.rounds }}</td>
-          <td data-label="วันที่" class="text-center">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-          <td data-label="สถานที่" class="text-center">{{ event.location or '-' }}</td>
-          <td data-label="ประเภท" class="text-center">{{ event.category or '-' }}</td>
-          <td data-label="เพศ" class="text-center">{{ event.sex or '-' }}</td>
-          <td data-label="รุ่น" class="text-center">{{ event.age_group or '-' }}</td>
-          <td data-label="จัดการ" class="text-center">
-            <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1">
-              <i class="bi bi-box-arrow-in-right"></i> ดูผล
-            </a>
-            {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
-            <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1">
-              <i class="bi bi-pencil-square"></i> แก้ไข
-            </a>
-            <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom"
-              onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')">
-              <i class="bi bi-trash"></i> ลบ
-            </a>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endfor %}
-  {% else %}
-  <p class="text-muted">ยังไม่มีรายการแข่งขันที่จบแล้ว</p>
-  {% endif %}
+  <section class="section-panel mb-4">
+    <div class="section-heading">
+      <h5><span class="status-dot"></span>กำลังดำเนินการแข่งขัน</h5>
+      <span class="badge rounded-pill text-bg-success">{{ upcoming_events|length }} อีเว้นท์</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-borderless table-custom">
+        <thead>
+          <tr>
+            <th>ชื่อรายการ</th><th>จำนวน<br>รอบ</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th>
+          </tr>
+        </thead>
+        <tbody class="filter-scope">
+          {% for event in upcoming_events %}
+          <tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}">
+            <td data-label="ชื่อรายการ" class="event-name-cell">{{ event.name }}</td>
+            <td data-label="จำนวนรอบ">{{ event.rounds }}</td>
+            <td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
+            <td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td>
+            <td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td>
+            <td data-label="รุ่น">{{ event.age_group or '-' }}</td>
+            <td data-label="จัดการ" class="action-cell">
+              <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1"><i class="bi bi-box-arrow-in-right"></i> เข้าร่วม</a>
+              {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+              <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1"><i class="bi bi-pencil-square"></i> แก้ไข</a>
+              <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')"><i class="bi bi-trash"></i> ลบ</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}<tr><td colspan="7" class="text-center text-muted">ไม่มีรายการแข่งขันที่กำลังดำเนินการ</td></tr>{% endfor %}
+          <tr class="filter-empty"><td colspan="7" class="text-center text-muted">ไม่พบอีเว้นท์ที่ตรงกับตัวกรอง</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section-panel">
+    <div class="section-heading">
+      <h5><i class="bi bi-archive me-2"></i>ประวัติการแข่งขัน</h5>
+    </div>
+    {% if finished_events_by_year_month %}
+    <div class="year-tabs no-print">
+      {% for year in finished_events_by_year_month.keys() %}
+      <button type="button" class="year-tab {% if loop.first %}active{% endif %}" data-year-target="year-{{ year }}">{{ year + 543 if year else 'ไม่ระบุปี' }}</button>
+      {% endfor %}
+    </div>
+    {% for year, months in finished_events_by_year_month.items() %}
+    <div id="year-{{ year }}" class="year-pane {% if loop.first %}active{% endif %}">
+      <div id="monthCarousel-{{ year }}" class="carousel slide month-shell" data-bs-interval="false" data-bs-touch="true">
+        <div class="carousel-inner">
+          {% for month, month_data in months.items() %}
+          <div class="carousel-item {% if loop.first %}active{% endif %}">
+            <div class="month-header">
+              <div><p class="month-title">{{ month_data.month_name }} {{ year + 543 if year else '' }}</p><div class="small text-muted">เดือนที่ {{ loop.index }} จาก {{ months|length }}</div></div>
+              {% if months|length > 1 %}<div class="month-nav no-print"><button type="button" data-bs-target="#monthCarousel-{{ year }}" data-bs-slide="prev"><i class="bi bi-chevron-left"></i></button><button type="button" data-bs-target="#monthCarousel-{{ year }}" data-bs-slide="next"><i class="bi bi-chevron-right"></i></button></div>{% endif %}
+            </div>
+            <div class="month-stats">
+              <div class="stat-card"><div class="stat-number">{{ month_data.event_count }}</div><div class="stat-label">อีเว้นท์</div></div>
+              <div class="stat-card"><div class="stat-number">{{ month_data.team_count }}</div><div class="stat-label">ทีม/นักกีฬา</div></div>
+              <div class="stat-card"><div class="stat-number">{{ month_data.match_count }}</div><div class="stat-label">แมตช์</div></div>
+              <div class="stat-card"><div class="stat-number">{{ month_data.field_count }}</div><div class="stat-label">สนามที่ใช้รวม</div></div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-borderless table-custom">
+                <thead><tr><th>ชื่อรายการ</th><th>จำนวน<br>รอบ</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th></tr></thead>
+                <tbody class="filter-scope">
+                  {% for event in month_data.events %}
+                  <tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}">
+                    <td data-label="ชื่อรายการ" class="event-name-cell">{{ event.name }}</td><td data-label="จำนวนรอบ">{{ event.rounds }}</td><td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td><td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td><td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td><td data-label="รุ่น">{{ event.age_group or '-' }}</td>
+                    <td data-label="จัดการ" class="action-cell"><a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1"><i class="bi bi-box-arrow-in-right"></i> ดูผล</a>{% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}<a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1"><i class="bi bi-pencil-square"></i> แก้ไข</a><a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')"><i class="bi bi-trash"></i> ลบ</a>{% endif %}</td>
+                  </tr>
+                  {% endfor %}
+                  <tr class="filter-empty"><td colspan="7" class="text-center text-muted">ไม่พบอีเว้นท์ในเดือนนี้ที่ตรงกับตัวกรอง</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}<div class="empty-state">ยังไม่มีรายการแข่งขันที่จบแล้ว</div>{% endif %}
+  </section>
+
+<script>
+(function () {
+  const search = document.getElementById('eventSearch');
+  const category = document.getElementById('categoryFilter');
+  const sex = document.getElementById('sexFilter');
+  const clear = document.getElementById('clearFilters');
+
+  function normalize(value) { return (value || '').toString().trim().toLowerCase(); }
+  function applyFilters() {
+    const q = normalize(search && search.value);
+    const cat = normalize(category && category.value);
+    const sx = normalize(sex && sex.value);
+    document.querySelectorAll('.event-filter-item').forEach(card => {
+      const visible = (!q || normalize(card.dataset.search).includes(q)) &&
+                      (!cat || normalize(card.dataset.category) === cat) &&
+                      (!sx || normalize(card.dataset.sex) === sx);
+      card.style.display = visible ? '' : 'none';
+    });
+    document.querySelectorAll('.filter-scope').forEach(scope => {
+      const anyVisible = Array.from(scope.querySelectorAll('.event-filter-item')).some(item => item.style.display !== 'none');
+      const empty = scope.querySelector('.filter-empty');
+      if (empty) empty.style.display = anyVisible ? 'none' : '';
+    });
+  }
+  [search, category, sex].forEach(el => { if (el) el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', applyFilters); });
+  if (clear) clear.addEventListener('click', () => { search.value = ''; category.value = ''; sex.value = ''; applyFilters(); search.focus(); });
+
+  document.querySelectorAll('.year-tab').forEach(button => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('.year-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.year-pane').forEach(p => p.classList.remove('active'));
+      button.classList.add('active');
+      const pane = document.getElementById(button.dataset.yearTarget);
+      if (pane) pane.classList.add('active');
+    });
+  });
+})();
+</script>
 
   <!-- Modal Import หลายอีเว้นท์ -->
   <div class="modal fade" id="bulkImportEventModal" tabindex="-1" aria-labelledby="bulkImportEventModalLabel" aria-hidden="true">

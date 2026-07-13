@@ -709,28 +709,92 @@ def manual_pairing(event_id, round_num):
 
 @app.route("/")
 def index():
-    all_events = Event.query.order_by(Event.date.desc()).all()
+    """หน้าแรก: แยกอีเว้นท์ที่กำลังดำเนินการ และประวัติตามปี/เดือน"""
+    all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
+
+    event_ids = [event.id for event in all_events]
+    team_counts = {}
+    match_counts = {}
+    field_counts = {}
+
+    if event_ids:
+        team_counts = dict(
+            db.session.query(Team.event_id, func.count(Team.id))
+            .filter(Team.event_id.in_(event_ids))
+            .group_by(Team.event_id)
+            .all()
+        )
+        match_counts = dict(
+            db.session.query(Match.event_id, func.count(Match.id))
+            .filter(Match.event_id.in_(event_ids))
+            .group_by(Match.event_id)
+            .all()
+        )
+        field_counts = dict(
+            db.session.query(Match.event_id, func.count(func.distinct(Match.field)))
+            .filter(Match.event_id.in_(event_ids), Match.field.isnot(None))
+            .group_by(Match.event_id)
+            .all()
+        )
 
     active_events = []
-    finished_events_by_year = defaultdict(list)
+    finished_nested = defaultdict(lambda: defaultdict(list))
 
     for event in all_events:
-        # ใช้สถานะจบอีเว้นท์ที่กดเองเท่านั้น
-        # ไม่เดาจากรอบล่าสุดล็อกครบแล้ว เพื่อกันรายการที่เพิ่งคีย์ครบบางรอบโดดลงกลุ่มจบเอง
+        # ค่าเหล่านี้ใช้เฉพาะแสดง Dashboard หน้าแรก ไม่เปลี่ยนฐานข้อมูล
+        event.team_count = int(team_counts.get(event.id, 0) or 0)
+        event.match_count = int(match_counts.get(event.id, 0) or 0)
+        event.field_count = int(field_counts.get(event.id, 0) or 0)
+
         if getattr(event, 'is_finished', False):
-            finished_events_by_year[(event.date.year if event.date else 0)].append(event)
+            year = event.date.year if event.date else 0
+            month = event.date.month if event.date else 0
+            finished_nested[year][month].append(event)
         else:
             active_events.append(event)
 
-    finished_events_by_year = dict(sorted(finished_events_by_year.items(), reverse=True))
+    # เรียงอีเว้นท์กำลังดำเนินการ: วันที่ใกล้สุดก่อน และรายการไม่มีวันที่ไว้ท้ายสุด
+    active_events = sorted(
+        active_events,
+        key=lambda e: (e.date is None, e.date or date.max, (e.name or '').casefold(), e.id)
+    )
+
+    thai_months = {
+        0: 'ไม่ระบุเดือน', 1: 'มกราคม', 2: 'กุมภาพันธ์', 3: 'มีนาคม',
+        4: 'เมษายน', 5: 'พฤษภาคม', 6: 'มิถุนายน', 7: 'กรกฎาคม',
+        8: 'สิงหาคม', 9: 'กันยายน', 10: 'ตุลาคม', 11: 'พฤศจิกายน', 12: 'ธันวาคม'
+    }
+
+    finished_events_by_year_month = {}
+    for year in sorted(finished_nested.keys(), reverse=True):
+        months = {}
+        for month in sorted(finished_nested[year].keys(), reverse=True):
+            month_events = sorted(
+                finished_nested[year][month],
+                key=lambda e: (e.date or date.min, e.id),
+                reverse=True
+            )
+            months[month] = {
+                'month_name': thai_months.get(month, 'ไม่ระบุเดือน'),
+                'events': month_events,
+                'event_count': len(month_events),
+                'team_count': sum(e.team_count for e in month_events),
+                'match_count': sum(e.match_count for e in month_events),
+                'field_count': sum(e.field_count for e in month_events),
+            }
+        finished_events_by_year_month[year] = months
+
+    category_options = sorted({(e.category or '').strip() for e in all_events if (e.category or '').strip()})
+    sex_options = sorted({(e.sex or '').strip() for e in all_events if (e.sex or '').strip()})
 
     return render_template(
         "index.html",
-        upcoming_events=sorted(active_events, key=lambda e: (e.date or date.max, e.name or '', e.id)),
-        finished_events_by_year=finished_events_by_year,
-        events=active_events + [e for year in finished_events_by_year.values() for e in year]
+        upcoming_events=active_events,
+        finished_events_by_year_month=finished_events_by_year_month,
+        category_options=category_options,
+        sex_options=sex_options,
+        events=all_events,
     )
-
 
 
 @app.route("/login", methods=["GET", "POST"])
