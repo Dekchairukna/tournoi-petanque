@@ -166,7 +166,14 @@
   </div>
 
   <section class="section-panel mb-4"><div class="section-heading"><h5><span class="status-dot"></span>กำลังดำเนินการแข่งขัน</h5><span class="badge rounded-pill text-bg-success">{{ upcoming_events|length }} อีเวนต์</span></div>
-    {% if active_events_by_month|length > 1 %}<div class="year-tabs no-print active-month-tabs">{% for month_group in active_events_by_month %}<button type="button" class="year-tab active-month-tab {% if loop.first %}active{% endif %}" data-month-key="{{ month_group.key }}">{{ month_group.month_name }} {{ month_group.year + 543 if month_group.year else '' }} <span class="badge text-bg-light ms-1">{{ month_group.event_count }}</span></button>{% endfor %}<button type="button" class="year-tab active-month-tab" data-month-key="all">ทุกเดือน</button></div>{% elif active_events_by_month %}<div class="month-header mb-3"><p class="month-title">{{ active_events_by_month[0].month_name }} {{ active_events_by_month[0].year + 543 if active_events_by_month[0].year else '' }}</p></div>{% endif %}
+    {% if active_events_by_month %}
+    <div class="month-header mb-3 no-print" id="activeMonthCarousel">
+      <button type="button" class="btn btn-light rounded-circle shadow-sm" id="activeMonthPrev" aria-label="เดือนก่อนหน้า"><i class="bi bi-chevron-left"></i></button>
+      <div class="text-center flex-grow-1"><p class="month-title mb-0" id="activeMonthTitle"></p><div class="small text-muted" id="activeMonthCounter"></div></div>
+      <button type="button" class="btn btn-light rounded-circle shadow-sm" id="activeMonthNext" aria-label="เดือนถัดไป"><i class="bi bi-chevron-right"></i></button>
+      <div class="d-none" id="activeMonthOptions">{% for month_group in active_events_by_month %}<span class="active-month-option" data-month-key="{{ month_group.key }}" data-month-label="{{ month_group.month_name }} {{ month_group.year + 543 if month_group.year else '' }}" data-event-count="{{ month_group.event_count }}"></span>{% endfor %}</div>
+    </div>
+    {% endif %}
     {% if active_tournament_groups or active_standalone_events %}<div class="table-responsive"><table class="table table-borderless table-custom"><thead><tr><th>ชื่อรายการ</th><th>ระบบการแข่งขัน</th><th>รอบปัจจุบัน</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th></tr></thead><tbody class="filter-scope">
     {% for group in active_tournament_groups %}{% set tournament=group.tournament %}<tr class="event-filter-item table-warning active-event-row" data-active-months="{{ group.month_keys|join(',') }}" data-search="{{ (tournament.name ~ ' ' ~ (tournament.location or ''))|lower }}"><td data-label="ชื่อรายการ" class="event-name-cell"><span class="badge text-bg-warning me-2">ทัวร์นาเมนต์</span><strong>{{ tournament.name }}</strong></td><td data-label="ระบบการแข่งขัน">{{ group.systems }}</td><td data-label="รอบปัจจุบัน">-</td><td data-label="วันที่">{{ tournament.start_date.strftime('%d/%m/%Y') if tournament.start_date else '-' }}</td><td data-label="สถานที่">{{ tournament.location or '-' }}</td><td data-label="ประเภท">-</td><td data-label="รุ่น">-</td><td data-label="จัดการ" class="action-cell"><a class="btn btn-blue btn-custom me-1" href="{{ url_for('tournament_workspace',tournament_id=tournament.id,manage=1) }}">จัดการ</a>{% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}<button class="btn btn-green btn-custom me-1" data-bs-toggle="modal" data-bs-target="#editTournament{{ tournament.id }}">แก้ไข</button><form class="d-inline" method="post" action="{{ url_for('delete_simple_tournament',tournament_id=tournament.id) }}" onsubmit="return confirm('หากมีอีเวนต์อยู่ ระบบจะยังไม่อนุญาตให้ลบทัวร์นาเมนต์')"><button class="btn btn-red btn-custom">ลบ</button></form>{% endif %}</td></tr>
       {% for event in group.events %}<tr class="event-filter-item tournament-child active-event-row" data-active-months="{{ event.date.strftime('%Y-%m') if event.date else '0-00' }}" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}"><td data-label="ชื่อรายการ" class="event-name-cell"><span class="text-muted me-2">↳</span>{{ event.name }}</td><td data-label="ระบบการแข่งขัน">{% if event.competition_format=='swiss' %}Swiss {{ event.rounds }} ครั้ง{% elif event.competition_format=='round_robin' %}พบกันหมด{% elif event.competition_format=='double_knockout' %}แพ้สองครั้งคัดออก{% elif event.competition_format=='knockout' %}แพ้คัดออก{% else %}{{ event.competition_format }}{% endif %}</td><td data-label="รอบปัจจุบัน">{{ event.current_round or 1 }}/{{ event.rounds or 1 }}</td><td data-label="วันที่">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td><td data-label="สถานที่">{{ event.location or '-' }}</td><td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '' }}</td><td data-label="รุ่น">{{ event.age_group or '-' }}</td><td data-label="จัดการ" class="action-cell"><a href="{{ url_for('event_detail',event_id=event.id) }}" class="btn btn-blue btn-custom me-1">เข้าร่วม</a>{% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}<a href="{{ url_for('edit_event',event_id=event.id) }}" class="btn btn-green btn-custom me-1">แก้ไข</a><a href="{{ url_for('delete_event',event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('ลบอีเวนต์นี้หรือไม่?')">ลบ</a>{% endif %}</td></tr>{% endfor %}<tr class="group-divider"><td colspan="8"></td></tr>{% endfor %}
@@ -230,7 +237,9 @@
   const category = document.getElementById('categoryFilter');
   const sex = document.getElementById('sexFilter');
   const clear = document.getElementById('clearFilters');
-  let activeMonthKey = document.querySelector('.active-month-tab.active')?.dataset.monthKey || 'all';
+  const monthOptions = Array.from(document.querySelectorAll('.active-month-option'));
+  let activeMonthIndex = 0;
+  let activeMonthKey = monthOptions[0]?.dataset.monthKey || 'all';
 
   function normalize(value) { return (value || '').toString().trim().toLowerCase(); }
   function applyFilters() {
@@ -253,14 +262,30 @@
   [search, category, sex].forEach(el => { if (el) el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', applyFilters); });
   if (clear) clear.addEventListener('click', () => { search.value = ''; category.value = ''; sex.value = ''; applyFilters(); search.focus(); });
 
-  document.querySelectorAll('.active-month-tab').forEach(button => {
-    button.addEventListener('click', () => {
-      document.querySelectorAll('.active-month-tab').forEach(item => item.classList.remove('active'));
-      button.classList.add('active');
-      activeMonthKey = button.dataset.monthKey || 'all';
-      applyFilters();
-    });
-  });
+  function showActiveMonth(index) {
+    if (!monthOptions.length) return;
+    activeMonthIndex = (index + monthOptions.length) % monthOptions.length;
+    const option = monthOptions[activeMonthIndex];
+    activeMonthKey = option.dataset.monthKey;
+    const title = document.getElementById('activeMonthTitle');
+    const counter = document.getElementById('activeMonthCounter');
+    if (title) title.textContent = option.dataset.monthLabel;
+    if (counter) counter.textContent = `${activeMonthIndex + 1} / ${monthOptions.length} เดือน · ${option.dataset.eventCount} อีเวนต์`;
+    applyFilters();
+  }
+  document.getElementById('activeMonthPrev')?.addEventListener('click', () => showActiveMonth(activeMonthIndex - 1));
+  document.getElementById('activeMonthNext')?.addEventListener('click', () => showActiveMonth(activeMonthIndex + 1));
+  const activeMonthCarousel = document.getElementById('activeMonthCarousel');
+  if (activeMonthCarousel) {
+    let touchStartX = null;
+    activeMonthCarousel.addEventListener('touchstart', event => { touchStartX = event.changedTouches[0].clientX; }, {passive:true});
+    activeMonthCarousel.addEventListener('touchend', event => {
+      if (touchStartX === null) return;
+      const distance = event.changedTouches[0].clientX - touchStartX;
+      if (Math.abs(distance) > 45) showActiveMonth(activeMonthIndex + (distance < 0 ? 1 : -1));
+      touchStartX = null;
+    }, {passive:true});
+  }
 
   document.querySelectorAll('.year-tab').forEach(button => {
     button.addEventListener('click', () => {
@@ -271,7 +296,7 @@
       if (pane) pane.classList.add('active');
     });
   });
-  applyFilters();
+  showActiveMonth(0);
 })();
 </script>
 
