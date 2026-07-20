@@ -812,6 +812,7 @@ def index():
         active_events_by_month.append({
             'year': year,
             'month': month,
+            'key': f'{year}-{month:02d}',
             'month_name': thai_months.get(month, 'ไม่ระบุเดือน'),
             'events': month_events,
             'event_count': len(month_events),
@@ -848,7 +849,8 @@ def index():
                 label = format_labels.get(event.competition_format, event.competition_format or "-")
                 if label not in systems:
                     systems.append(label)
-            active_tournament_groups.append({"tournament": tournament, "events": group_events, "systems": " · ".join(systems) if systems else "-"})
+            month_keys = sorted({f'{event.date.year}-{event.date.month:02d}' if event.date else '0-00' for event in group_events}, reverse=True)
+            active_tournament_groups.append({"tournament": tournament, "events": group_events, "systems": " · ".join(systems) if systems else "-", "month_keys": month_keys})
     active_standalone_events = [event for event in active_events if event.tournament_id is None]
 
     return render_template(
