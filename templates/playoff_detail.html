@@ -1,65 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}ระบบเพลย์ออฟ - {{ view.competition.title }}{% endblock %}
+{% block title %}{% if native_competition_mode == 'double_knockout' %}Double Knockout{% elif native_competition_mode == 'knockout' %}Knockout{% else %}ระบบเพลย์ออฟ{% endif %} - {{ view.competition.title }}{% endblock %}
 {% block content %}
 
 
-<div class="event-dashboard-layout">
-  <aside class="event-sidebar no-print">
-    <a class="sidebar-home-box dashboard-card dashboard-home" href="{{ url_for('index') }}">
-      <div class="sidebar-avatar">🏠</div>
-      <div>
-        <div class="sidebar-user-name sidebar-home-title">หน้าแรก</div>
-        <div class="sidebar-home-link">กลับไปที่หน้าหลัก</div>
-      </div>
-    </a>
 
-    <div class="sidebar-section-title">เมนูรายการแข่งขัน</div>
-
-    {% if source_event %}
-    <a class="sidebar-home-box dashboard-card dashboard-event"
-      href="{{ url_for('event_detail', event_id=source_event.id) }}">
-      <div class="sidebar-avatar">🏆</div>
-      <div>
-        <div class="sidebar-user-name sidebar-home-title">main_event</div>
-        <div class="sidebar-home-link">{{ source_event.name }}</div>
-      </div>
-    </a>
-    {% else %}
-    <div class="sidebar-home-box dashboard-card dashboard-event">
-      <div class="sidebar-avatar">🏆</div>
-      <div>
-        <div class="sidebar-user-name sidebar-home-title">main_event</div>
-        <div class="sidebar-home-link">Standing เดิม</div>
-      </div>
-    </div>
-    {% endif %}
-
-    {% if source_event %}
-    <a href="{{ url_for('event_standings', event_id=source_event.id) }}" class="top-pill top-pill-standing"><span
-        class="side-icon">📊</span><span>standing</span></a>
-    {% endif %}
-    <a href="#top" class="top-pill top-pill-playoff"><span class="side-icon">🎯</span><span>play_off</span></a>
-    {% for rv in view.round_views %}
-    <a href="#saved-round-{{ rv.round.id }}" class="top-pill top-pill-round js-round-tab" data-round-tab="{{ rv.round.id }}" title="{{ rv.round.round_meta.round_description|default('') }}"><span class="side-icon">▸</span><span><i class="mini-status-dot empty" data-round-status-dot="{{ rv.round.id }}"></i>{{
-        rv.round.round_name }}</span></a>
-    {% endfor %}
-    <a href="#next-round-panel" class="top-pill top-pill-draw"><span
-        class="side-icon">🎲</span><span>จับสลากสร้างรอบต่อไป</span></a>
-    <a href="#report" class="top-pill top-pill-report"><span class="side-icon">🧾</span><span>รายงานการแข่ง</span></a>
-    <a href="{{ url_for('playoff_print_report', playoff_id=view.competition.id) }}" target="_blank"
-      class="top-pill top-pill-print"><span class="side-icon">🖨️</span><span>พิมพ์รายงาน</span></a>
-    <a href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" target="_blank"
-      class="top-pill top-pill-print"><span class="side-icon">🧾</span><span>สกอร์ชีท/QR เพลย์ออฟ</span></a>
-
-    <div class="sidebar-user-box">
-      <div class="sidebar-avatar">👤</div>
-      <div>
-        <div class="sidebar-user-name">{{ current_user.username if current_user.is_authenticated else 'ผู้ใช้งาน' }}
-        </div>
-        {% if current_user.is_authenticated %}<a href="{{ url_for('logout') }}">ออกจากระบบ</a>{% endif %}
-      </div>
-    </div>
-  </aside>
   <main class="event-main-content">
 
 
@@ -73,7 +17,7 @@
         </span>
       </div>
       <div class="muted-text" style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center;">
-        <span>ต่อจาก: {{ source_event.name if source_event else 'Standing เดิม' }}</span>
+        {% if not native_competition_mode %}<span>ต่อจาก: {{ source_event.name if source_event else 'Standing เดิม' }}</span>{% endif %}
         <span>จับคู่: {{ {'seed':'ตาม seed','random':'สุ่ม','manual':'แอดมินกำหนด','bracket':'Bracket /
           สายติดกัน'}[view.competition.pairing_method] if
           view.competition.pairing_method in ['seed','random','manual','bracket'] else view.competition.pairing_method
@@ -101,12 +45,12 @@
         <a href="{{ url_for('playoff_print_report', playoff_id=view.competition.id) }}" target="_blank"
           class="btn action-btn btn-print">🖨️ หน้าปริ้นรายงาน</a>
         <a href="{{ url_for('playoff_score_sheet', playoff_id=view.competition.id) }}" target="_blank"
-          class="btn action-btn btn-print">🧾 สกอร์ชีท/QR เพลย์ออฟ</a>
+          class="btn action-btn btn-print">🧾 สกอร์ชีท/QR การแข่งขัน</a>
         <button onclick="window.print()" class="btn btn-primary system-btn">พิมพ์/บันทึก PDF</button>
         <form method="post" action="{{ url_for('delete_playoff_competition', playoff_id=view.competition.id) }}"
           style="display:inline"
-          onsubmit="return confirm('ยืนยันลบเพลย์ออฟนี้ทั้งหมด? ใช้กรณีทดลองสร้างผิดก่อนใช้งานจริง');">
-          <button type="submit" class="btn action-btn btn-danger">ลบเพลย์ออฟนี้</button>
+          onsubmit="return confirm('ยืนยันลบการแข่งขันนี้ทั้งหมด? ใช้กรณีทดลองสร้างผิดก่อนใช้งานจริง');">
+          <button type="submit" class="btn action-btn btn-danger">ลบการแข่งขันนี้</button>
         </form>
       </div>
 
@@ -462,7 +406,7 @@
             <option value="double_knockout" {% if view.competition.competition_type == 'double_knockout' %}selected{% endif %}>Double knockout</option>
             <option value="knockout" {% if view.competition.competition_type == 'knockout' %}selected{% endif %}>Knockout</option>
             <option value="swiss">Swiss</option>
-            <option value="round_robin">Round Robin — พบกันหมด</option>
+            
           </select>
         </div>
         <div>
@@ -659,7 +603,7 @@
             <tr>
               <td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{
                 row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td>
-              <td><b>{{ row.team_name }}</b></td>
+              <td><b>{{ row.team_name }}</b>{% if row.record %}<div style="font-size:14px;color:#64748b;">{{ row.record }}</div>{% endif %}</td>
               {% if view.competition.competition_type == 'ab_ladder' %}<td>สาย {{ row.group_no or '-' }}</td>{% endif %}
             </tr>
             {% endfor %}
@@ -703,9 +647,9 @@
         {% endif %}
       </section>
     </div>
-
+ <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-secondary me-2">← กลับรายการแข่งขัน</a>
   </main>
-</div>
+
 
 <style>
   .sidebar-home-box {

@@ -5,7 +5,9 @@
   <div class="manual-head card">
     <h1>MANUAL — แอดมินจิ้มประกบคู่เอง</h1>
     <div class="muted">
-      {% if mode == 'event' %}
+      {% if mode == 'initial_event' %}
+        จับสลากและสร้างสายการแข่งขัน: {{ source_event.name }}
+      {% elif mode == 'event' %}
         สร้างเพลย์ออฟจาก Standing: {{ source_event.name if source_event else payload.next_stage_name }}
       {% else %}
         สร้างรอบถัดไป: {{ payload.round_name }}
@@ -26,7 +28,7 @@
 
   <form method="post" id="manualPairForm" class="card manual-form">
     <div class="manual-toolbar no-print">
-      <a class="btn btn-secondary" href="{% if mode == 'event' %}{{ url_for('event_standings', event_id=source_event.id) }}{% else %}{{ url_for('playoff_detail', playoff_id=view.competition.id) }}{% endif %}">← กลับ</a>
+      <a class="btn btn-secondary" href="{% if mode == 'initial_event' %}{{ url_for('event_detail', event_id=source_event.id) }}{% elif mode == 'event' %}{{ url_for('event_standings', event_id=source_event.id) }}{% else %}{{ url_for('playoff_detail', playoff_id=view.competition.id) }}{% endif %}">← กลับ</a>
       <button type="button" class="btn btn-outline-secondary" id="clearAllBtn">ล้างที่เลือก</button>
       <button type="submit" class="btn btn-primary">ยืนยันสร้างรอบนี้</button>
     </div>

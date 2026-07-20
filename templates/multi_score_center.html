@@ -96,7 +96,7 @@
                 </span>
               </span>
               <select class="form-select form-select-sm" name="event_round_{{ event.id }}" style="width:100px;" onclick="event.stopPropagation();">
-                {% for r in [1,2,3,4] %}
+                {% for r in range(1, event.multi_round_option_max + 1) %}
                 <option value="{{ r }}" {% if event_round_map.get(event.id, selected_round) == r %}selected{% endif %}>ครั้ง {{ r }}</option>
                 {% endfor %}
               </select>
@@ -105,11 +105,20 @@
           </div>
         </div>
         <div class="col-lg-6">
+          <div class="border rounded-3 p-3 bg-light mb-3">
+            <label class="form-label fw-bold">เปลี่ยนครั้งให้รายการที่เลือกพร้อมกัน</label>
+            <div class="input-group">
+              <select id="bulkEventRound" class="form-select">
+                {% for r in range(1, max_round_option + 1) %}<option value="{{ r }}">ครั้งที่ {{ r }}</option>{% endfor %}
+              </select>
+              <button type="button" class="btn btn-warning fw-bold" id="applyBulkEventRound">ใช้กับรายการที่เลือก</button>
+            </div>
+          </div>
           <div class="row g-2">
             <div class="col-md-4">
               <label class="form-label fw-bold">รอบตั้งต้น</label>
               <select name="round" class="form-select">
-                {% for r in [1,2,3,4] %}
+                {% for r in range(1, max_round_option + 1) %}
                 <option value="{{ r }}" {% if selected_round == r %}selected{% endif %}>ครั้งที่ {{ r }}</option>
                 {% endfor %}
               </select>
@@ -136,6 +145,18 @@
       </div>
     </div>
   </form>
+
+<script>
+document.getElementById('applyBulkEventRound')?.addEventListener('click', () => {
+  const round = document.getElementById('bulkEventRound').value;
+  document.querySelectorAll('input[name="event_ids"]:checked').forEach(box => {
+    const select = document.querySelector(`select[name="event_round_${box.value}"]`);
+    if (!select) return;
+    if (![...select.options].some(option => option.value === round)) select.add(new Option(`ครั้ง ${round}`, round));
+    select.value = round;
+  });
+});
+</script>
 
   <form method="POST" action="{{ url_for('multi_event_score_center') }}?round={{ selected_round }}&status={{ status_filter }}&field={{ field_query }}&event_rounds={{ event_rounds_param }}">
     {% for eid in selected_event_ids %}<input type="hidden" name="event_ids" value="{{ eid }}">{% endfor %}

@@ -91,7 +91,7 @@
           <thead><tr><th>{% if view.competition.competition_type == 'ab_ladder' %}ลำดับผู้ผ่านการคัดเลือก{% else %}อันดับ{% endif %}</th><th>ชื่อทีม / นักกีฬา</th></tr></thead>
           <tbody>
           {% if final_ranking_preview %}
-            {% for row in final_ranking_preview %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td><td>{{ row.team_name }}</td></tr>{% endfor %}
+            {% for row in final_ranking_preview %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}{{ row.label or 'เข้ารอบ' }} คนที่ {{ row.rank }}{% else %}อันดับ {{ row.rank }}{% endif %}</td><td>{{ row.team_name }}{% if row.record %}<div class="match-label">{{ row.record }}</div>{% endif %}</td></tr>{% endfor %}
           {% else %}
             {% for n in range(1,5) %}<tr><td>{% if view.competition.competition_type == 'ab_ladder' %}เข้ารอบคนที่ {{ n }}{% else %}อันดับ {{ n }}{% endif %}</td><td>................................................................................</td></tr>{% endfor %}
           {% endif %}

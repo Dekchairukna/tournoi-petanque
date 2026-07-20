@@ -13,7 +13,16 @@
             <input type="text" class="form-control" name="name" value="{{ event.name }}" required>
           </div>
           <div class="col-md-4">
-            <label class="form-label fw-semibold">จำนวนรอบ</label>
+            <label class="form-label fw-semibold">รูปแบบการแข่งขัน</label>
+            <select name="competition_format" class="form-select">
+              <option value="swiss" {% if (event.competition_format or 'swiss') == 'swiss' %}selected{% endif %}>Swiss</option>
+              <option value="round_robin" {% if event.competition_format == 'round_robin' %}selected{% endif %}>Round Robin</option>
+              <option value="double_knockout" {% if event.competition_format == 'double_knockout' %}selected{% endif %}>Double Knockout</option>
+              <option value="knockout" {% if event.competition_format == 'knockout' %}selected{% endif %}>Knockout</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">จำนวนรอบ (ตั้งค่าของอีเวนต์)</label>
             <input type="number" class="form-control" name="rounds" min="1" value="{{ event.rounds or 1 }}" required>
           </div>
           <div class="col-md-4">

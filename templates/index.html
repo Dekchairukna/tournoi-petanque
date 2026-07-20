@@ -4,6 +4,8 @@
   @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap');
 
   body { font-family: 'Prompt', 'Segoe UI', sans-serif; background: #f5f7fb; color: #273142; }
+  .navbar-custom, .navbar-custom .nav-link { font-weight: 500; }
+  .navbar-custom .navbar-brand, .navbar-custom .nav-link.active { font-weight: 600; }
   .event-home { max-width: 1500px; margin: 0 auto; padding: 1.25rem; }
   .page-title { font-weight: 700; margin: 0; }
   .page-subtitle { color: #6c757d; margin: .25rem 0 0; }
@@ -31,8 +33,21 @@
   .table-custom .event-name-cell { min-width: 310px; }
   .table-custom .location-cell { min-width: 250px; }
   .table-custom .date-cell { min-width: 115px; }
-  .table-custom .action-cell { min-width: 125px; }
+  .table-custom .action-cell {
+    min-width: 235px;
+    white-space: nowrap !important;
+  }
   .table-custom .btn-custom { justify-content: center; }
+  .table-custom .action-cell .btn-custom {
+    padding: .48rem .80rem;
+    border-radius: .42rem;
+    font-size: .84rem;
+    line-height: 1.2;
+    gap: .18rem;
+    white-space: nowrap;
+    margin-right: .2rem !important;
+  }
+  .table-custom .action-cell form { display: inline-flex !important; margin: 0; }
 
   .year-tabs { display: flex; flex-wrap: wrap; gap: .45rem; margin-bottom: 1rem; }
   .year-tab { border: 1px solid #dbe2ea; background: #fff; border-radius: 999px; padding: .5rem 1rem; font-weight: 700; color: #495057; }
@@ -52,6 +67,20 @@
   .carousel-item { padding: .15rem .1rem .5rem; }
   .empty-state { text-align: center; color: #6c757d; padding: 2rem 1rem; border: 1px dashed #ccd4de; border-radius: .85rem; background: #fbfcfe; }
   .filter-empty { display: none; }
+  .tournament-event-list { margin-top: .8rem; border-top: 1px solid #e8edf3; }
+  .tournament-event-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .72rem 0; border-bottom: 1px solid #eef1f5; }
+  .tournament-event-row:last-child { border-bottom: 0; }
+  .tournament-event-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+  .tournament-event-actions { display: flex; gap: .35rem; flex: 0 0 auto; }
+  .tournament-event-actions .btn { padding: .35rem .58rem; font-size: .78rem; border-radius: .55rem; }
+  .tournament-child td { background: #fbfcfe; }
+  .tournament-child .event-name-cell { padding-left: 2rem; }
+  .group-divider td { height: 10px; padding: 0 !important; background: #eef2f6 !important; border: 0; }
+  /* บังคับหัวคอลัมน์และชื่อรายการให้ชิดซ้ายบนหน้าจอทุกขนาด */
+  
+  .table-custom tbody td.event-name-cell {
+    text-align: left !important;
+  }
 
   @media (max-width: 900px) {
     .filter-bar { grid-template-columns: 1fr 1fr; }
@@ -70,6 +99,28 @@
     .table-custom tbody td:last-child { border-bottom: none; }
     .table-custom tbody td::before { content: attr(data-label); font-weight: 600; color: #6c757d; flex: 0 0 40%; white-space: nowrap; padding-right: .5rem; text-align: left; }
     .table-custom tbody td > * { flex: 1 1 60%; min-width: 0; }
+    .tournament-event-row { align-items: flex-start; flex-direction: column; }
+    .tournament-event-actions { width: 100%; }
+    .tournament-event-actions .btn { flex: 1; justify-content: center; }
+
+    .table-custom tbody td.event-name-cell {
+      justify-content: flex-start !important;
+      text-align: left !important;
+    }
+    .table-custom tbody td.action-cell {
+      gap: .2rem;
+      flex-wrap: nowrap;
+      justify-content: flex-end;
+    }
+    .table-custom tbody td.action-cell::before { flex: 0 0 22%; }
+    .table-custom tbody td.action-cell .btn-custom {
+      padding: .24rem .38rem;
+      font-size: .68rem;
+    }
+    .tournament-child .event-name-cell {
+      padding-left: 2rem;
+    }
+
   }
   @media print {
     .no-print, .filter-bar, .year-tabs, .month-nav { display: none !important; }
@@ -91,7 +142,8 @@
       <button class="btn btn-green btn-custom" data-bs-toggle="modal" data-bs-target="#bulkImportEventModal"><i class="bi bi-upload"></i> Import หลายอีเว้นท์</button>
       <a href="{{ url_for('multi_event_manager') }}" class="btn btn-blue btn-custom"><i class="bi bi-diagram-3"></i> จัดการอีเว้นท์รวม</a>
       {% endif %}
-      <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addEventModal"><i class="bi bi-plus-lg"></i> เพิ่มรายการ</button>
+      <button class="btn btn-blue btn-custom" data-bs-toggle="modal" data-bs-target="#legacyAddEventModal"><i class="bi bi-calendar-plus"></i> สร้างอีเวนต์</button>
+      <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addTournamentModal"><i class="bi bi-plus-lg"></i> สร้างทัวร์นาเมนต์</button>
     </div>
   </div>
 
@@ -113,64 +165,12 @@
     </div>
   </div>
 
-  <section class="section-panel mb-4">
-    <div class="section-heading">
-      <h5><span class="status-dot"></span>กำลังดำเนินการแข่งขัน</h5>
-      <span class="badge rounded-pill text-bg-success">{{ upcoming_events|length }} อีเว้นท์</span>
-    </div>
-
-    {% if active_events_by_month %}
-    <div id="activeMonthCarousel" class="carousel slide month-shell" data-bs-interval="false" data-bs-touch="true">
-      <div class="carousel-inner">
-        {% for month_data in active_events_by_month %}
-        <div class="carousel-item {% if loop.first %}active{% endif %}">
-          <div class="month-header">
-            <div>
-              <p class="month-title">{{ month_data.month_name }} {{ month_data.year + 543 if month_data.year else '' }}</p>
-              <div class="small text-muted">ล่าสุดก่อน · {{ month_data.event_count }} อีเว้นท์ · เดือนที่ {{ loop.index }} จาก {{ active_events_by_month|length }}</div>
-            </div>
-            {% if active_events_by_month|length > 1 %}
-            <div class="month-nav no-print">
-              <button type="button" data-bs-target="#activeMonthCarousel" data-bs-slide="prev" aria-label="เดือนก่อนหน้า"><i class="bi bi-chevron-left"></i><</button>
-              <button type="button" data-bs-target="#activeMonthCarousel" data-bs-slide="next" aria-label="เดือนถัดไป"><i class="bi bi-chevron-right"></i>></button>
-            </div>
-            {% endif %}
-          </div>
-
-          <div class="table-responsive">
-            <table class="table table-borderless table-custom">
-              <thead>
-                <tr><th>ชื่อรายการ</th><th>จำนวน<br>รอบ</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th></tr>
-              </thead>
-              <tbody class="filter-scope">
-                {% for event in month_data.events %}
-                <tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}">
-                  <td data-label="ชื่อรายการ" class="event-name-cell">{{ event.name }}</td>
-                  <td data-label="จำนวนรอบ">{{ event.rounds }}</td>
-                  <td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td>
-                  <td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td>
-                  <td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td>
-                  <td data-label="รุ่น">{{ event.age_group or '-' }}</td>
-                  <td data-label="จัดการ" class="action-cell">
-                    <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1"><i class="bi bi-box-arrow-in-right"></i> เข้าร่วม</a>
-                    {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
-                    <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1"><i class="bi bi-pencil-square"></i> แก้ไข</a>
-                    <a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')"><i class="bi bi-trash"></i> ลบ</a>
-                    {% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-                <tr class="filter-empty"><td colspan="7" class="text-center text-muted">ไม่พบอีเว้นท์ในเดือนนี้ที่ตรงกับตัวกรอง</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% else %}
-    <div class="empty-state">ไม่มีรายการแข่งขันที่กำลังดำเนินการ</div>
-    {% endif %}
+  <section class="section-panel mb-4"><div class="section-heading"><h5><span class="status-dot"></span>กำลังดำเนินการแข่งขัน</h5><span class="badge rounded-pill text-bg-success">{{ upcoming_events|length }} อีเวนต์</span></div>
+    {% if active_tournament_groups or active_standalone_events %}<div class="table-responsive"><table class="table table-borderless table-custom"><thead><tr><th>ชื่อรายการ</th><th>ระบบการแข่งขัน</th><th>รอบปัจจุบัน</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th></tr></thead><tbody class="filter-scope">
+    {% for group in active_tournament_groups %}{% set tournament=group.tournament %}<tr class="event-filter-item table-warning" data-search="{{ (tournament.name ~ ' ' ~ (tournament.location or ''))|lower }}"><td data-label="ชื่อรายการ" class="event-name-cell"><span class="badge text-bg-warning me-2">ทัวร์นาเมนต์</span><strong>{{ tournament.name }}</strong></td><td data-label="ระบบการแข่งขัน">{{ group.systems }}</td><td data-label="รอบปัจจุบัน">-</td><td data-label="วันที่">{{ tournament.start_date.strftime('%d/%m/%Y') if tournament.start_date else '-' }}</td><td data-label="สถานที่">{{ tournament.location or '-' }}</td><td data-label="ประเภท">-</td><td data-label="รุ่น">-</td><td data-label="จัดการ" class="action-cell"><a class="btn btn-blue btn-custom me-1" href="{{ url_for('tournament_workspace',tournament_id=tournament.id,manage=1) }}">จัดการ</a>{% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}<button class="btn btn-green btn-custom me-1" data-bs-toggle="modal" data-bs-target="#editTournament{{ tournament.id }}">แก้ไข</button><form class="d-inline" method="post" action="{{ url_for('delete_simple_tournament',tournament_id=tournament.id) }}" onsubmit="return confirm('หากมีอีเวนต์อยู่ ระบบจะยังไม่อนุญาตให้ลบทัวร์นาเมนต์')"><button class="btn btn-red btn-custom">ลบ</button></form>{% endif %}</td></tr>
+      {% for event in group.events %}<tr class="event-filter-item tournament-child" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}"><td data-label="ชื่อรายการ" class="event-name-cell"><span class="text-muted me-2">↳</span>{{ event.name }}</td><td data-label="ระบบการแข่งขัน">{% if event.competition_format=='swiss' %}Swiss {{ event.rounds }} ครั้ง{% elif event.competition_format=='round_robin' %}พบกันหมด{% elif event.competition_format=='double_knockout' %}แพ้สองครั้งคัดออก{% elif event.competition_format=='knockout' %}แพ้คัดออก{% else %}{{ event.competition_format }}{% endif %}</td><td data-label="รอบปัจจุบัน">{{ event.current_round or 1 }}/{{ event.rounds or 1 }}</td><td data-label="วันที่">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td><td data-label="สถานที่">{{ event.location or '-' }}</td><td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '' }}</td><td data-label="รุ่น">{{ event.age_group or '-' }}</td><td data-label="จัดการ" class="action-cell"><a href="{{ url_for('event_detail',event_id=event.id) }}" class="btn btn-blue btn-custom me-1">เข้าร่วม</a>{% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}<a href="{{ url_for('edit_event',event_id=event.id) }}" class="btn btn-green btn-custom me-1">แก้ไข</a><a href="{{ url_for('delete_event',event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('ลบอีเวนต์นี้หรือไม่?')">ลบ</a>{% endif %}</td></tr>{% endfor %}<tr class="group-divider"><td colspan="8"></td></tr>{% endfor %}
+      {% for event in active_standalone_events %}<tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}"><td data-label="ชื่อรายการ" class="event-name-cell"><span class="badge text-bg-light border me-2">อีเวนต์</span>{{ event.name }}</td><td data-label="ระบบการแข่งขัน">{% if event.competition_format=='swiss' %}Swiss {{ event.rounds }} ครั้ง{% elif event.competition_format=='round_robin' %}พบกันหมด{% elif event.competition_format=='double_knockout' %}แพ้สองครั้งคัดออก{% elif event.competition_format=='knockout' %}แพ้คัดออก{% else %}{{ event.competition_format }}{% endif %}</td><td data-label="รอบปัจจุบัน">{{ event.current_round or 1 }}/{{ event.rounds or 1 }}</td><td data-label="วันที่">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td><td data-label="สถานที่">{{ event.location or '-' }}</td><td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '' }}</td><td data-label="รุ่น">{{ event.age_group or '-' }}</td><td data-label="จัดการ" class="action-cell"><a href="{{ url_for('event_detail',event_id=event.id) }}" class="btn btn-blue btn-custom me-1">เข้าร่วม</a>{% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}<a href="{{ url_for('edit_event',event_id=event.id) }}" class="btn btn-green btn-custom me-1">แก้ไข</a><a href="{{ url_for('delete_event',event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('ลบอีเวนต์นี้หรือไม่?')">ลบ</a>{% endif %}</td></tr>{% endfor %}<tr class="filter-empty"><td colspan="8">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>
+    </tbody></table></div>{% else %}<div class="empty-state">ไม่มีรายการแข่งขันที่กำลังดำเนินการ</div>{% endif %}
   </section>
 
   <section class="section-panel">
@@ -202,10 +202,11 @@
             <div class="table-responsive">
               <table class="table table-borderless table-custom">
                 <thead><tr><th>ชื่อรายการ</th><th>จำนวน<br>รอบ</th><th>วันที่</th><th>สถานที่</th><th>ประเภท</th><th>รุ่น</th><th>จัดการ</th></tr></thead>
-                <tbody class="filter-scope">
+                <tbody class="filter-scope">{% set shown_finished=namespace(tournaments=[]) %}
                   {% for event in month_data.events %}
+                  {% if event.tournament and event.tournament_id not in shown_finished.tournaments %}{% set shown_finished.tournaments=shown_finished.tournaments+[event.tournament_id] %}<tr class="event-filter-item"><td data-label="ชื่อรายการ" class="event-name-cell"><span class="badge text-bg-warning me-2">ทัวร์นาเมนต์</span><strong>{{ event.tournament.name }}</strong></td><td data-label="จำนวนรอบ">-</td><td data-label="วันที่">{{ event.tournament.start_date.strftime('%d/%m/%Y') if event.tournament.start_date else '-' }}</td><td data-label="สถานที่">{{ event.tournament.location or '-' }}</td><td data-label="ประเภท">-</td><td data-label="รุ่น">-</td><td data-label="จัดการ"><a class="btn btn-blue btn-custom" href="{{ url_for('tournament_workspace', tournament_id=event.tournament.id, manage=1) }}">จัดการทัวร์นาเมนต์</a></td></tr>{% endif %}
                   <tr class="event-filter-item" data-search="{{ (event.name ~ ' ' ~ (event.location or '') ~ ' ' ~ (event.category or '') ~ ' ' ~ (event.sex or '') ~ ' ' ~ (event.age_group or ''))|lower }}" data-category="{{ (event.category or '')|lower }}" data-sex="{{ (event.sex or '')|lower }}">
-                    <td data-label="ชื่อรายการ" class="event-name-cell">{{ event.name }}</td><td data-label="จำนวนรอบ">{{ event.rounds }}</td><td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td><td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td><td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td><td data-label="รุ่น">{{ event.age_group or '-' }}</td>
+                    <td data-label="ชื่อรายการ" class="event-name-cell"><span class="badge text-bg-light border me-2">อีเวนต์</span>{% if event.tournament_id %}<span class="text-muted me-1">↳</span>{% endif %}{{ event.name }}</td><td data-label="จำนวนรอบ">{{ event.rounds }}</td><td data-label="วันที่" class="date-cell">{{ event.date.strftime('%d/%m/%Y') if event.date else '-' }}</td><td data-label="สถานที่" class="location-cell">{{ event.location or '-' }}</td><td data-label="ประเภท">{{ event.category or '-' }}{{ event.sex or '-' }}</td><td data-label="รุ่น">{{ event.age_group or '-' }}</td>
                     <td data-label="จัดการ" class="action-cell"><a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-blue btn-custom me-1"><i class="bi bi-box-arrow-in-right"></i> ดูผล</a>{% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}<a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-green btn-custom me-1"><i class="bi bi-pencil-square"></i> แก้ไข</a><a href="{{ url_for('delete_event', event_id=event.id) }}" class="btn btn-red btn-custom" onclick="return confirm('คุณแน่ใจว่าต้องการลบรายการนี้หรือไม่?')"><i class="bi bi-trash"></i> ลบ</a>{% endif %}</td>
                   </tr>
                   {% endfor %}
@@ -297,12 +298,12 @@
   </div>
 
   <!-- Modal เพิ่มรายการใหม่ -->
-  <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">
+  <div class="modal fade" id="legacyAddEventModal" tabindex="-1" aria-labelledby="legacyAddEventModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <form method="POST" action="{{ url_for('add_event_route') }}" enctype="multipart/form-data">
         <div class="modal-content">
           <div class="modal-header bg-info text-white">
-            <h5 class="modal-title" id="addEventModalLabel">
+            <h5 class="modal-title" id="legacyAddEventModalLabel">
               <i class="bi bi-calendar-plus"></i> เพิ่มรายการแข่งขันใหม่
             </h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -319,9 +320,18 @@
                 <input type="text" class="form-control" id="eventName" name="name" required>
               </div>
               <div class="col-md-6">
-                <label for="rounds" class="form-label fw-semibold">จำนวนรอบ</label>
-                <input type="number" class="form-control" id="rounds" name="rounds" min="1" required>
+                <label for="competition_format" class="form-label fw-semibold">รูปแบบการแข่งขัน</label>
+                <select id="competition_format" name="competition_format" class="form-select competition-format-select" data-rounds-target="legacySwissRounds" required>
+                  <option value="swiss">Swiss</option>
+                  {% if current_user.role == 'superadmin' %}
+                  <option value="round_robin">Round Robin</option>
+                  <option value="double_knockout">Double Knockout</option>
+                  <option value="knockout">Knockout</option>
+                  {% endif %}
+                </select>
+                
               </div>
+              <div class="col-md-6" id="legacySwissRounds"><label class="form-label fw-semibold">Swiss เล่นกี่ครั้ง</label><input type="number" name="rounds" class="form-control" value="3" min="1" max="20" required><div class="form-text"></div></div>
               <div class="col-md-6">
                 <label for="eventDate" class="form-label fw-semibold">วันที่แข่งขัน</label>
                 <input type="date" class="form-control" id="eventDate" name="date" required>
@@ -375,9 +385,33 @@
     </div>
   </div>
 
+
+  {% for tournament in tournaments %}<div class="modal fade" id="editTournament{{ tournament.id }}" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg"><form method="POST" action="{{ url_for('edit_simple_tournament', tournament_id=tournament.id) }}"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">แก้ไขทัวร์นาเมนต์</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3"><div class="col-12"><label class="form-label fw-semibold">ชื่อทัวร์นาเมนต์</label><input name="name" class="form-control" value="{{ tournament.name }}" required></div><div class="col-md-6"><label class="form-label fw-semibold">วันที่เริ่ม</label><input type="date" name="start_date" class="form-control" value="{{ tournament.start_date.isoformat() if tournament.start_date else '' }}"></div><div class="col-md-6"><label class="form-label fw-semibold">วันที่สิ้นสุด</label><input type="date" name="end_date" class="form-control" value="{{ tournament.end_date.isoformat() if tournament.end_date else '' }}"></div><div class="col-12"><label class="form-label fw-semibold">สถานที่หลัก</label><input name="location" class="form-control" value="{{ tournament.location or '' }}"></div></div></div><div class="modal-footer"><button class="btn btn-primary">บันทึกการแก้ไข</button><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button></div></div></form></div></div>{% endfor %}
+
+  <div class="modal fade" id="addTournamentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <form method="POST" action="{{ url_for('add_tournament_route') }}">
+        <div class="modal-content">
+          <div class="modal-header bg-info text-white"><h5 class="modal-title"><i class="bi bi-trophy"></i> สร้างทัวร์นาเมนต์เปตอง</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body"><div class="row g-3">
+            <div class="col-12"><label class="form-label fw-semibold">ชื่อทัวร์นาเมนต์</label><input name="name" class="form-control" placeholder="เช่น โครงการกีฬา อบจ.ขอนแก่น" required></div>
+            <div class="col-md-6"><label class="form-label fw-semibold">วันที่เริ่ม</label><input type="date" name="start_date" class="form-control"></div>
+            <div class="col-md-6"><label class="form-label fw-semibold">วันที่สิ้นสุด</label><input type="date" name="end_date" class="form-control"></div>
+            <div class="col-12"><label class="form-label fw-semibold">สถานที่หลัก</label><input name="location" class="form-control"></div>
+          </div></div>
+          <div class="modal-footer"><button class="btn btn-primary">สร้างทัวร์นาเมนต์</button><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button></div>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <body>
+  <script>
+  (()=>{
+    document.querySelectorAll('.competition-format-select').forEach(select=>{const field=document.getElementById(select.dataset.roundsTarget);if(!field)return;function sync(){const show=select.value==='swiss';field.style.display=show?'':'none';field.querySelector('input').disabled=!show}select.addEventListener('change',sync);sync()});
+  })();
+  </script>
   <footer class="text-center">
     &copy; {{ current_year }} Swiss System For Petanque Sport. (By PASIN PHIMKUMLAI) Adviser by Dr.VINIT
     JARUPARNITKUL(M.D.)

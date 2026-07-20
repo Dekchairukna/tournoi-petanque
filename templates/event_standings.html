@@ -74,7 +74,7 @@
       <a href="{{ url_for('event_detail', event_id=event.id) }}" class="btn btn-outline-secondary">← กลับรายการแข่งขัน</a>
       {% if active_playoffs %}
         {% for po in active_playoffs %}
-          <a href="{{ url_for('playoff_detail', playoff_id=po.id) }}" class="btn btn-warning fw-bold">ไปหน้าเพลย์ออฟ: {{ po.title }}{% if po.latest_round %} / รอบ {{ po.latest_round }}{% endif %}</a>
+          <a href="{% if event.competition_format == 'double_knockout' %}{{ url_for('double_knockout_detail', event_id=event.id, playoff_id=po.id) }}{% elif event.competition_format == 'knockout' %}{{ url_for('knockout_detail', event_id=event.id, playoff_id=po.id) }}{% else %}{{ url_for('playoff_detail', playoff_id=po.id) }}{% endif %}" class="btn btn-warning fw-bold">{% if event.competition_format in ['double_knockout', 'knockout'] %}ไปหน้ารอบที่ {{ po.latest_round or 1 }}{% else %}ไปหน้าเพลย์ออฟ: {{ po.title }}{% if po.latest_round %} / รอบ {{ po.latest_round }}{% endif %}{% endif %}</a>
         {% endfor %}
       {% endif %}
       <button id="saveTableAsImage" class="btn btn-primary">บันทึกตารางเป็นรูปภาพ</button>
@@ -283,7 +283,7 @@
               <option value="double_knockout">ดับเบิ้ลน็อคเอ้าท์ — เปิดหน้าจัดสายของตัวเอง</option>
               <option value="ab_ladder">A/B หลัง Swiss — A แพ้ลง B, B แพ้ตกรอบ</option>
               <option value="swiss">Swiss — สร้างอีเว้นท์ใหม่ ล้างคะแนน/แมตช์เดิม</option>
-              <option value="round_robin">Round Robin — พบกันหมด</option>
+              
             </select>
             
           </div>

@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block title %}Round Robin - {{ event.name }}{% endblock %}
+{% block content %}
+<style>.rr-head{background:linear-gradient(135deg,#1767c8,#20a4d8);color:#fff;border-radius:14px;padding:20px}.rr-tabs{display:flex;gap:7px;flex-wrap:wrap}.rr-tab{padding:9px 14px;border-radius:9px;background:#edf3f8;text-decoration:none;font-weight:800;color:#26384c}.rr-tab.active{background:#1767c8;color:#fff}.matrix{table-layout:fixed;min-width:920px}.matrix td,.matrix th{text-align:center;vertical-align:middle;padding:.35rem}.matrix .team-cell,.matrix .opponent-cell{width:145px;min-width:145px;max-width:145px;white-space:normal;word-break:break-word}.matrix .summary-total{width:72px}.matrix .summary-case{width:78px}.matrix .summary-net{width:94px}.matrix .summary-rank{width:58px}.tie-cell{box-shadow:inset 0 0 0 3px #ef4444}.qualified{background:#e7f7ee!important}</style>
+<div class="container-fluid px-3 my-3">
+  <div class="rr-head d-flex justify-content-between gap-3 flex-wrap"><div><h2 class="mb-1">{{ event.name }}</h2><div>Round Robin ใหม่ · {{ teams|length }} ทีม · {{ groups|length or cfg.group_count }} กลุ่ม</div></div><div><a class="btn btn-light" href="{{ url_for('index') }}">หน้าอีเวนต์ทั้งหมด</a></div></div>
+
+  {% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}
+  <div class="card shadow-sm mt-3">
+    <div class="card-header bg-primary text-white fw-bold">เพิ่มและจัดการทีม</div>
+    <div class="card-body">
+      {% if has_matches %}
+      <div class="alert alert-warning">
+        มีการแบ่งกลุ่ม/สร้างตารางแล้ว หากเพิ่มหรือลบทีม ระบบต้องแบ่งกลุ่มและสร้างตารางใหม่ และคะแนนเดิมจะถูกล้าง
+      </div>
+      {% endif %}
+      <form method="POST" action="{{ url_for('add_team_route', event_id=event.id) }}" class="row g-2" onsubmit="return confirmRRTeamChange(this)">
+        <input type="hidden" name="confirm_round_robin_reset" value="{% if has_matches %}0{% else %}1{% endif %}">
+        <div class="col-md-8"><input type="text" name="team_name" class="form-control" placeholder="ชื่อทีม / ชื่อนักกีฬา" required></div>
+        <div class="col-md-4"><button class="btn btn-success w-100">เพิ่มทีม</button></div>
+      </form>
+      <form method="POST" action="{{ url_for('upload_teams', event_id=event.id) }}" enctype="multipart/form-data" class="mt-3" onsubmit="return confirmRRTeamChange(this)">
+        <input type="hidden" name="confirm_round_robin_reset" value="{% if has_matches %}0{% else %}1{% endif %}">
+        <label class="form-label">นำเข้าทีมจาก Excel (.xlsx) ต้องมีคอลัมน์ <b>team_name</b></label>
+        <div class="input-group"><input type="file" name="file" class="form-control" accept=".xls,.xlsx" required><button class="btn btn-primary">อัปโหลด</button></div>
+      </form>
+      <form method="POST" action="{{ url_for('clear_teams_route', event_id=event.id) }}" class="mt-3" onsubmit="return confirmRRClearTeams(this)">
+        <input type="hidden" name="confirm_round_robin_reset" value="{% if has_matches %}0{% else %}1{% endif %}">
+        <button class="btn btn-danger">ลบทีมทั้งหมด</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mt-3">
+    <div class="card-header bg-secondary text-white fw-bold">รายชื่อทีม ({{ teams|length }})</div>
+    <div class="card-body">
+      {% if teams %}
+      <div class="list-group">
+        {% for team in teams %}
+        <div class="list-group-item d-flex gap-2 align-items-center flex-wrap">
+          <b class="me-auto">{{ loop.index }}. {{ team.name }}</b>
+          <form method="POST" action="{{ url_for('edit_teams_route', event_id=event.id, team_id=team.id) }}" class="d-flex gap-2">
+            <input type="text" name="name" class="form-control form-control-sm" placeholder="ชื่อใหม่" required>
+            <button class="btn btn-warning btn-sm">แก้ไข</button>
+          </form>
+          <form method="POST" action="{{ url_for('delete_team_route', event_id=event.id, team_id=team.id) }}" onsubmit="return confirmRRDeleteTeam(this, {{ has_matches|tojson }})">
+            <input type="hidden" name="confirm_round_robin_reset" value="{% if has_matches %}0{% else %}1{% endif %}">
+            <button class="btn btn-danger btn-sm">ลบ</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="text-muted">ยังไม่มีทีม กรุณาเพิ่มทีมหรืออัปโหลด Excel ก่อน</div>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}
+  <div class="card shadow-sm mt-3"><div class="card-header bg-primary text-white fw-bold">ตั้งค่า Round Robin</div><div class="card-body">
+    <form method="post" class="row g-2 align-items-end"><input type="hidden" name="action" value="generate"><div class="col-md-2"><label class="form-label">จำนวนกลุ่ม</label><input class="form-control" type="number" name="group_count" min="1" value="{{ cfg.group_count }}"></div><div class="col-md-2"><label class="form-label">เข้ารอบ/กลุ่ม</label><input class="form-control" type="number" name="advance_per_group" min="1" value="{{ cfg.advance_per_group }}"></div><div class="col-md-2"><label class="form-label">การลงกลุ่ม</label><select class="form-select" name="pairing_method"><option value="random" {% if cfg.pairing_method=='random' %}selected{% endif %}>Random</option><option value="seed" {% if cfg.pairing_method=='seed' %}selected{% endif %}>ตาม Seed</option><option value="snake" {% if cfg.pairing_method=='snake' %}selected{% endif %}>Snake</option><option value="manual" {% if cfg.pairing_method=='manual' %}selected{% endif %}>กำหนดเอง</option></select></div><div class="col-md-2"><label class="form-label">เริ่มเวลา</label><input class="form-control" type="time" name="first_time" value="{{ cfg.first_time }}"></div><div class="col-md-2"><label class="form-label">แข่ง/พัก</label><div class="input-group"><input class="form-control" type="number" name="match_minutes" value="{{ cfg.match_minutes }}"><input class="form-control" type="number" name="break_minutes" value="{{ cfg.break_minutes }}"></div></div><div class="col-md-2"><button class="btn btn-success w-100">จับสลากและสร้างตาราง</button></div><div class="col-12 mt-2"><div class="row g-2 align-items-end border rounded p-2 bg-light"><div class="col-md-2"><label class="form-label">กำหนดสนามอัตโนมัติ</label><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="auto_field_enabled" value="1" {% if event.auto_field_enabled %}checked{% endif %}></div></div><div class="col-md-2"><label class="form-label">คำนำหน้าสนาม</label><input class="form-control" name="field_prefix" value="{{ event.field_prefix or '' }}" placeholder="เช่น A"></div><div class="col-md-2"><label class="form-label">สนามเริ่ม</label><input class="form-control" type="number" name="field_start" value="{{ event.field_start or 1 }}"></div><div class="col-md-2"><label class="form-label">สนามสูงสุด</label><input class="form-control" type="number" name="field_max" value="{{ event.field_max or 16 }}"></div><div class="col-md-4"><label class="form-label">เว้นสนาม</label><input class="form-control" name="field_exclude" value="{{ event.field_exclude or '' }}" placeholder="เช่น 4,7,10"></div></div></div><div class="col-12"><label><input type="checkbox" name="confirm_reset" value="1"> ยืนยันล้างตารางและคะแนนเดิม หากเคยแข่งขันแล้ว</label></div><div class="col-12"><details><summary class="fw-bold">กำหนดตำแหน่งด้วยมือ A1, A2, B1...</summary><div class="row g-2 mt-1">{% for team in teams %}<div class="col-md-3"><label class="small">{{ team.name }}</label><input class="form-control" name="manual_{{ team.id }}" placeholder="เช่น A{{ loop.index }}"></div>{% endfor %}</div></details></div></form>
+  </div></div>
+  {% endif %}
+
+  <div class="card shadow-sm mt-3"><div class="card-header fw-bold">กลุ่มและหมายเลขทีม</div><div class="card-body"><div class="row g-3">{% for g in groups %}<div class="col-md-4"><div class="border rounded p-2"><h5 class="text-center">สาย {{ g.name }}</h5>{% for m in g.members %}<div class="d-flex border-top py-2"><b style="width:48px">{{ g.name }}{{ m.slot_no }}</b><span>{{ m.team.name }}</span></div>{% endfor %}</div></div>{% else %}<div class="text-muted">ยังไม่ได้แบ่งกลุ่ม</div>{% endfor %}</div></div></div>
+
+  <div class="card shadow-sm mt-3"><div class="card-header fw-bold">จับเวลาการแข่งขัน</div><div class="card-body d-flex align-items-center gap-3 flex-wrap"><div id="timerDisplay" style="font-size:2.3rem;font-weight:900;min-width:150px">{{ cfg.match_minutes }}:00</div><button class="btn btn-success" type="button" onclick="startTimer()">เริ่ม</button><button class="btn btn-warning" type="button" onclick="pauseTimer()">พัก</button><button class="btn btn-secondary" type="button" onclick="resetTimer()">เริ่มใหม่</button><button class="btn btn-danger" type="button" onclick="testAlarm()">ทดสอบเสียงหมดเวลา</button><button class="btn btn-outline-secondary" type="button" onclick="stopAlarm()">หยุดเสียง</button><span id="timerMessage" class="fw-bold"></span></div></div>
+
+  <div class="card shadow-sm mt-3"><div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap"><b>ตารางแข่งขันและกรอกคะแนน Realtime</b><div class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ url_for('rr_event.round_robin_print_pairings',event_id=event.id) }}">พิมพ์ใบประกบคู่</a><button class="btn btn-sm btn-outline-primary" type="button" onclick="savePairingsImage()">บันทึกภาพใบประกบคู่</button><a class="btn btn-sm btn-outline-success" target="_blank" href="{{ url_for('score_sheet_all',event_id=event.id) }}">พิมพ์สกอร์ชีตทั้งหมด</a></div></div><div class="card-body" id="pairingsExportArea">{% for round_no,items in rounds.items() %}<div class="d-flex justify-content-between align-items-center mt-3"><h5 class="mb-0">ครั้งที่ {{ round_no }}</h5><div class="d-flex gap-2"><a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ url_for('rr_event.round_robin_print_pairings',event_id=event.id,round=round_no) }}">พิมพ์ใบประกบคู่รอบนี้</a><a class="btn btn-sm btn-outline-success" target="_blank" href="{{ url_for('score_sheet_all',event_id=event.id,round=round_no) }}">พิมพ์สกอร์ชีตรอบนี้</a></div></div><div class="table-responsive"><table class="table table-bordered align-middle"><thead><tr><th>สาย</th><th>สนาม</th><th>ทีม 1</th><th>คะแนน</th><th>ทีม 2</th><th>สกอร์ชีตออนไลน์</th><th>สถานะ</th></tr></thead><tbody>{% for row in items %}{% set m=row.match %}<tr><td>{{ row.group }}</td><td>{{ m.field or '-' }}</td><td>{{ row.slot1 }} {{ m.team1.name }}</td><td>{% if m.team2 %}<div class="d-flex gap-1 justify-content-center"><input class="form-control text-center" style="max-width:72px" type="number" min="0" max="13" value="{{ m.team1_score if m.is_locked else '' }}" data-match="{{ m.id }}" data-side="1"><span>-</span><input class="form-control text-center" style="max-width:72px" type="number" min="0" max="13" value="{{ m.team2_score if m.is_locked else '' }}" data-match="{{ m.id }}" data-side="2"><button class="btn btn-sm btn-success" onclick="saveScore({{ m.id }})">บันทึก</button></div>{% else %}<b>พัก</b>{% endif %}</td><td>{{ row.slot2 }} {{ m.team2.name if m.team2 else '-' }}</td><td>{% if m.team2 %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('online_scorecard', event_id=event.id, match_id=m.id) }}" target="_blank">สกอร์ชีต / QR</a>{% else %}-{% endif %}</td><td id="status-{{ m.id }}">{% if m.is_locked %}<span class="badge bg-success">บันทึกแล้ว</span>{% else %}<span class="badge bg-secondary">รอผล</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="text-muted">ยังไม่มีตารางแข่งขัน</div>{% endfor %}</div></div>
+
+  <div class="card shadow-sm mt-3"><div class="card-header fw-bold">ตารางคะแนน</div><div class="card-body"><div class="rr-tabs mb-3">{% for g in groups %}<button type="button" class="rr-tab border-0 {% if active_group==g.name %}active{% endif %}" data-group-tab="{{ g.name }}" onclick="switchRRGroup('{{ g.name }}')">สาย {{ g.name }}</button>{% endfor %}</div>{% for group_name, group_rows in standings.items() %}<div class="rr-group-panel" data-group-panel="{{ group_name }}" {% if group_name!=active_group %}style="display:none"{% endif %}><div class="table-responsive"><table class="table table-bordered text-center"><thead><tr><th>อันดับ</th><th>ทีม</th><th>ชนะ</th><th>แพ้</th><th>ได้</th><th>เสีย</th><th>ผลต่าง</th></tr></thead><tbody id="standing-body-{{ group_name }}">{% for r in group_rows %}<tr class="{% if r.qualified %}qualified{% endif %}"><td>{{ r.rank }}</td><td>{{ r.slot }} {{ r.team_name }}</td><td>{{ r.wins }}</td><td>{{ r.losses }}</td><td>{{ r.pf }}</td><td>{{ r.pa }}</td><td>{{ '%+d'|format(r.diff) }}</td></tr>{% endfor %}</tbody></table></div></div>{% endfor %}</div></div>
+
+  <div class="card shadow-sm mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <b>ตาราง Matrix แบบ Excel</b>
+    <div>
+      <button class="btn btn-sm btn-outline-primary" type="button" onclick="saveMatrixImage()">บันทึกภาพ Matrix</button>
+      <button class="btn btn-sm btn-outline-dark" type="button" onclick="printMatrix()">พิมพ์ Matrix</button>
+    </div>
+  </div>
+  <div class="card-body" id="matrixExportArea">
+    {% for group_name, matrix in matrices.items() %}
+    <div class="rr-group-panel" data-group-panel="{{ group_name }}" {% if group_name!=active_group %}style="display:none"{% endif %}>
+      <div class="mb-2"><span class="badge bg-danger">ทีมคู่กรณี</span> <span id="tie-names-{{ group_name }}">{{ matrix.tie_names|join(' / ') if matrix.tie_names else 'ยังไม่มีทีมที่มีคะแนนรวมเท่ากัน' }}</span></div>
+      <div class="table-responsive"><table class="table table-bordered matrix"><thead class="table-primary"><tr><th class="team-cell">ชื่อทีม</th>{% for member in matrix.members %}<th class="opponent-cell">{{ group_name }}{{ member.slot_no }}<br><small>{{ member.team.name }}</small></th>{% endfor %}<th class="summary-total">คะแนน<br>รวม</th><th class="summary-case">คะแนน<br>คู่กรณี</th><th class="summary-net">คะแนน<br>สุทธิคู่กรณี</th><th class="summary-rank">อันดับ<br>ที่</th></tr></thead><tbody>
+      {% for row_member in matrix.members %}{% set stat=matrix.stats.get(row_member.team_id,{}) %}<tr data-matrix-row="{{ group_name }}:{{ row_member.team_id }}"><th class="team-cell">{{ row_member.team.name }}<br><small>{{ group_name }}{{ row_member.slot_no }}</small></th>{% for col_member in matrix.members %}<td class="opponent-cell {% if (row_member.team_id,col_member.team_id) in matrix.tie_pairs %}tie-cell{% endif %}" data-matrix-score="{{ group_name }}:{{ row_member.team_id }}:{{ col_member.team_id }}">{% if row_member.team_id==col_member.team_id %}—{% else %}{{ matrix.scores.get((row_member.team_id,col_member.team_id),'') }}{% endif %}</td>{% endfor %}<td data-stat="total">{{ stat.get('total_score',stat.get('wins',0)) }}</td><td data-stat="case">{{ stat.get('case_score',stat.get('opponent_score',0)) }}</td><td data-stat="net">{{ '%+d'|format(stat.get('case_net_score',stat.get('opponent_diff',0))) }}</td><td data-stat="rank">{{ stat.get('rank','-') }}</td></tr>{% endfor %}</tbody></table></div>
+    </div>
+    {% else %}<div class="text-muted">ยังไม่มี Matrix</div>{% endfor %}
+  </div>
+</div>
+</div>
+</div>
+<script>
+function confirmRRTeamChange(form){
+  const hidden=form.querySelector('[name="confirm_round_robin_reset"]');
+  if(hidden && hidden.value==='0'){
+    if(!confirm('มีตาราง Round Robin แล้ว การเปลี่ยนรายชื่อทีมจะล้างกลุ่ม ตาราง และคะแนนเดิม จากนั้นต้องสร้างตารางใหม่ ยืนยันหรือไม่?')) return false;
+    hidden.value='1';
+  }
+  return true;
+}
+function confirmRRDeleteTeam(form,hasMatches){
+  if(!confirm('ยืนยันลบทีมนี้?')) return false;
+  const hidden=form.querySelector('[name="confirm_round_robin_reset"]');
+  if(hasMatches){
+    if(!confirm('การลบทีมจะล้างกลุ่ม ตาราง และคะแนน Round Robin เดิม ยืนยันอีกครั้งหรือไม่?')) return false;
+    hidden.value='1';
+  }
+  return true;
+}
+function confirmRRClearTeams(form){
+  if(!confirm('ยืนยันลบทีมทั้งหมด?')) return false;
+  const hidden=form.querySelector('[name="confirm_round_robin_reset"]');
+  if(hidden && hidden.value==='0'){
+    if(!confirm('ระบบจะล้างกลุ่ม ตาราง และคะแนน Round Robin เดิมทั้งหมด ยืนยันอีกครั้งหรือไม่?')) return false;
+    hidden.value='1';
+  }
+  return true;
+}
+async function saveScore(id){const a=document.querySelector(`[data-match="${id}"][data-side="1"]`),b=document.querySelector(`[data-match="${id}"][data-side="2"]`);if(a.value===''||b.value==='')return alert('กรอกคะแนนทั้งสองฝ่าย');const r=await fetch(`{{ url_for('rr_event.round_robin_score',event_id=event.id,match_id=0) }}`.replace('/0','/'+id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({team1_score:a.value,team2_score:b.value})});if(r.ok){document.getElementById('status-'+id).innerHTML='<span class="badge bg-success">บันทึกแล้ว</span>';await refreshRRData()}else alert('บันทึกไม่สำเร็จ')}
+
+let timerSeconds={{ cfg.match_minutes }}*60,timerHandle=null,audioCtx=null;
+function renderTimer(){const m=Math.floor(timerSeconds/60),s=timerSeconds%60;document.getElementById('timerDisplay').textContent=`${m}:${String(s).padStart(2,'0')}`}
+function beep(freq,start,duration,volume=.35){audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;g.gain.value=volume;o.connect(g);g.connect(audioCtx.destination);o.start(audioCtx.currentTime+start);o.stop(audioCtx.currentTime+start+duration)}
+function alarm(){for(let i=0;i<12;i++){beep(1050,i,0.22,.4);beep(780,i+.25,0.22,.4);beep(1050,i+.5,0.22,.4);beep(780,i+.75,0.22,.4)}document.getElementById('timerMessage').textContent='หมดเวลาการแข่งขัน';try{speechSynthesis.speak(new SpeechSynthesisUtterance('หมดเวลาการแข่งขัน หมดเวลาการแข่งขัน'))}catch(e){}}
+function warning(){beep(880,0,.18);beep(880,.28,.18);beep(1040,.56,.28);document.getElementById('timerMessage').textContent='เหลือเวลา 10 นาที'}
+function startTimer(){if(timerHandle)return;timerHandle=setInterval(()=>{timerSeconds--;renderTimer();if(timerSeconds===600)warning();if(timerSeconds<=0){clearInterval(timerHandle);timerHandle=null;timerSeconds=0;renderTimer();alarm()}},1000)}
+function pauseTimer(){clearInterval(timerHandle);timerHandle=null}
+function resetTimer(){pauseTimer();timerSeconds={{ cfg.match_minutes }}*60;document.getElementById('timerMessage').textContent='';renderTimer()}
+function testAlarm(){alarm()}
+function stopAlarm(){try{if(audioCtx)audioCtx.close()}catch(e){}audioCtx=null;try{speechSynthesis.cancel()}catch(e){}document.getElementById('timerMessage').textContent=''}
+function printMatrix(){const area=document.getElementById('matrixExportArea');const w=window.open('','_blank');w.document.write(`<html><head><meta charset="utf-8"><title>Matrix</title><style>body{font-family:Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:8px;text-align:center}.tie-cell{box-shadow:inset 0 0 0 3px red}</style></head><body><h2>{{ event.name }} - Matrix สาย {{ active_group or '' }}</h2>${area.innerHTML}</body></html>`);w.document.close();setTimeout(()=>w.print(),300)}
+async function saveMatrixImage(){const area=document.getElementById('matrixExportArea'),clone=area.cloneNode(true);const wrap=document.createElement('div');wrap.style.cssText='position:fixed;left:-10000px;top:0;background:white;padding:24px;width:1400px';wrap.innerHTML='<h2>{{ event.name }} - Matrix สาย {{ active_group or '' }}</h2>';wrap.appendChild(clone);document.body.appendChild(wrap);const xml=new XMLSerializer().serializeToString(wrap);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${wrap.scrollWidth}" height="${wrap.scrollHeight}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${xml}</div></foreignObject></svg>`;const img=new Image(),url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));img.onload=()=>{const c=document.createElement('canvas');c.width=wrap.scrollWidth*2;c.height=wrap.scrollHeight*2;const x=c.getContext('2d');x.scale(2,2);x.fillStyle='white';x.fillRect(0,0,wrap.scrollWidth,wrap.scrollHeight);x.drawImage(img,0,0);c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='matrix-{{ event.id }}-{{ active_group or "group" }}.png';a.click();wrap.remove();URL.revokeObjectURL(url)},'image/png')};img.onerror=()=>{wrap.remove();alert('กรุณาใช้ Chrome หรือ Edge สำหรับบันทึกภาพ')};img.src=url}
+
+
+let currentRRGroup={{ (active_group or '')|tojson }};
+function switchRRGroup(group){currentRRGroup=group;document.querySelectorAll('[data-group-tab]').forEach(b=>b.classList.toggle('active',b.dataset.groupTab===group));document.querySelectorAll('[data-group-panel]').forEach(p=>p.style.display=(p.dataset.groupPanel===group?'':'none'))}
+async function refreshRRData(){
+  try{
+    const r=await fetch(`{{ url_for('rr_event.round_robin_live_data',event_id=event.id) }}`,{cache:'no-store'});if(!r.ok)return;const data=await r.json();
+    Object.entries(data.standings||{}).forEach(([group,rows])=>{const body=document.getElementById('standing-body-'+group);if(!body)return;body.innerHTML=rows.map(x=>`<tr class="${x.qualified?'qualified':''}"><td>${x.rank}</td><td>${x.slot} ${x.team_name}</td><td>${x.wins}</td><td>${x.losses}</td><td>${x.pf}</td><td>${x.pa}</td><td>${x.diff>=0?'+':''}${x.diff}</td></tr>`).join('')});
+    Object.entries(data.matrices||{}).forEach(([group,m])=>{const tie=document.getElementById('tie-names-'+group);if(tie)tie.textContent=(m.tie_names||[]).join(' / ')||'ยังไม่มีทีมที่มีคะแนนรวมเท่ากัน';Object.entries(m.scores||{}).forEach(([key,val])=>{const [a,b]=key.split(':');const cell=document.querySelector(`[data-matrix-score="${group}:${a}:${b}"]`);if(cell)cell.textContent=val});Object.entries(m.stats||{}).forEach(([team,st])=>{const row=document.querySelector(`[data-matrix-row="${group}:${team}"]`);if(!row)return;const put=(k,v)=>{const el=row.querySelector(`[data-stat="${k}"]`);if(el)el.textContent=v};put('total',st.total_score??st.wins??0);put('case',st.case_score??st.opponent_score??0);const net=st.case_net_score??st.opponent_diff??0;put('net',(net>=0?'+':'')+net);put('rank',st.rank??'-')})})
+  }catch(e){console.warn('RR realtime refresh failed',e)}
+}
+async function savePairingsImage(){const area=document.getElementById('pairingsExportArea'),clone=area.cloneNode(true);clone.querySelectorAll('input,button,a').forEach(el=>el.remove());const wrap=document.createElement('div');wrap.style.cssText='position:fixed;left:-10000px;top:0;background:white;padding:24px;width:1500px';wrap.innerHTML='<h2>{{ event.name }} - ใบประกบคู่ Round Robin</h2>';wrap.appendChild(clone);document.body.appendChild(wrap);const xml=new XMLSerializer().serializeToString(wrap);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${wrap.scrollWidth}" height="${wrap.scrollHeight}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${xml}</div></foreignObject></svg>`;const img=new Image(),url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));img.onload=()=>{const c=document.createElement('canvas');c.width=wrap.scrollWidth*2;c.height=wrap.scrollHeight*2;const x=c.getContext('2d');x.scale(2,2);x.fillStyle='white';x.fillRect(0,0,wrap.scrollWidth,wrap.scrollHeight);x.drawImage(img,0,0);c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='round-robin-pairings-{{ event.id }}.png';a.click();wrap.remove();URL.revokeObjectURL(url)},'image/png')};img.onerror=()=>{wrap.remove();alert('กรุณาใช้ Chrome หรือ Edge สำหรับบันทึกภาพ')};img.src=url}
+
+const rrSocket=typeof io==='function'?io():null;
+if(rrSocket){
+  rrSocket.emit('join_round',{event_id:{{ event.id }}});
+  rrSocket.on('round_robin_score_updated',data=>{if(Number(data.event_id)===Number({{ event.id }})){const a=document.querySelector(`[data-match="${data.match_id}"][data-side="1"]`),b=document.querySelector(`[data-match="${data.match_id}"][data-side="2"]`);if(a)a.value=data.team1_score;if(b)b.value=data.team2_score;const st=document.getElementById('status-'+data.match_id);if(st)st.innerHTML='<span class="badge bg-success">บันทึกแล้ว</span>';refreshRRData()}});
+}
+</script>
+{% endblock %}

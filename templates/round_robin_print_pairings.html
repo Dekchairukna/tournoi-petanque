@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>ใบประกบคู่ - {{ event.name }}</title>
+<style>
+@page{size:A4 landscape;margin:8mm}
+body{font-family:Tahoma,Arial,sans-serif;color:#111;margin:0}
+.toolbar{position:sticky;top:0;background:#fff;padding:8px;border-bottom:1px solid #ddd;z-index:10}
+#exportArea{padding:8px}
+h1,h2,h3{text-align:center;margin:3px}
+.meta{text-align:center;margin:5px 0 10px;font-size:13px}
+.round{margin:0 0 12px;page-break-inside:avoid}
+.round-title{display:flex;justify-content:space-between;align-items:center;background:#eee;border:1px solid #222;border-bottom:0;padding:5px 8px;font-weight:700}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1px solid #222;padding:5px;text-align:center;font-size:12px}
+.team{text-align:left;font-weight:700;white-space:normal;word-break:break-word}
+.col-group{width:8%}.col-field{width:8%}.col-team{width:30%}.col-score{width:12%}
+@media print{.toolbar{display:none}body{zoom:.92}#exportArea{padding:0}.round{page-break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">พิมพ์</button> <button onclick="saveImage()">บันทึกภาพ</button></div>
+<div id="exportArea">
+<h1>{{ event.name }}</h1>
+<h2>ใบประกบคู่ Round Robin{% if selected_round %} ครั้งที่ {{ selected_round }}{% endif %}</h2>
+<div class="meta">เริ่มแข่งขัน {{ cfg.first_time or '09:00' }} น. | แข่งขัน {{ cfg.match_minutes }} นาที | พัก {{ cfg.break_minutes }} นาที</div>
+{% for round_no,items in rounds.items() %}
+<section class="round">
+  <div class="round-title"><span>ครั้งที่ {{ round_no }}</span><span>เวลาเริ่ม {{ round_times.get(round_no, '-') }} น.</span></div>
+  <table>
+    <thead><tr><th class="col-group">สาย</th><th class="col-field">สนาม</th><th class="col-team">ทีม 1</th><th class="col-score">ผล</th><th class="col-team">ทีม 2</th></tr></thead>
+    <tbody>
+    {% for row in items %}{% set m=row.match %}
+      <tr><td>{{ row.group }}</td><td>{{ m.field or '-' }}</td><td class="team">{{ row.slot1 }} {{ m.team1.name }}</td><td>____ - ____</td><td class="team">{{ row.slot2 }} {{ m.team2.name if m.team2 else 'พัก' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+</div>
+<script>
+function saveImage(){const area=document.getElementById('exportArea'),wrap=document.createElement('div');wrap.style.cssText='position:fixed;left:-10000px;top:0;background:white;padding:30px;width:1600px';wrap.appendChild(area.cloneNode(true));document.body.appendChild(wrap);const xml=new XMLSerializer().serializeToString(wrap),svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${wrap.scrollWidth}" height="${wrap.scrollHeight}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${xml}</div></foreignObject></svg>`,img=new Image(),url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));img.onload=()=>{const c=document.createElement('canvas');c.width=wrap.scrollWidth*2;c.height=wrap.scrollHeight*2;const x=c.getContext('2d');x.scale(2,2);x.fillStyle='white';x.fillRect(0,0,wrap.scrollWidth,wrap.scrollHeight);x.drawImage(img,0,0);c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='pairings-{{ event.id }}{% if selected_round %}-round-{{ selected_round }}{% endif %}.png';a.click();wrap.remove();URL.revokeObjectURL(url)},'image/png')};img.src=url}
+</script>
+</body></html>

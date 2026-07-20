@@ -62,58 +62,21 @@
     </div>
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header bg-dark text-white fw-bold">2) ตั้งค่าครั้ง/สนาม</div>
-      <div class="card-body">
+      <div class="card-header bg-success text-white fw-bold">2) อีเว้นท์ที่เลือก</div>
+      <div class="card-body border-bottom bg-light">
         <div class="row g-2 align-items-end">
-          <div class="col-6 col-md-2">
-            <label class="form-label">รอบตั้งต้น</label>
-            <select class="form-select" name="round" id="defaultRoundSelect">
-              {% for n in [1,2,3,4] %}
-              <option value="{{ n }}" {% if selected_round == n %}selected{% endif %}>ครั้งที่ {{ n }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-6 col-md-2">
-            <label class="form-label">สนามเริ่ม</label>
-            <input type="number" class="form-control" name="field_start" value="{{ field_start }}" min="1">
-          </div>
-          <div class="col-6 col-md-2">
-            <label class="form-label">จำนวนสนาม</label>
-            <input type="number" class="form-control" name="field_max" value="{{ field_max }}" min="1">
-          </div>
-          <div class="col-6 col-md-2">
-            <label class="form-label">Prefix สนาม</label>
-            <input class="form-control" name="field_prefix" value="{{ field_prefix }}" placeholder="เช่น A">
-          </div>
-          <div class="col-12 col-md-3">
-            <label class="form-label">เว้นสนาม</label>
-            <input class="form-control" name="field_exclude" value="{{ field_exclude }}" placeholder="เช่น 3,7,11">
-          </div>
-          <div class="col-12 col-md-1">
-            <button type="submit" name="action" value="refresh" class="btn btn-primary w-100">ดู</button>
-          </div>
+          <div class="col-6 col-md-2"><label class="form-label small">สนามเริ่ม</label><input type="number" class="form-control form-control-sm" name="field_start" value="{{ field_start }}" min="1"></div>
+          <div class="col-6 col-md-2"><label class="form-label small">จำนวนสนาม</label><input type="number" class="form-control form-control-sm" name="field_max" value="{{ field_max }}" min="1"></div>
+          <div class="col-6 col-md-2"><label class="form-label small">Prefix สนาม</label><input class="form-control form-control-sm" name="field_prefix" value="{{ field_prefix }}" placeholder="เช่น A"></div>
+          <div class="col-6 col-md-3"><label class="form-label small">เว้นสนาม</label><input class="form-control form-control-sm" name="field_exclude" value="{{ field_exclude }}" placeholder="เช่น 3,7,11"></div>
+          <div class="col-12 col-md-3"><button type="submit" name="action" value="refresh" class="btn btn-primary btn-sm w-100">โหลดค่ารอบและสนาม</button></div>
         </div>
-        <div class="form-check mt-3">
-          <input class="form-check-input" type="checkbox" name="separate_same_name" id="separate_same_name" {% if separate_same_name %}checked{% endif %}>
-          <label class="form-check-label" for="separate_same_name">พยายามกันทีมชื่อฐานเดียวกันไม่ให้เจอกัน</label>
+        <div class="d-flex flex-wrap gap-3 mt-2">
+          <label class="form-check-label"><input class="form-check-input me-1" type="checkbox" name="separate_same_name" {% if separate_same_name %}checked{% endif %}>กันทีมชื่อฐานเดียวกัน</label>
+          <label class="form-check-label text-danger"><input class="form-check-input me-1" type="checkbox" name="force_delete_locked" {% if force_delete_locked %}checked{% endif %}>อนุญาตลบคู่ที่ล็อกผลแล้ว</label>
         </div>
-        <div class="form-check mt-2">
-          <input class="form-check-input" type="checkbox" name="force_delete_locked" id="force_delete_locked" {% if force_delete_locked %}checked{% endif %}>
-          <label class="form-check-label text-danger fw-bold" for="force_delete_locked">อนุญาตให้ลบคู่ที่ล็อกผลแล้วด้วย (ใช้เฉพาะกรณีเลือกผิดจริง ๆ)</label>
-        </div>
-        {% if summary.matches > summary.usable_fields %}
-        <div class="alert alert-warning mt-3 mb-0">
-          คู่ครั้งนี้มี {{ summary.matches }} คู่ แต่สนามใช้ได้ {{ summary.usable_fields }} สนาม ระบบจะใส่สนามให้ได้แค่ {{ summary.usable_fields }} คู่ ที่เหลือจะขึ้น “ยังไม่เลือก” เพื่อกันหลายอีเว้นท์ชนสนามเดียวกัน
-        </div>
-        {% endif %}
-        <div class="small text-muted mt-2">
-          หมายเหตุ: เลือกรอบแยกต่ออีเว้นท์ได้ในตารางด้านล่าง เหมาะกับกรณีบางอีเว้นท์อยู่รอบ 2 บางอีเว้นท์อยู่รอบ 3 ส่วนการใส่สนามจะรวมทุกอีเว้นท์ที่เลือกไว้ด้วยกัน สนามเดียวกันจึงไม่ชนกัน และคู่ BYE จะไม่กินเลขสนาม
-        </div>
+        <div class="small text-muted mt-2">เลือกรอบแยกแต่ละอีเว้นท์จากตารางด้านล่างได้ สนามจะจัดรวมโดยไม่ชนกัน และ BYE ไม่ใช้สนาม</div>
       </div>
-    </div>
-
-    <div class="card shadow-sm mb-3">
-      <div class="card-header bg-success text-white fw-bold">3) อีเว้นท์ที่เลือก</div>
       <div class="table-responsive">
         <table class="table table-hover mb-0">
           <thead class="table-light">
@@ -125,7 +88,7 @@
               <th class="text-center">เริ่มสนาม</th>
               <th class="text-center">คู่รอบนี้</th>
               <th class="text-center">สนามครั้งนี้</th>
-              <th class="text-center">เตือนสนามซ้ำ</th>
+              <th class="text-center">เตือนสนามชนกัน</th>
               <th class="text-center">ยังไม่ล็อก</th>
               <th class="text-center">ระบบจัดต่อ</th>
               <th class="text-center">เปิด</th>
@@ -138,7 +101,7 @@
               <td class="text-center">{{ row.team_count }}</td>
               <td class="text-center">
                 <select class="form-select form-select-sm event-round-select" name="event_round_{{ row.event.id }}" data-event-id="{{ row.event.id }}">
-                  {% for n in [1,2,3,4] %}
+                  {% for n in range(1, row.round_option_max + 1) %}
                   <option value="{{ n }}" {% if row.selected_round == n %}selected{% endif %}>ครั้งที่ {{ n }}</option>
                   {% endfor %}
                 </select>
@@ -157,17 +120,25 @@
                 {% endif %}
               </td>
               <td class="text-center">
-                {% if row.field_repeat_count %}
-                  <span class="badge bg-warning text-dark">ซ้ำ {{ row.field_repeat_count }} คู่</span>
+                {% if row.field_collision_count %}
+                  <span class="badge bg-warning text-dark">ชน {{ row.field_collision_count }} คู่</span>
+                  <div class="small text-danger mt-1">สนาม {{ row.field_collision_labels|join(', ') }}</div>
                 {% else %}
-                  <span class="badge bg-success">ไม่ซ้ำ</span>
+                  <span class="badge bg-success">ไม่ชน</span>
                 {% endif %}
               </td>
               <td class="text-center">{{ row.waiting_count }}</td>
               <td class="text-center">
                 {% if row.playoff_count %}
                   <span class="badge bg-primary">มีแล้ว {{ row.playoff_count }}</span>
-                  {% if row.latest_playoff_id %}<div><a class="small" target="_blank" href="{{ url_for('playoff_detail', playoff_id=row.latest_playoff_id) }}">เปิดล่าสุด</a></div>{% endif %}
+                  {% if row.latest_playoff_id %}<div class="mt-1"><a class="btn btn-sm btn-outline-primary" target="_blank" href="{{ url_for('playoff_detail', playoff_id=row.latest_playoff_id) }}">คีย์เพลย์ออฟ</a></div>{% endif %}
+                  {% if row.playoff_next_status.can_create_next %}
+                    <div class="small text-success fw-bold mt-1">พร้อมจับสลากในหมวด 5</div>
+                  {% elif row.playoff_next_status.complete and row.playoff_next_status.participants < 2 %}
+                    <div class="mt-1"><span class="badge bg-success">จบการแข่งขันแล้ว</span></div>
+                  {% else %}
+                    <div class="small text-muted mt-1">บันทึกผลให้ครบก่อนจัดรอบถัดไป</div>
+                  {% endif %}
                 {% else %}
                   <span class="badge bg-secondary">ยังไม่มี</span>
                 {% endif %}
@@ -184,7 +155,7 @@
 
 
     <div class="card shadow-sm mb-3">
-      <div class="card-header bg-warning fw-bold">4) จัดการหน้าสแตนดิ้ง / ทีมเข้ารอบ / สร้างระบบจัดต่อ แบบแยกอีเว้นท์</div>
+      <div class="card-header bg-warning fw-bold">3) จัดการหน้าสแตนดิ้ง / ทีมเข้ารอบ / สร้างระบบจัดต่อ แบบแยกอีเว้นท์</div>
       <div class="card-body">
         <div class="alert alert-info mb-3">
           หน้านี้ใช้หลังแข่ง Swiss ครบแล้ว: เลือกจำนวนทีมจาก Standing และเลือกระบบจัดต่อแยกทีละอีเว้นท์ได้ในแถวเดียวกัน เช่น U12 เป็น Knockout, U14 เป็น Double Knockout, U16 สร้าง Swiss ใหม่
@@ -195,8 +166,8 @@
           <div class="row g-2 align-items-end">
             <div class="col-6 col-md-1"><label class="form-label small">อันดับดีสุด</label><input type="number" id="bulkDirect" min="0" class="form-control form-control-sm" value="0"></div>
             <div class="col-6 col-md-1"><label class="form-label small">อันดับถัดไป</label><input type="number" id="bulkContinue" min="0" class="form-control form-control-sm" value="4"></div>
-            <div class="col-12 col-md-2"><label class="form-label small">ระบบจัดต่อ</label><select id="bulkCompetition" class="form-select form-select-sm"><option value="knockout">Knockout</option><option value="double_knockout">Double Knockout</option><option value="round_robin">Round Robin</option><option value="swiss">สร้าง Swiss ใหม่</option><option value="ab_ladder">A/B Ladder</option><option value="regional64_ladder">A/B คัดตัวแทน</option></select></div>
-            <div class="col-12 col-md-2"><label class="form-label small">วิธีวางคู่</label><select id="bulkPairing" class="form-select form-select-sm"><option value="seed">ตามอันดับ</option><option value="bracket">Bracket</option><option value="random">สุ่ม</option></select></div>
+            <div class="col-12 col-md-2"><label class="form-label small">ระบบจัดต่อ</label><select id="bulkCompetition" class="form-select form-select-sm"><option value="knockout">Knockout</option><option value="double_knockout">Double Knockout</option><option value="swiss">สร้าง Swiss ใหม่</option><option value="ab_ladder">A/B Ladder</option><option value="regional64_ladder">A/B คัดตัวแทน</option></select></div>
+            <div class="col-12 col-md-2"><label class="form-label small">วิธีจับสลาก</label><select id="bulkPairing" class="form-select form-select-sm"><option value="seed">SEED</option><option value="national_qualifier">ประกบคู่คัดตัวแทนทีมชาติ</option><option value="random">Random</option><option value="manual">Manual</option><option value="bracket">Bracket / สายติดกัน</option></select></div>
             <div class="col-12 col-md-2"><label class="form-label small">ชื่อรอบใหม่</label><input id="bulkStageName" class="form-control form-control-sm" value="รอบต่อไป"></div>
             <div class="col-6 col-md-1"><label class="form-label small">A/B A</label><input type="number" id="bulkAbA" min="0" class="form-control form-control-sm" value="4"></div>
             <div class="col-6 col-md-1"><label class="form-label small">Swiss รอบ</label><input type="number" id="bulkSwissRounds" min="1" class="form-control form-control-sm" value="3"></div>
@@ -211,7 +182,7 @@
                 <th>อันดับดีสุด</th>
                 <th>อันดับถัดไป</th>
                 <th>ระบบจัดต่อ</th>
-                <th>วิธีวางคู่</th>
+                <th>วิธีจับสลาก</th>
                 <th>ชื่อรอบใหม่</th>
                 <th>A/B: จำนวน A</th>
                 <th>Swiss รอบ</th>
@@ -231,7 +202,7 @@
                   <select class="form-select form-select-sm event-competition-type" name="event_competition_type_{{ row.event.id }}" data-event-id="{{ row.event.id }}">
                     <option value="knockout">Knockout</option>
                     <option value="double_knockout">Double Knockout</option>
-                    <option value="round_robin">Round Robin</option>
+                    
                     <option value="swiss">สร้าง Swiss ใหม่</option>
                     <option value="ab_ladder">A/B Ladder</option>
                     <option value="regional64_ladder">A/B คัดตัวแทน</option>
@@ -239,9 +210,11 @@
                 </td>
                 <td style="min-width:130px;">
                   <select class="form-select form-select-sm event-pairing-method" name="event_pairing_method_{{ row.event.id }}" data-event-id="{{ row.event.id }}">
-                    <option value="seed">ตามอันดับ</option>
-                    <option value="bracket">Bracket</option>
-                    <option value="random">สุ่ม</option>
+                    <option value="seed">SEED</option>
+                    <option value="national_qualifier">ประกบคู่คัดตัวแทนทีมชาติ</option>
+                    <option value="random">Random</option>
+                    <option value="manual">Manual</option>
+                    <option value="bracket">Bracket / สายติดกัน</option>
                   </select>
                 </td>
                 <td style="min-width:170px;"><input class="form-control form-control-sm event-stage-name" name="event_next_stage_name_{{ row.event.id }}" value="รอบต่อไป" placeholder="เช่น รอบ 8 ทีม"></td>
@@ -269,6 +242,142 @@
         <input type="hidden" id="continueCount" value="8">
         <input type="hidden" id="abATeamCount" value="4">
         <input type="hidden" id="competitionType" value="">
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-info fw-bold">4) กำหนดสนามระบบจัดต่อ แบบแยกอีเว้นท์</div>
+      <div class="card-body">
+        <div class="border rounded-3 p-3 mb-3 bg-light">
+          <div class="fw-bold mb-2">ตั้งค่าสนามรวมก่อน แล้วค่อยแก้สนามเริ่มเฉพาะแถวที่ต่าง</div>
+          <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2"><label class="form-label small">สนามเริ่ม</label><input type="number" min="1" class="form-control form-control-sm" name="playoff_field_start" value="{{ playoff_field_start }}"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">จำนวนสนาม</label><input type="number" min="1" class="form-control form-control-sm" name="playoff_field_max" value="{{ playoff_field_max }}"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Prefix สนาม</label><input class="form-control form-control-sm" name="playoff_field_prefix" value="{{ playoff_field_prefix }}" placeholder="เช่น A"></div>
+            <div class="col-6 col-md-3"><label class="form-label small">เว้นสนาม</label><input class="form-control form-control-sm" name="playoff_field_exclude" value="{{ playoff_field_exclude }}" placeholder="เช่น 3,7,11"></div>
+            <div class="col-12 col-md-3"><button type="submit" name="action" value="assign_playoff_fields" class="btn btn-info fw-bold w-100" onclick="return confirm('กำหนดสนามให้ระบบจัดต่อล่าสุดของอีเว้นท์ที่เลือก?')">กำหนดสนามระบบจัดต่อ</button></div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead class="table-light text-center">
+              <tr>
+                <th style="min-width:240px;">อีเว้นท์</th>
+                <th>ระบบจัดต่อ</th>
+                <th style="min-width:180px;">รอบที่กำหนดสนาม</th>
+                <th>คู่ที่ใช้สนาม</th>
+                <th style="min-width:120px;">เริ่มสนาม</th>
+                <th>สนามที่กำหนด</th>
+                <th>สถานะ</th>
+                <th>เปิด</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for prow in playoff_field_rows %}
+              <tr>
+                <td><b>{{ prow.event.name }}</b><div class="small text-muted">{{ prow.event.date or '-' }} | {{ prow.event.location or '-' }}</div></td>
+                <td class="text-center"><b>{{ prow.playoff.title }}</b></td>
+                <td>
+                  <select class="form-select form-select-sm playoff-round-select" name="playoff_round_{{ prow.event.id }}">
+                    {% for pround in prow.available_rounds %}
+                    <option value="{{ pround.id }}" {% if pround.id == prow.round.id %}selected{% endif %}>{{ pround.round_name }}{% if pround.round_type == 'double_knockout' %} — คะแนน 1–3{% endif %}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td class="text-center">{{ prow.pair_count }}</td>
+                <td><input type="number" min="1" class="form-control form-control-sm playoff-field-start" name="playoff_field_start_{{ prow.event.id }}" value="{{ playoff_field_start_map.get(prow.event.id, '') }}" placeholder="อัตโนมัติ"></td>
+                <td class="text-center fw-bold">{{ prow.field_text }}</td>
+                <td class="text-center">
+                  {% if prow.unassigned_count %}<span class="badge bg-danger">ยังไม่เลือก {{ prow.unassigned_count }}</span>{% else %}<span class="badge bg-success">ครบแล้ว</span>{% endif %}
+                </td>
+                <td class="text-center">
+                  <a target="_blank" class="btn btn-sm btn-outline-primary" href="{{ url_for('playoff_detail', playoff_id=prow.playoff.id) }}#round-{{ prow.round.id }}">เปิด</a>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="text-center text-muted py-3">อีเว้นท์ที่เลือกยังไม่มีระบบจัดต่อ ให้สร้างระบบจัดต่อจาก Standing ก่อน</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="small text-muted mt-2">เลือกคนละรอบให้แต่ละอีเว้นท์ได้ ระบบจัดสนามต่อเนื่องโดยไม่ชนกัน คู่ BYE ไม่ใช้สนาม และช่องเริ่มสนามที่เว้นว่างจะต่อจากอีเว้นท์ก่อนหน้าอัตโนมัติ สำหรับ Double Knockout สนามคู่แรกใช้ต่อเนื่องกับคะแนนครั้งที่ 1–3 ของสายนั้น</div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header text-white fw-bold" style="background:#6f42c1;">5) จับสลากเพลย์ออฟรอบถัดไป</div>
+      <div class="card-body">
+        <div class="alert alert-info">จับสลากจากผู้ชนะ/ทีมเข้ารอบของเพลย์ออฟล่าสุดได้ในหน้านี้ ระบบจะข้ามรายการที่ยังบันทึกผลไม่ครบ</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead class="table-light text-center">
+              <tr>
+                <th>เลือก</th>
+                <th style="min-width:230px;">อีเว้นท์</th>
+                <th>รอบล่าสุด</th>
+                <th>ทีมเข้ารอบ</th>
+                <th style="min-width:160px;">ระบบรอบใหม่</th>
+                <th style="min-width:140px;">วิธีจับสลาก</th>
+                <th style="min-width:180px;">ชื่อรอบใหม่</th>
+                <th>ตัวเลือก</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for draw in playoff_draw_rows %}
+              <tr class="playoff-readiness-row {% if draw.ready %}table-success{% else %}table-light{% endif %}" data-event-id="{{ draw.event.id }}">
+                <td class="text-center"><input class="form-check-input playoff-ready-control" type="checkbox" name="playoff_draw_event_ids" value="{{ draw.event.id }}" {% if draw.ready %}checked{% else %}disabled{% endif %}></td>
+                <td><b>{{ draw.event.name }}</b><div class="small text-muted">{{ draw.playoff_title }}</div></td>
+                <td class="text-center">{{ draw.round_name }}<div class="small text-muted">{% if draw.round_type == 'double_knockout' %}Double Knockout{% elif draw.round_type == 'knockout' %}Knockout{% else %}{{ draw.round_type }}{% endif %}</div></td>
+                <td class="text-center fw-bold playoff-participant-count">{{ draw.participant_count if draw.complete else '-' }}</td>
+                <td>
+                  <select class="form-select form-select-sm playoff-ready-control" name="playoff_draw_type_{{ draw.event.id }}" {% if not draw.ready %}disabled{% endif %}>
+                    <option value="knockout">Knockout</option>
+                    <option value="double_knockout">Double Knockout</option>
+                  </select>
+                  {% if draw.participant_count == 2 %}<div class="small text-muted">2 ทีมจะเป็นรอบชิง Knockout</div>{% endif %}
+                </td>
+                <td>
+                  <select class="form-select form-select-sm playoff-draw-pairing playoff-ready-control" name="playoff_draw_pairing_{{ draw.event.id }}" data-event-id="{{ draw.event.id }}" {% if not draw.ready %}disabled{% endif %}>
+                    <option value="seed" {% if draw.pairing_method == 'seed' %}selected{% endif %}>SEED</option>
+                    <option value="national_qualifier" {% if draw.pairing_method == 'national_qualifier' %}selected{% endif %}>ประกบคู่คัดตัวแทนทีมชาติ</option>
+                    <option value="random" {% if draw.pairing_method == 'random' %}selected{% endif %}>Random</option>
+                    <option value="manual" {% if draw.pairing_method == 'manual' %}selected{% endif %}>Manual</option>
+                    <option value="bracket" {% if draw.pairing_method == 'bracket' %}selected{% endif %}>Bracket / สายติดกัน</option>
+                  </select>
+                  {% if draw.ready and draw.participant_options %}
+                  <details class="mt-1 playoff-manual-box" data-event-id="{{ draw.event.id }}" {% if draw.pairing_method == 'manual' %}open{% endif %}>
+                    <summary class="small fw-bold">จัดลำดับ Manual</summary>
+                    {% for slot in draw.participant_options %}
+                    <label class="small d-flex align-items-center gap-1 mt-1"><span style="width:48px;">ช่อง {{ loop.index }}</span>
+                      <select class="form-select form-select-sm" name="playoff_draw_manual_order_{{ draw.event.id }}">
+                        {% for team in draw.participant_options %}<option value="{{ team.index }}" {% if team.index == slot.index %}selected{% endif %}>{{ team.team_name }}</option>{% endfor %}
+                      </select>
+                    </label>
+                    {% endfor %}
+                  </details>
+                  {% endif %}
+                </td>
+                <td><input class="form-control form-control-sm playoff-ready-control" name="playoff_draw_name_{{ draw.event.id }}" value="{% if draw.participant_count == 2 %}รอบชิงชนะเลิศ{% else %}รอบถัดไป{% endif %}" {% if not draw.ready %}disabled{% endif %}></td>
+                <td class="text-center playoff-ready-status">
+                  {% if draw.ready %}
+                    <label class="small"><input type="checkbox" name="playoff_draw_bye_{{ draw.event.id }}"> เติม BYE เมื่อทีมเป็นเลขคี่</label>
+                  {% elif not draw.complete %}
+                    <span class="badge bg-warning text-dark">ผลยังไม่ครบ</span>
+                  {% else %}
+                    <span class="badge bg-success">จบการแข่งขันแล้ว</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="text-center text-muted py-4">อีเว้นท์ที่เลือกยังไม่มีเพลย์ออฟ</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-end mt-3">
+          <button type="submit" name="action" value="draw_next_playoff_rounds" class="btn btn-lg text-white fw-bold" style="background:#6f42c1;" onclick="return confirm('จับสลากและสร้างเพลย์ออฟรอบถัดไปตามรายการที่เลือก?')">จับสลากเพลย์ออฟรอบถัดไป</button>
+        </div>
       </div>
     </div>
 
@@ -306,6 +415,10 @@ function eventFieldStartsParam() {
   return Array.from(document.querySelectorAll('.event-field-start'))
     .filter(inp => (inp.value || '').trim() !== '')
     .map(inp => `${inp.dataset.eventId}:${inp.value}`).join(',');
+}
+function playoffRoundsParam() {
+  return Array.from(document.querySelectorAll('.playoff-round-select'))
+    .map(sel => `${sel.name.replace('playoff_round_', '')}:${sel.value}`).join(',');
 }
 function collectStandingParams() {
   const params = [];
@@ -346,12 +459,46 @@ function refreshPrintLinks() {
   if (pairs) pairs.href = `{{ url_for('multi_event_print_pairings') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
   if (scores) scores.href = `{{ url_for('multi_event_print_score_sheets') }}?events=${events}&round=${round}&event_rounds=${eventRounds}`;
   if (standings) standings.href = `{{ url_for('multi_event_print_standings') }}?events=${events}&${standingParams}`;
-  if (playoffScore) playoffScore.href = `{{ url_for('multi_playoff_score_center') }}?events=${events}`;
+  if (playoffScore) playoffScore.href = `{{ url_for('multi_playoff_score_center') }}?events=${events}&playoff_rounds=${encodeURIComponent(playoffRoundsParam())}`;
   if (finalReports) finalReports.href = `{{ url_for('multi_event_print_final_reports') }}?events=${events}&section=all`;
 }
 document.addEventListener('change', function(e) {
-  if (e.target.matches('.event-box, .event-round-select, .event-field-start, select[name="round"], .standing-direct, .standing-continue, .standing-ab-a, .event-competition-type, .event-pairing-method, .event-stage-name, .event-swiss-rounds, #directAdvanceCount, #continueCount, #abATeamCount, #competitionType')) refreshPrintLinks();
+  if (e.target.matches('.playoff-draw-pairing')) {
+    const box = document.querySelector(`.playoff-manual-box[data-event-id="${e.target.dataset.eventId}"]`);
+    if (box) box.open = e.target.value === 'manual';
+  }
+  if (e.target.matches('.event-box, .event-round-select, .event-field-start, .playoff-round-select, select[name="round"], .standing-direct, .standing-continue, .standing-ab-a, .event-competition-type, .event-pairing-method, .event-stage-name, .event-swiss-rounds, #directAdvanceCount, #continueCount, #abATeamCount, #competitionType')) refreshPrintLinks();
 });
 document.addEventListener('DOMContentLoaded', refreshPrintLinks);
+
+async function refreshPlayoffReadiness() {
+  const ids = selectedEventIds();
+  if (!ids) return;
+  try {
+    const response = await fetch(`{{ url_for('multi_playoff_readiness_api') }}?events=${encodeURIComponent(ids)}`, {headers:{'Accept':'application/json'}});
+    if (!response.ok) return;
+    const data = await response.json();
+    (data.rows || []).forEach(item => {
+      const row = document.querySelector(`.playoff-readiness-row[data-event-id="${item.event_id}"]`);
+      if (!row) return;
+      row.classList.toggle('table-success', item.ready);
+      row.classList.toggle('table-light', !item.ready);
+      row.querySelectorAll('.playoff-ready-control').forEach(control => control.disabled = !item.ready);
+      const checkbox = row.querySelector('input[name="playoff_draw_event_ids"]');
+      if (checkbox && item.ready && !checkbox.dataset.userChanged) checkbox.checked = true;
+      const count = row.querySelector('.playoff-participant-count');
+      if (count) count.textContent = item.complete ? item.participant_count : '-';
+      const status = row.querySelector('.playoff-ready-status');
+      if (status) status.innerHTML = item.ready ? '<label class="small"><input type="checkbox" name="playoff_draw_bye_' + item.event_id + '"> เติม BYE เมื่อทีมเป็นเลขคี่</label>' : (item.complete ? '<span class="badge bg-success">จบการแข่งขันแล้ว</span>' : '<span class="badge bg-warning text-dark">ผลยังไม่ครบ</span>');
+    });
+  } catch (_) { /* การคีย์คะแนนยังทำงานได้ แม้การตรวจสถานะชั่วคราวขัดข้อง */ }
+}
+document.addEventListener('change', event => {
+  if (event.target.matches('input[name="playoff_draw_event_ids"]')) event.target.dataset.userChanged = '1';
+});
+document.addEventListener('DOMContentLoaded', () => {
+  refreshPlayoffReadiness();
+  window.setInterval(refreshPlayoffReadiness, 3000);
+});
 </script>
 {% endblock %}
