@@ -6069,6 +6069,7 @@ def playoff_match_tables_print(playoff_id):
     selected_group = request.args.get('group_no', type=int)
 
     per_page_raw = request.args.get("per_page", "1")
+    per_page_was_supplied = request.args.get("per_page") is not None
     if per_page_raw == "all":
         per_page = "all"
     else:
@@ -6085,6 +6086,9 @@ def playoff_match_tables_print(playoff_id):
     if not view:
         flash('ไม่พบระบบเพลย์ออฟ', 'danger')
         return redirect(url_for('index'))
+
+    if not per_page_was_supplied and any(t.get("round_type") == "double_knockout" for t in tables if t):
+        per_page = 4
 
     if per_page != "all" and any(t.get("round_type") == "double_knockout" for t in tables if t) and per_page > 4:
         per_page = 4

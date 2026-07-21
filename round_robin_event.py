@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 import random
+import time
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -9,6 +10,7 @@ from models import db, Event, Team, Match, EventRoundRobinConfig, EventRoundRobi
 
 rr_bp = Blueprint("rr_event", __name__)
 _socketio = None
+_timer_states = {}
 
 def _admin():
     return current_user.is_authenticated and current_user.role in {"admin", "superadmin"}
@@ -410,3 +412,35 @@ def register_round_robin_event(app,socketio):
     global _socketio
     _socketio=socketio
     app.register_blueprint(rr_bp)
+
+    @socketio.on('round_robin_timer_request')
+    def round_robin_timer_request(data):
+        event_id = int((data or {}).get('event_id') or 0)
+        if not event_id:
+            return
+        cfg = EventRoundRobinConfig.query.filter_by(event_id=event_id).first()
+        default_seconds = max(1, int((cfg.match_minutes if cfg else 60) or 60)) * 60
+        state = _timer_states.get(event_id) or {'running': False, 'remaining': default_seconds, 'end_at': None, 'version': 0}
+        socketio.emit('round_robin_timer_state', {'event_id': event_id, **state}, to=request.sid)
+
+    @socketio.on('round_robin_timer_command')
+    def round_robin_timer_command(data):
+        event_id = int((data or {}).get('event_id') or 0)
+        command = (data or {}).get('command')
+        if not event_id or command not in {'start', 'pause', 'reset'}:
+            return
+        now = time.time()
+        cfg = EventRoundRobinConfig.query.filter_by(event_id=event_id).first()
+        default_seconds = max(1, int((cfg.match_minutes if cfg else 60) or 60)) * 60
+        old = _timer_states.get(event_id) or {'running': False, 'remaining': default_seconds, 'end_at': None, 'version': 0}
+        remaining = max(0, int(round((old.get('end_at') or now) - now))) if old.get('running') else max(0, int(old.get('remaining') or 0))
+        if command == 'start':
+            if remaining <= 0:
+                remaining = default_seconds
+            state = {'running': True, 'remaining': remaining, 'end_at': now + remaining, 'version': int(old.get('version') or 0) + 1}
+        elif command == 'pause':
+            state = {'running': False, 'remaining': remaining, 'end_at': None, 'version': int(old.get('version') or 0) + 1}
+        else:
+            state = {'running': False, 'remaining': default_seconds, 'end_at': None, 'version': int(old.get('version') or 0) + 1}
+        _timer_states[event_id] = state
+        socketio.emit('round_robin_timer_state', {'event_id': event_id, **state}, to=f'event_{event_id}_all')

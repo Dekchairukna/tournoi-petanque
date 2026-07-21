@@ -890,11 +890,13 @@
        ========================================================= */
     {% if ns.is_double %}
     .print-page {
-      min-height: {% if dk_mode == 2 %}289mm{% else %}202mm{% endif %};
+      height: {% if dk_mode == 2 %}289mm{% else %}202mm{% endif %};
+      min-height: 0;
       page-break-after: always;
       break-after: page;
-      grid-template-columns: 1fr;
-      grid-auto-rows: auto;
+      grid-template-columns: {% if dk_mode in [3, 4] %}repeat(2, minmax(0, 1fr)){% else %}1fr{% endif %};
+      grid-template-rows: repeat({% if dk_mode == 1 %}1{% elif dk_mode == 2 %}2{% else %}2{% endif %}, minmax(0, 1fr));
+      gap: {% if dk_mode == 1 %}2mm{% else %}3mm{% endif %};
     }
     .dk-page-note {
       text-align: center;
@@ -907,6 +909,53 @@
     .dk-split .table-card {
       width: 100%;
     }
+    .print-page .event-head { display: grid !important; }
+    .print-page .table-card { height: auto; align-self: center; border: 0; }
+    .print-page .table-card::before { display: none; }
+    .print-page .match-table { border-left: 1.2px solid #000; border-right: 1.2px solid #000; }
+    .print-page .meta-row { border: 0 !important; background: #fff !important; }
+    .print-page .meta-row > div { border: 0 !important; }
+    .print-page .qualified-row { border: 0 !important; background: #fff !important; }
+    .dk-event-head { grid-template-columns: minmax(0, 1fr) !important; min-height: 20mm !important; border: 0 !important; padding: 2mm 1mm 1mm !important; }
+    .dk-card-round { font-size: 13px; font-weight: 900; line-height: 1.1; margin-top: 1px; }
+    .page-title-once { position: relative; min-height: 17mm; padding-left: 24mm; padding-right: 24mm; }
+    .page-logo-left, .page-logo-right { position: absolute; top: 1mm; width: 18mm; height: 15mm; object-fit: contain; }
+    .page-logo-left { left: 2mm; }
+    .page-logo-right { right: 2mm; }
+
+    .per-1 .page-title-main { font-size: 28px !important; }
+    .per-1 .page-title-sub { font-size: 23px !important; }
+    .per-1 .page-title-detail { font-size: 18px !important; }
+    .per-1 .meta-row > div { min-height: 34px !important; padding: 7px 8px !important; font-size: 22px !important; }
+    .per-1 .meta-row > div:last-child { font-size: 22px !important; }
+    .per-1 .match-table th, .per-1 .match-table td { font-size: 21px !important; padding: 5px !important; }
+    .per-1 .match-table thead th { height: 48px !important; }
+    .per-1 .match-table tbody td { height: 60px !important; }
+    .per-1 .team-name { font-size: 18px !important; padding-left: 8px !important; }
+    .per-1 .qualified-row { font-size: 19px !important; padding: 10px 8px !important; }
+
+    .per-2 .page-title-main { font-size: 24px !important; }
+    .per-2 .page-title-sub { font-size: 20px !important; }
+    .per-2 .page-title-detail { font-size: 15px !important; }
+    .per-2 .meta-row > div { min-height: 27px !important; padding: 4px 6px !important; font-size: 16px !important; }
+    .per-2 .meta-row > div:last-child { font-size: 16px !important; }
+    .per-2 .match-table th, .per-2 .match-table td { font-size: 16px !important; padding: 3px !important; }
+    .per-2 .match-table thead th { height: 34px !important; }
+    .per-2 .match-table tbody td { height: 39px !important; }
+    .per-2 .team-name { font-size: 13px !important; padding-left: 5px !important; }
+    .per-2 .qualified-row { font-size: 14px !important; padding: 6px !important; }
+
+    .per-4 .main-title { font-size: 22px !important; }
+    .per-4 .sub-title { font-size: 14px !important; }
+    .per-4 .dk-card-round { font-size: 13px !important; }
+    .per-4 .meta-row > div { min-height: 23px !important; padding: 3px 4px !important; font-size: 14px !important; }
+    .per-4 .meta-row > div:last-child { font-size: 14px !important; }
+    .per-4 .match-table th, .per-4 .match-table td { font-size: 14px !important; padding: 2px 3px !important; }
+    .per-4 .match-table thead th { height: 29px !important; }
+    .per-4 .match-table tbody td { height: 31px !important; }
+    .per-4 .team-name { font-size: 11.5px !important; padding-left: 4px !important; }
+    .per-4 .qualified-row { font-size: 13px !important; padding: 5px 4px !important; gap: 4px !important; }
+    .per-4 .table-card::before { height: 2px; flex-basis: 2px; }
     {% endif %}
 
     /* =========================================================
@@ -1002,7 +1051,7 @@
 
 <body>
   {% if ns.is_double %}
-    {% set per_page_options = [1, 2, 3, 4] %}
+    {% set per_page_options = [1, 2, 4] %}
   {% else %}
     {% set per_page_options = [1, 2, 3, 4, 6] %}
   {% endif %}
@@ -1021,16 +1070,12 @@
       ทั้งหมด
     </a>
 
-    {% if ns.is_double %}<span style="font-weight:900; margin-left:8px;">รูปแบบ Double Knockout:</span>{% else %}<span style="font-weight:900; margin-left:8px;">จำนวนตาราง/แผ่น:</span>{% endif %}
+    <span style="font-weight:900; margin-left:8px;">จำนวนตาราง/แผ่น:</span>
 
     {% for n in per_page_options %}
       <a class="btn {% if per_page|string == n|string %}btn-active{% endif %}"
         href="{{ url_for('playoff_match_tables_print', playoff_id=view.competition.id, round_id=selected_round, group_no=selected_group, per_page=n) }}">
-        {% if ns.is_double %}
-          {% if n == 1 %}1 แผ่นต่อสาย (แนวนอน){% elif n == 2 %}2 แผ่นต่อสาย (แนวตั้ง){% elif n == 3 %}3 แผ่นต่อสาย (แนวนอน){% elif n == 4 %}4 แผ่นต่อสาย (แนวนอน){% endif %}
-        {% else %}
-          {{ n }}
-        {% endif %}
+        {{ n }}
       </a>
     {% endfor %}
 
@@ -1041,7 +1086,7 @@
 
     <span style="font-weight:800;">
       {% if ns.is_double %}
-        {% if dk_mode == 1 %}Double Knockout: 1 แผ่นต่อสาย แนวนอน{% elif dk_mode == 2 %}Double Knockout: 2 แผ่นต่อสาย แนวตั้ง{% elif dk_mode == 3 %}Double Knockout: 3 แผ่นต่อสาย แนวนอน{% elif dk_mode == 4 %}Double Knockout: 4 แผ่นต่อสาย แนวนอน{% endif %}
+        Double Knockout: {{ dk_mode }} ตารางต่อแผ่น
       {% elif per_page == 'all' %}
         โหมดตารางทั้งหมด = ใช้ขนาดตารางมาตรฐาน ไม่ย่อ
       {% else %}
@@ -1121,19 +1166,12 @@
           <div class="dk-page-note">สายที่ {{ tbl.group_no }} · หน้า {{ page_no }}/{{ page_total }} · แข่งขันครั้งที่ {{ stage_start }}{% if stage_end and stage_end != stage_start %}-{{ stage_end }}{% endif %}</div>
         {% endif %}
         {% if ns.is_double %}
-          <div class="event-head">
+          <div class="event-head dk-event-head">
             <div class="event-title-wrap">
-              <div class="main-title">ตารางการแข่งขัน</div>
-              <div class="sub-title">{{ source_event.name if source_event else view.competition.title }}</div>
+              <div class="main-title">ตารางแบ่งสายการแข่งขัน</div>
+              <div class="sub-title">{{ view.competition.title }}</div>
+              <div class="dk-card-round">{{ tbl.round_name }} สาย {{ tbl.group_no }}</div>
             </div>
-
-            {% if source_event and source_event.logo_list %}
-              <div class="logo-wrapper">
-                {% for logo in source_event.logo_list %}
-                  <img src="{{ url_for('static', filename='logos/' + logo) }}" class="logo-on-sheet" alt="โลโก้">
-                {% endfor %}
-              </div>
-            {% endif %}
           </div>
         {% endif %}
 
@@ -1143,14 +1181,14 @@
           </div>
 
           <div class="center">
-            รอบ {{ tbl.round_name }}
+            {% if tbl.round_type == 'double_knockout' %}ระบบ: {{ tbl.round_name }}{% else %}รอบ {{ tbl.round_name }}{% endif %}
           </div>
 
           <div>
             {% if tbl.round_type == 'ab_ladder' and ab_group %}
               <span class="ab-group-badge">กลุ่ม {{ ab_group }}</span>
             {% endif %}
-            <span class="lane-label">สายที่ {{ tbl.group_no }}</span>
+            <span class="lane-label">{% if tbl.round_type == 'double_knockout' %}สาย: {{ tbl.group_no }}{% else %}สายที่ {{ tbl.group_no }}{% endif %}</span>
           </div>
         </div>
 
@@ -1234,6 +1272,10 @@
   {% macro render_page_header(first_tbl) %}
     {% if not ns.is_double %}
       <div class="page-title-once">
+        {% if source_event and source_event.logo_list %}
+          <img src="{{ url_for('static', filename='logos/' + source_event.logo_list[0]) }}" class="page-logo-left" alt="โลโก้">
+          {% if source_event.logo_list|length > 1 %}<img src="{{ url_for('static', filename='logos/' + source_event.logo_list[1]) }}" class="page-logo-right" alt="โลโก้">{% endif %}
+        {% endif %}
         <div class="page-title-main">ตารางการแข่งขัน</div>
         <div class="page-title-sub">{{ source_event.name if source_event else view.competition.title }}</div>
         <div class="page-title-detail">
@@ -1250,22 +1292,11 @@
     เพื่อไม่ให้ปลายกลุ่ม A ไปปนกับต้นกลุ่ม B และไม่ให้ตารางครึ่งหนึ่งค้างข้ามแผ่น
   #}
   {% if ns.is_double %}
-    {# Double Knockout: per_page means sheets per lane, not tables per sheet. #}
-    {% for tbl in tables %}
-      {% if tbl %}
-        {% set max_stage = tbl.max_stage or 1 %}
-        {% set total_pages = dk_mode %}
-        {% set chunk = ((max_stage + total_pages - 1) // total_pages) if total_pages > 0 else max_stage %}
-        {% for page_no in range(1, total_pages + 1) %}
-          {% set start = ((page_no - 1) * chunk) + 1 %}
-          {% set end = page_no * chunk if page_no * chunk < max_stage else max_stage %}
-          {% if start <= max_stage %}
-            <section class="print-page per-2 dk-split dk-mode-{{ dk_mode }}">
-              {{ render_match_table(tbl, start, end, page_no, total_pages) }}
-            </section>
-          {% endif %}
-        {% endfor %}
-      {% endif %}
+    {% for page in tables|batch(dk_mode, none) %}
+      {% set first_tbl = page[0] %}
+      <section class="print-page per-{{ dk_mode }} dk-mode-{{ dk_mode }}">
+        {% for tbl in page %}{{ render_match_table(tbl) }}{% endfor %}
+      </section>
     {% endfor %}
   {% else %}
     {% set page_capacity = 4 if per_page == 'all' else per_page %}

@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Round Robin - {{ event.name }}{% endblock %}
 {% block content %}
-<style>.rr-head{background:linear-gradient(135deg,#1767c8,#20a4d8);color:#fff;border-radius:14px;padding:20px}.rr-tabs{display:flex;gap:7px;flex-wrap:wrap}.rr-tab{padding:9px 14px;border-radius:9px;background:#edf3f8;text-decoration:none;font-weight:800;color:#26384c}.rr-tab.active{background:#1767c8;color:#fff}.matrix{table-layout:fixed;min-width:920px}.matrix td,.matrix th{text-align:center;vertical-align:middle;padding:.35rem}.matrix .team-cell,.matrix .opponent-cell{width:145px;min-width:145px;max-width:145px;white-space:normal;word-break:break-word}.matrix .summary-total{width:72px}.matrix .summary-case{width:78px}.matrix .summary-net{width:94px}.matrix .summary-rank{width:58px}.tie-cell{box-shadow:inset 0 0 0 3px #ef4444}.qualified{background:#e7f7ee!important}</style>
+<style>.rr-head{background:#fff;border-bottom:1px solid #dee2e6;padding:8px 0 14px}.rr-tabs{display:flex;gap:7px;flex-wrap:wrap}.rr-tab{padding:9px 14px;border-radius:9px;background:#edf3f8;text-decoration:none;font-weight:800;color:#26384c}.rr-tab.active{background:#1767c8;color:#fff}.matrix{table-layout:fixed;min-width:920px}.matrix td,.matrix th{text-align:center;vertical-align:middle;padding:.35rem}.matrix .team-cell,.matrix .opponent-cell{width:145px;min-width:145px;max-width:145px;white-space:normal;word-break:break-word}.matrix .summary-total{width:72px}.matrix .summary-case{width:78px}.matrix .summary-net{width:94px}.matrix .summary-rank{width:58px}.tie-cell{box-shadow:inset 0 0 0 3px #ef4444}.qualified{background:#e7f7ee!important}</style>
 <div class="container-fluid px-3 my-3">
-  <div class="rr-head d-flex justify-content-between gap-3 flex-wrap"><div><h2 class="mb-1">{{ event.name }}</h2><div>Round Robin ใหม่ · {{ teams|length }} ทีม · {{ groups|length or cfg.group_count }} กลุ่ม</div></div><div><a class="btn btn-light" href="{{ url_for('index') }}">หน้าอีเวนต์ทั้งหมด</a></div></div>
+  <div class="rr-head d-flex justify-content-between align-items-center gap-3 flex-wrap"><div><h2 class="mb-1">{{ event.name }}</h2><div class="text-muted">Round Robin · {{ teams|length }} ทีม · {{ groups|length or cfg.group_count }} กลุ่ม</div></div><div><a class="btn btn-outline-secondary" href="{{ url_for('index') }}">หน้าอีเวนต์ทั้งหมด</a></div></div>
 
   {% if current_user.is_authenticated and current_user.role in ['admin','superadmin'] %}
   <div class="card shadow-sm mt-3">
@@ -118,14 +118,17 @@ function confirmRRClearTeams(form){
 }
 async function saveScore(id){const a=document.querySelector(`[data-match="${id}"][data-side="1"]`),b=document.querySelector(`[data-match="${id}"][data-side="2"]`);if(a.value===''||b.value==='')return alert('กรอกคะแนนทั้งสองฝ่าย');const r=await fetch(`{{ url_for('rr_event.round_robin_score',event_id=event.id,match_id=0) }}`.replace('/0','/'+id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({team1_score:a.value,team2_score:b.value})});if(r.ok){document.getElementById('status-'+id).innerHTML='<span class="badge bg-success">บันทึกแล้ว</span>';await refreshRRData()}else alert('บันทึกไม่สำเร็จ')}
 
-let timerSeconds={{ cfg.match_minutes }}*60,timerHandle=null,audioCtx=null;
+let timerSeconds={{ cfg.match_minutes }}*60,timerHandle=null,timerEndAt=null,audioCtx=null,alarmTriggered=false,warningTriggered=false;
 function renderTimer(){const m=Math.floor(timerSeconds/60),s=timerSeconds%60;document.getElementById('timerDisplay').textContent=`${m}:${String(s).padStart(2,'0')}`}
 function beep(freq,start,duration,volume=.35){audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;g.gain.value=volume;o.connect(g);g.connect(audioCtx.destination);o.start(audioCtx.currentTime+start);o.stop(audioCtx.currentTime+start+duration)}
 function alarm(){for(let i=0;i<12;i++){beep(1050,i,0.22,.4);beep(780,i+.25,0.22,.4);beep(1050,i+.5,0.22,.4);beep(780,i+.75,0.22,.4)}document.getElementById('timerMessage').textContent='หมดเวลาการแข่งขัน';try{speechSynthesis.speak(new SpeechSynthesisUtterance('หมดเวลาการแข่งขัน หมดเวลาการแข่งขัน'))}catch(e){}}
 function warning(){beep(880,0,.18);beep(880,.28,.18);beep(1040,.56,.28);document.getElementById('timerMessage').textContent='เหลือเวลา 10 นาที'}
-function startTimer(){if(timerHandle)return;timerHandle=setInterval(()=>{timerSeconds--;renderTimer();if(timerSeconds===600)warning();if(timerSeconds<=0){clearInterval(timerHandle);timerHandle=null;timerSeconds=0;renderTimer();alarm()}},1000)}
-function pauseTimer(){clearInterval(timerHandle);timerHandle=null}
-function resetTimer(){pauseTimer();timerSeconds={{ cfg.match_minutes }}*60;document.getElementById('timerMessage').textContent='';renderTimer()}
+function tickTimer(){if(timerEndAt)timerSeconds=Math.max(0,Math.ceil((timerEndAt-Date.now())/1000));renderTimer();if(timerSeconds<=600&&!warningTriggered&&timerSeconds>0){warningTriggered=true;warning()}if(timerSeconds<=0){clearInterval(timerHandle);timerHandle=null;timerEndAt=null;if(!alarmTriggered){alarmTriggered=true;alarm()}}}
+function applyTimerState(data){if(Number(data.event_id)!==Number({{ event.id }}))return;clearInterval(timerHandle);timerHandle=null;alarmTriggered=false;warningTriggered=false;document.getElementById('timerMessage').textContent='';if(data.running&&data.end_at){timerEndAt=Number(data.end_at)*1000;tickTimer();if(timerSeconds>0)timerHandle=setInterval(tickTimer,250)}else{timerEndAt=null;timerSeconds=Math.max(0,Number(data.remaining)||0);renderTimer()}}
+function timerCommand(command){if(rrSocket)rrSocket.emit('round_robin_timer_command',{event_id:{{ event.id }},command})}
+function startTimer(){timerCommand('start')}
+function pauseTimer(){timerCommand('pause')}
+function resetTimer(){timerCommand('reset')}
 function testAlarm(){alarm()}
 function stopAlarm(){try{if(audioCtx)audioCtx.close()}catch(e){}audioCtx=null;try{speechSynthesis.cancel()}catch(e){}document.getElementById('timerMessage').textContent=''}
 function printMatrix(){const area=document.getElementById('matrixExportArea');const w=window.open('','_blank');w.document.write(`<html><head><meta charset="utf-8"><title>Matrix</title><style>body{font-family:Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:8px;text-align:center}.tie-cell{box-shadow:inset 0 0 0 3px red}</style></head><body><h2>{{ event.name }} - Matrix สาย {{ active_group or '' }}</h2>${area.innerHTML}</body></html>`);w.document.close();setTimeout(()=>w.print(),300)}
@@ -145,7 +148,10 @@ async function savePairingsImage(){const area=document.getElementById('pairingsE
 
 const rrSocket=typeof io==='function'?io():null;
 if(rrSocket){
-  rrSocket.emit('join_round',{event_id:{{ event.id }}});
+  const joinRRRoom=()=>{rrSocket.emit('join_round',{event_id:{{ event.id }}});rrSocket.emit('round_robin_timer_request',{event_id:{{ event.id }}})};
+  if(rrSocket.connected)joinRRRoom();
+  rrSocket.on('connect',joinRRRoom);
+  rrSocket.on('round_robin_timer_state',applyTimerState);
   rrSocket.on('round_robin_score_updated',data=>{if(Number(data.event_id)===Number({{ event.id }})){const a=document.querySelector(`[data-match="${data.match_id}"][data-side="1"]`),b=document.querySelector(`[data-match="${data.match_id}"][data-side="2"]`);if(a)a.value=data.team1_score;if(b)b.value=data.team2_score;const st=document.getElementById('status-'+data.match_id);if(st)st.innerHTML='<span class="badge bg-success">บันทึกแล้ว</span>';refreshRRData()}});
 }
 </script>

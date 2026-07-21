@@ -102,7 +102,7 @@
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
           <a href="{{ url_for('playoff_round_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id) }}"
             target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทรอบนี้ / QR ออนไลน์</a>
-          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=1) }}"
+          <a href="{{ url_for('playoff_round_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, per_page=(4 if rv.round.round_type == 'double_knockout' else 1)) }}"
             target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งรอบนี้</a>
         </div>
         <form method="post" action="{{ url_for('renumber_playoff_courts', playoff_id=view.competition.id) }}"
@@ -201,7 +201,7 @@
                   <button type="button" class="voice-btn voice-btn-one" onclick="speakPlayoffGroup('{{ rv.round.id }}', '{{ group.group_no }}')">🔈 อ่านสายนี้</button>
                   <a href="{{ url_for('playoff_group_score_sheet', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no) }}"
                     target="_blank" class="btn action-btn btn-print">🧾 พิมพ์สกอร์ชีทสายนี้</a>
-                  <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=1) }}"
+                  <a href="{{ url_for('playoff_group_match_tables_print', playoff_id=view.competition.id, round_id=rv.round.id, group_no=group.group_no, per_page=(4 if rv.round.round_type == 'double_knockout' else 1)) }}"
                     target="_blank" class="btn action-btn btn-print">📋 พิมพ์ตารางแข่งสายนี้</a>
                   <button type="submit" name="save_group" value="{{ group.group_no }}" formnovalidate
                     class="btn btn-primary system-btn no-print">บันทึกผลสายนี้</button>
