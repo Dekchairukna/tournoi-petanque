@@ -221,6 +221,7 @@
 {% block scripts %}
 {{ super() }}
 <script>
+  const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 (function(){
   const isLockedOrSubmitted = {{ 'true' if match.is_locked or match.pending_is_submitted else 'false' }};
   const saveUrl = "{% if is_public_scorecard %}{{ url_for('public_autosave_online_scorecard', token=match.scorecard_token) }}{% else %}{{ url_for('autosave_online_scorecard', event_id=event.id, match_id=match.id) }}{% endif %}";
@@ -314,7 +315,7 @@
     if (!scoreEnds.length) {
       list.innerHTML = '{{ t('no_end_yet') }}';
     } else {
-      list.innerHTML = scoreEnds.map(item => `<div class="end-list-item ${item.team === 1 ? 'team1-item' : 'team2-item'}"><span>End ${item.end}: <strong>${teamNames[item.team]}</strong> ได้ ${item.points} แต้ม</span><span class="fw-bold">${item.team1_total} - ${item.team2_total}</span></div>`).join('');
+      list.innerHTML = scoreEnds.map(item => `<div class="end-list-item ${item.team === 1 ? 'team1-item' : 'team2-item'}"><span>End ${Number(item.end)}: <strong>${escapeHtml(teamNames[item.team])}</strong> ได้ ${Number(item.points)} แต้ม</span><span class="fw-bold">${Number(item.team1_total)} - ${Number(item.team2_total)}</span></div>`).join('');
     }
     const finished = t1 >= 13 || t2 >= 13;
     document.getElementById('addEndBtn').disabled = isLockedOrSubmitted || finished;

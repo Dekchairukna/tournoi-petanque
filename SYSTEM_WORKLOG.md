@@ -51,3 +51,18 @@
 3. เปิดแอปหนึ่งครั้งเพื่อให้ระบบสร้าง/ซ่อมบัญชีเจ้าของระบบ
 4. ทดสอบด้วย admin ว่าเห็นเฉพาะ Swiss และด้วย superadmin ว่าเห็นทุกระบบ
 5. ทดสอบหมวด 5 โดยเปิดหน้าไว้ แล้วบันทึกผลเพลย์ออฟจากอีกหน้าหนึ่ง สถานะควรเปลี่ยนภายในประมาณ 3 วินาที
+# Security hardening (2026-07-22)
+
+- Removed predictable `SECRET_KEY` and all source-code default account creation.
+- Protected owner password is no longer reset on every application restart.
+- Added mandatory rotation checks for formerly exposed default credentials.
+- Disabled debug mode by default and made the runtime port configurable.
+- Enabled global CSRF protection for forms and same-origin fetch requests.
+- Changed event deletion from destructive GET to CSRF-protected POST.
+- Added cross-owner write protection for Event, Tournament and Playoff routes.
+- Added Playoff/Round/Slot relationship validation against ID manipulation.
+- Added login throttling and generic invalid-credential responses.
+- Restricted CORS/Socket.IO origins and added browser security headers.
+- Added secure cookie settings and a 16 MiB request/upload limit.
+- Limited user administration to superadmin.
+- Added `.env.example` and `SECURITY.md` deployment instructions.

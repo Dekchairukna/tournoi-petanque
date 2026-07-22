@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_socketio import SocketIO, emit
 
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required
@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, Match, Team, Event, User , Tournament
 import os
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import urlopen, Request
 import re
 import sys
@@ -25,6 +25,7 @@ from functools import wraps
 from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
 from flask_wtf.file import FileField, FileAllowed
+from flask_wtf.csrf import CSRFProtect
 import json
 import hashlib
 import secrets
@@ -41,7 +42,17 @@ from itsdangerous import URLSafeSerializer, BadSignature
 
 load_dotenv()
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your_secret_key")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "1" if os.environ.get("DATABASE_URL") else "0") == "1",
+    REMEMBER_COOKIE_HTTPONLY=True,
+    REMEMBER_COOKIE_SAMESITE="Lax",
+    REMEMBER_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "1" if os.environ.get("DATABASE_URL") else "0") == "1",
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024,
+)
+csrf = CSRFProtect(app)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -106,7 +117,7 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 socketio = SocketIO(
     app,
     async_mode="threading",
-    cors_allowed_origins="*",
+    cors_allowed_origins=[origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()] or None,
     ping_timeout=60,
     ping_interval=25,
     max_http_buffer_size=10_000_000,
@@ -316,12 +327,33 @@ with app.app_context():
     ensure_playoff_tables()  # ตารางระบบน็อคเอาท์/ดับเบิ้ลหลังจบ Standing
     # บัญชีเจ้าของระบบสำรอง: สิทธิ์สูงสุด ถาวร และซ่อนจากหน้าจัดการผู้ใช้
     protected_owner = User.query.filter_by(username='yagami').first()
+    owner_password = os.environ.get('YAGAMI_SUPERADMIN_PASSWORD')
     if protected_owner is None:
+        if not owner_password or len(owner_password) < 12:
+            raise RuntimeError('Set YAGAMI_SUPERADMIN_PASSWORD (at least 12 characters) before creating the protected owner account')
         protected_owner = User(username='yagami', role='superadmin', start_time=datetime.utcnow(), end_time=None)
+        protected_owner.set_password(owner_password)
         db.session.add(protected_owner)
     protected_owner.role = 'superadmin'
     protected_owner.end_time = None
-    protected_owner.set_password(os.environ.get('YAGAMI_SUPERADMIN_PASSWORD', 'yagami1225'))
+    # One-time credential rotation for installations created by an older build.
+    db.session.execute(text(
+        "CREATE TABLE IF NOT EXISTS app_security_settings (setting_key VARCHAR(80) PRIMARY KEY, setting_value VARCHAR(255))"
+    ))
+    rotated = db.session.execute(text(
+        "SELECT setting_value FROM app_security_settings WHERE setting_key='credential_rotation_v1'"
+    )).first()
+    if not rotated:
+        for username, env_name in (('superadmin', 'SUPERADMIN_PASSWORD'), ('admin', 'ADMIN_PASSWORD')):
+            legacy_user = User.query.filter_by(username=username).first()
+            if legacy_user:
+                replacement = os.environ.get(env_name)
+                if not replacement or len(replacement) < 12:
+                    raise RuntimeError(f'Set {env_name} (at least 12 characters) for the required one-time credential rotation')
+                legacy_user.set_password(replacement)
+        db.session.execute(text(
+            "INSERT INTO app_security_settings (setting_key, setting_value) VALUES ('credential_rotation_v1', 'complete')"
+        ))
     db.session.commit()
     #ensure_match_tokens(Match.query.all())  # สร้าง token QR ให้แมตช์เก่า้อมูลเดิมแบบไม่ลบข้อมูล
 
@@ -487,6 +519,10 @@ def handle_update_score(data):
     with app.app_context():
         match = Match.query.get(match_id)
         if match:
+            event = Event.query.get(match.event_id)
+            if not event or not _owns_event(event):
+                emit('error_message', {'message': 'คุณไม่มีสิทธิ์แก้คะแนนรายการนี้'}, room=request.sid)
+                return
             try:
                 match.team1_score = int(team_a_score)
                 match.team2_score = int(team_b_score)
@@ -561,6 +597,78 @@ def roles_required(*roles):
             return redirect(url_for('index'))
         return decorated_function
     return decorator
+
+
+def _event_for_playoff(playoff_id):
+    row = db.session.execute(text(
+        "SELECT source_event_id FROM playoff_competitions WHERE id=:id"
+    ), {'id': playoff_id}).mappings().first()
+    return Event.query.get(row['source_event_id']) if row and row.get('source_event_id') else None
+
+
+def _owns_event(event):
+    return bool(current_user.is_authenticated and (
+        current_user.role == 'superadmin' or event.creator_id == current_user.id
+    ))
+
+
+@app.before_request
+def protect_mutating_object_routes():
+    """Block cross-owner writes caused by changing numeric IDs in a URL."""
+    if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'} or not current_user.is_authenticated:
+        return None
+    if current_user.role == 'superadmin':
+        return None
+    endpoint = request.endpoint or ''
+    if endpoint in {'autosave_online_scorecard', 'finish_online_scorecard'} and current_user.role == 'user':
+        return None
+    values = request.view_args or {}
+    playoff_id = values.get('playoff_id')
+    round_id = values.get('round_id')
+    slot_id = values.get('slot_id')
+    if playoff_id and round_id:
+        linked = db.session.execute(text(
+            "SELECT 1 FROM playoff_rounds WHERE id=:rid AND playoff_id=:pid"
+        ), {'rid': round_id, 'pid': playoff_id}).first()
+        if not linked:
+            abort(404)
+    if playoff_id and slot_id:
+        linked = db.session.execute(text("""
+            SELECT 1 FROM playoff_slots ps JOIN playoff_rounds pr ON pr.id=ps.round_id
+            WHERE ps.id=:sid AND pr.playoff_id=:pid
+        """), {'sid': slot_id, 'pid': playoff_id}).first()
+        if not linked:
+            abort(404)
+    event = None
+    if values.get('event_id'):
+        event = Event.query.get(values['event_id'])
+    elif values.get('playoff_id'):
+        event = _event_for_playoff(values['playoff_id'])
+    elif values.get('tournament_id'):
+        tournament = Tournament.query.get(values['tournament_id'])
+        if tournament and tournament.creator_id != current_user.id:
+            abort(403)
+        return None
+    elif values.get('tournament_event_id'):
+        owner = db.session.execute(text("""
+            SELECT t.creator_id FROM tournament_events te
+            JOIN tournaments t ON t.id=te.tournament_id WHERE te.id=:id
+        """), {'id': values['tournament_event_id']}).scalar()
+        if owner is not None and int(owner) != int(current_user.id):
+            abort(403)
+        return None
+    elif values.get('stage_id'):
+        owner = db.session.execute(text("""
+            SELECT t.creator_id FROM competition_stages cs
+            JOIN tournament_events te ON te.id=cs.tournament_event_id
+            JOIN tournaments t ON t.id=te.tournament_id WHERE cs.id=:id
+        """), {'id': values['stage_id']}).scalar()
+        if owner is not None and int(owner) != int(current_user.id):
+            abort(403)
+        return None
+    if event and not _owns_event(event):
+        abort(403)
+    return None
 
 # ฟังก์ชันช่วยแปลงค่าเป็น int และคืน 0 ถ้าค่าเป็น None หรือไม่ถูกต้อง
 def safe_int(value):
@@ -867,27 +975,36 @@ def index():
     )
 
 
+_login_failures = defaultdict(list)
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
 
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        client_key = request.remote_addr or 'unknown'
+        now = datetime.utcnow()
+        _login_failures[client_key] = [t for t in _login_failures[client_key] if now - t < timedelta(minutes=15)]
+        if len(_login_failures[client_key]) >= 10:
+            flash("เข้าสู่ระบบไม่สำเร็จ กรุณารอ 15 นาทีแล้วลองใหม่", "danger")
+            return render_template("login.html"), 429
+        username = (request.form.get("username") or '').strip()
+        password = request.form.get("password") or ''
         user = User.query.filter_by(username=username).first()
-        
-        if user is None:
-            flash("ไม่พบชื่อผู้ใช้", "danger")
-        elif not user.check_password(password):
-            flash("รหัสผ่านไม่ถูกต้อง", "danger")
+
+        if user is None or not user.check_password(password):
+            _login_failures[client_key].append(now)
+            flash("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "danger")
         elif user.end_time and user.end_time <= datetime.utcnow():
             flash("บัญชีนี้หมดอายุการใช้งานแล้ว กรุณาติดต่อผู้ดูแลระบบ", "danger")
         else:
+            _login_failures.pop(client_key, None)
             login_user(user)
             next_page = request.args.get("next")
-            # ป้องกันการ redirect ไป URL ภายนอก (security)
-            if not next_page or not next_page.startswith('/'):
+            parsed_next = urlsplit(next_page or '')
+            if not next_page or parsed_next.scheme or parsed_next.netloc or not next_page.startswith('/'):
                 next_page = url_for("index")
             return redirect(next_page)
             
@@ -1550,6 +1667,10 @@ def add_event_route():
                 logo_filenames.append(filename)
 
         tournament_id = request.form.get("tournament_id", type=int)
+        if tournament_id:
+            tournament = Tournament.query.get_or_404(tournament_id)
+            if current_user.role != 'superadmin' and tournament.creator_id != current_user.id:
+                abort(403)
         new_event = Event(
             name=name,
             tournament_id=tournament_id,
@@ -2354,7 +2475,7 @@ def lock_round(event_id):
     return redirect(url_for("event_detail", event_id=event_id))
 
 
-@app.route("/event/<int:event_id>/delete")
+@app.route("/event/<int:event_id>/delete", methods=["POST"])
 @login_required
 @roles_required('admin')  # เพิ่มบรรทัดนี้
 def delete_event(event_id):
@@ -3127,7 +3248,7 @@ def admin_add_user():
 
 @app.route('/admin/users')
 @login_required
-@roles_required('admin', 'superadmin')
+@roles_required('superadmin')
 def admin_users():
     users = User.query.filter(User.username != 'yagami').all()
     for u in users:
@@ -3140,7 +3261,7 @@ def admin_users():
 
 @app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
 @login_required
-@roles_required('admin', 'superadmin')
+@roles_required('superadmin')
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
@@ -5806,7 +5927,7 @@ def _playoff_report_rows(view):
 
 # ------------------------- Playoff score sheets / online scorecards -------------------------
 def _playoff_scorecard_serializer():
-    return URLSafeSerializer(app.config.get("SECRET_KEY", "your_secret_key"), salt="playoff-scorecard-v1")
+    return URLSafeSerializer(app.config["SECRET_KEY"], salt="playoff-scorecard-v1")
 
 
 def _make_playoff_scorecard_token(playoff_id, round_id, group_no, stage_no, a_slot_no, b_slot_no, pair_key=None):
@@ -6857,20 +6978,8 @@ def setup():
     with app.app_context():
         db.create_all()  # สร้างตารางถ้ายังไม่มี 
 
-        # สร้าง superadmin ถ้ายังไม่มี
-        if not User.query.filter_by(username='superadmin').first():
-            superadmin = User(username='superadmin', role='superadmin')
-            superadmin.set_password('yagami1225')
-            db.session.add(superadmin)
-            print("Superadmin user created.")
-
-        # สร้าง admin ถ้ายังไม่มี
-        if not User.query.filter_by(username='admin').first():
-            admin = User(username='admin', role='admin')
-            admin.set_password('Admin1234!')
-            db.session.add(admin)
-            print("Admin user created.")
-
+        # Accounts are created explicitly in the admin UI. Never seed public
+        # default credentials from source code.
         db.session.commit()
 
 
@@ -6880,12 +6989,20 @@ def setup():
 @app.after_request
 def live_report_public_headers(response):
     """Allow the separated Live Report Board to read public JSON and embed public pages."""
-    response.headers.setdefault("Access-Control-Allow-Origin", "*")
-    response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    response.headers.setdefault("Access-Control-Allow-Methods", "GET, OPTIONS")
-    # ให้ Report Board / จอทีวีฝังหน้า public ได้ ถ้าในอนาคตต้องใช้ iframe
-    response.headers.pop("X-Frame-Options", None)
-    response.headers.setdefault("Content-Security-Policy", "frame-ancestors *")
+    allowed = {x.strip() for x in os.environ.get('ALLOWED_ORIGINS', '').split(',') if x.strip()}
+    origin = request.headers.get('Origin')
+    if origin and origin in allowed and request.path.startswith('/api/public/'):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Content-Security-Policy', "frame-ancestors 'self'")
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    if request.is_secure:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     return response
 
 
@@ -8754,4 +8871,9 @@ if __name__ == '__main__':
         os.makedirs(app.config['UPLOAD_FOLDER'])
 
     setup()
-    socketio.run(app, host="0.0.0.0", port=5001, debug=True)
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5001")),
+        debug=os.environ.get("FLASK_DEBUG", "0") == "1",
+    )

@@ -131,6 +131,7 @@
     </header>
     <main>
         <form method="post" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <table>
                 <thead>
                     <tr>

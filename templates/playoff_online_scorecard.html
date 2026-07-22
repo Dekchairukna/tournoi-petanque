@@ -217,6 +217,7 @@
 {% block scripts %}
 {{ super() }}
 <script>
+  const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 (function(){
   const saveUrl = {{ autosave_url|tojson }};
   const finishForm = document.getElementById('playoffScoreForm');
@@ -317,7 +318,7 @@
     if (!scoreEnds.length) {
       list.innerHTML = 'ยังไม่มี End';
     } else {
-      list.innerHTML = scoreEnds.map(item => `<div class="end-list-item ${item.team === 1 ? 'team1-item' : 'team2-item'}"><span>End ${item.end}: <strong>${teamNames[item.team]}</strong> ได้ ${item.points} แต้ม</span><span class="fw-bold">${item.team1_total} - ${item.team2_total}</span></div>`).join('');
+      list.innerHTML = scoreEnds.map(item => `<div class="end-list-item ${item.team === 1 ? 'team1-item' : 'team2-item'}"><span>End ${Number(item.end)}: <strong>${escapeHtml(teamNames[item.team])}</strong> ได้ ${Number(item.points)} แต้ม</span><span class="fw-bold">${Number(item.team1_total)} - ${Number(item.team2_total)}</span></div>`).join('');
     }
 
     const finished = t1 >= 13 || t2 >= 13;
