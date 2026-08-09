@@ -1,0 +1,5 @@
+Performance V3 changes:
+- index: eager-load Tournament.engine_events to eliminate N+1 queries
+- event: remove per-request playoff DDL; reuse preloaded Team/Match for standings/current round
+- round_matches: load Match/Team once and reuse for standings/live version
+- remove noisy role DEBUG print

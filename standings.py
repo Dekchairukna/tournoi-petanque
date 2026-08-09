@@ -7,9 +7,12 @@ def safe_int(val):
     except:
         return 0
 
-def calculate_standings(event_id):
-    matches = Match.query.filter_by(event_id=event_id).all()
-    teams = Team.query.filter_by(event_id=event_id).all()
+def calculate_standings(event_id, matches=None, teams=None):
+    # รองรับข้อมูลที่ route โหลดมาแล้ว เพื่อลด query ซ้ำเมื่อมีผู้ใช้พร้อมกันจำนวนมาก
+    if matches is None:
+        matches = Match.query.filter_by(event_id=event_id).all()
+    if teams is None:
+        teams = Team.query.filter_by(event_id=event_id).all()
 
     team_dict = {team.id: team for team in teams}
     standings = {}

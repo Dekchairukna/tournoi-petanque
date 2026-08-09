@@ -21,6 +21,7 @@ from standings import calculate_standings
 from flask import Blueprint
 from dotenv import load_dotenv
 from sqlalchemy import func, text
+from sqlalchemy.orm import selectinload
 from functools import wraps
 from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
@@ -370,17 +371,22 @@ def unauthorized():
 #------------------------เรียลไทม์ SocketIO-------------------------------------------------------------
 
 
-def _round_live_state(event_id, round_no=None):
+def _round_live_state(event_id, round_no=None, matches=None, teams=None):
     """สร้าง fingerprint สำหรับการเปลี่ยนแปลงโครงคู่/สนามเท่านั้น
 
+    รองรับ matches/teams ที่ route โหลดมาแล้ว เพื่อลด query ซ้ำบนหน้า round_matches
     สำคัญ: ไม่เอาคะแนน/pending/lock status เข้าไปคำนวณ version แล้ว
     เพราะเวลาคีย์คะแนนแบบ realtime จะได้ไม่ทำให้หน้าใบประกบ/ใบบันทึก reload ทั้งหน้า
     """
-    query = Match.query.filter_by(event_id=event_id)
-    if round_no:
-        query = query.filter_by(round=round_no)
+    if matches is None:
+        query = Match.query.filter_by(event_id=event_id)
+        if round_no:
+            query = query.filter_by(round=round_no)
+        matches = query.order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
+    else:
+        matches = [m for m in matches if m.event_id == event_id and (not round_no or m.round == round_no)]
+        matches = sorted(matches, key=lambda m: (m.round or 0, m.field is None, m.field or 0, m.id))
 
-    matches = query.order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
     team_ids = set()
     for match in matches:
         if match.team1_id:
@@ -388,7 +394,10 @@ def _round_live_state(event_id, round_no=None):
         if match.team2_id:
             team_ids.add(match.team2_id)
 
-    team_map = {team.id: team.name for team in Team.query.filter(Team.id.in_(team_ids)).all()} if team_ids else {}
+    if teams is None:
+        team_map = {team.id: team.name for team in Team.query.filter(Team.id.in_(team_ids)).all()} if team_ids else {}
+    else:
+        team_map = {team.id: team.name for team in teams if team.id in team_ids}
     rows = []
     version_rows = []
     for match in matches:
@@ -585,8 +594,6 @@ def roles_required(*roles):
                 return redirect(url_for('login'))
 
             role = current_user.role.lower()
-            print(f"DEBUG current_user.role = {role}")
-
             if role == 'superadmin':
                 return f(*args, **kwargs)
 
@@ -843,7 +850,12 @@ def index():
     """หน้าแรก: แยกอีเว้นท์ที่กำลังดำเนินการ และประวัติตามปี/เดือน"""
     # แสดงทั้งอีเวนต์เดี่ยวและอีเวนต์ภายใต้ทัวร์นาเมนต์ในตารางเดียวกัน
     all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
-    tournaments = Tournament.query.order_by(Tournament.created_at.desc(), Tournament.id.desc()).all()
+    tournaments = (
+        Tournament.query
+        .options(selectinload(Tournament.engine_events))
+        .order_by(Tournament.created_at.desc(), Tournament.id.desc())
+        .all()
+    )
 
     event_ids = [event.id for event in all_events]
     team_counts = {}
@@ -1072,22 +1084,16 @@ def event_detail(event_id):
         return redirect(url_for('index'))
     if (event.competition_format or 'swiss') == 'round_robin':
         return redirect(url_for('rr_event.round_robin_event', event_id=event_id))
+    # โหลด Team/Match ครั้งเดียวแล้วใช้ซ้ำทั้งหน้า ลด query ซ้ำเมื่อมีผู้ใช้พร้อมกันมาก
     teams = Team.query.filter_by(event_id=event_id).all()
-    standings = calculate_standings(event_id) if (event.competition_format or 'swiss') == 'swiss' else []
-    matches = Match.query.filter_by(event_id=event_id).all()
-
-   
-
-    # 🔧 แก้ตรงนี้: คำนวณ current_round
-    current_round = (
-        db.session.query(db.func.max(Match.round))
-        .filter(Match.event_id == event_id)
-        .scalar()
-        or 0
+    all_matches = Match.query.filter_by(event_id=event_id).all()
+    standings = (
+        calculate_standings(event_id, matches=all_matches, teams=teams)
+        if (event.competition_format or 'swiss') == 'swiss' else []
     )
 
-    # ถ้าคุณใช้ matches_round_1 ใน template ก็เพิ่มตรงนี้ด้วย
-    matches_round_1 = Match.query.filter_by(event_id=event_id, round=1).all()
+    current_round = max((m.round or 0 for m in all_matches), default=0)
+    matches_round_1 = [m for m in all_matches if m.round == 1]
 
     # ✅ แปลง logo_filename เป็น list
     try:
@@ -1129,7 +1135,6 @@ def event_detail(event_id):
         event=event,
         teams=teams,
         standings=standings,
-        matches=matches,
         current_round=current_round,      # ✅ ส่งไปยัง template
         matches_round_1=matches_round_1,  # ✅ ส่งไปด้วยหากใช้
         active_playoffs=active_playoffs,
@@ -2935,13 +2940,16 @@ def round_matches(event_id, round):
     except Exception:
         event.logo_list = []
 
-    matches = Match.query.filter_by(event_id=event_id, round=round).order_by(Match.field.asc(), Match.id.asc()).all()
-    teams = {team.id: team.name for team in Team.query.filter_by(event_id=event_id).all()}
+    # โหลดข้อมูลหลักครั้งเดียว: หน้าเดิม query Match/Team ซ้ำหลายรอบต่อ 1 request
+    all_matches = Match.query.filter_by(event_id=event_id).all()
+    matches = [m for m in all_matches if m.round == round]
+    matches.sort(key=lambda m: (m.field is None, m.field or 0, m.id))
+    team_rows = Team.query.filter_by(event_id=event_id).all()
+    teams = {team.id: team.name for team in team_rows}
 
     auto_assign_field = event.auto_field_enabled
-     # ดึงรายการรอบทั้งหมดเพื่อทำปุ่มเปลี่ยนรอบ
-    rounds = db.session.query(Match.round).filter_by(event_id=event_id).distinct().order_by(Match.round).all()
-    rounds = [r[0] for r in rounds]
+    # ดึงรายการรอบจากข้อมูลที่โหลดแล้ว ไม่ยิง DISTINCT query เพิ่ม
+    rounds = sorted({m.round for m in all_matches if m.round is not None})
 
     def generate_field_numbers(event, count):
         prefix = event.field_prefix or ''
@@ -2960,8 +2968,9 @@ def round_matches(event_id, round):
         return fields
 
     # กำหนดค่าพวกนี้ก่อน render เสมอ
-    standings = calculate_standings(event_id)
-    total_rounds = event.rounds if event.rounds else db.session.query(db.func.max(Match.round)).filter(Match.event_id == event_id).scalar() or 1
+    standings = calculate_standings(event_id, matches=all_matches, teams=team_rows)
+    max_round = max((m.round or 0 for m in all_matches), default=0)
+    total_rounds = event.rounds if event.rounds else (max_round or 1)
     auto_fields = generate_field_numbers(event, len(matches)) if auto_assign_field else []
     all_current_round_locked = bool(matches) and all(m.is_locked for m in matches)
     is_last_configured_round = bool(total_rounds) and round >= total_rounds
@@ -3094,11 +3103,12 @@ def round_matches(event_id, round):
             return redirect(url_for("round_matches", event_id=event_id, round=round))
 
         # กรณี POST ที่ไม่ได้กด save_fields หรือ lock_scores (เช่น แค่ติ๊ก checkbox)
-        standings = calculate_standings(event_id)
-        total_rounds = event.rounds if event.rounds else db.session.query(db.func.max(Match.round)).filter(Match.event_id == event_id).scalar() or 1
+        standings = calculate_standings(event_id, matches=all_matches, teams=team_rows)
+        max_round = max((m.round or 0 for m in all_matches), default=0)
+        total_rounds = event.rounds if event.rounds else (max_round or 1)
         auto_fields = generate_field_numbers(event, len(matches)) if auto_assign_field else []
 
-    live_version, _ = _round_live_state(event_id, round)
+    live_version, _ = _round_live_state(event_id, round, matches=matches, teams=team_rows)
     return render_template(
         "round_matches.html",
         event=event,
@@ -3761,9 +3771,8 @@ def _create_round_robin_competition(source_event, selected_rows, title, direct_r
 
 
 def _active_playoffs_for_event(event_id):
-    # รายการเพลย์ออฟที่สร้างจาก Event นี้ เพื่อให้กลับเข้าไปทำงานต่อได้ถ้าเผลอออกจากหน้า
+    # ตาราง playoff ถูก ensure ตอนแอปเริ่มแล้ว ไม่ควรรัน DDL ซ้ำทุกครั้งที่เปิดหน้า Event
     try:
-        ensure_playoff_tables()
         rows = db.session.execute(text("""
             SELECT pc.id, pc.title, pc.competition_type, pc.pairing_method,
                    COUNT(pr.id) AS round_count,
@@ -7927,7 +7936,12 @@ def multi_event_manager():
 
     # ใช้ order_by แบบปลอดภัยกับ SQLite/Railway หลายเวอร์ชัน ไม่ใช้ nullslast() กัน Internal Server Error
     all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
-    tournaments = Tournament.query.order_by(Tournament.created_at.desc(), Tournament.id.desc()).all()
+    tournaments = (
+        Tournament.query
+        .options(selectinload(Tournament.engine_events))
+        .order_by(Tournament.created_at.desc(), Tournament.id.desc())
+        .all()
+    )
     # เลือกรายการวันนี้อัตโนมัติเฉพาะตอนเปิดหน้าครั้งแรก
     # ถ้าผู้ใช้กดล้างเลือก ให้คงรายการว่างไว้
     if not selected_event_ids and request.method == 'GET' and request.values.get('selection') != 'empty':
@@ -8640,7 +8654,12 @@ def _beta_playoff_pairs_for_round(playoff_id, round_id):
 def multi_playoff_score_center():
     selected_event_ids = _selected_event_ids_from_request()
     all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
-    tournaments = Tournament.query.order_by(Tournament.created_at.desc(), Tournament.id.desc()).all()
+    tournaments = (
+        Tournament.query
+        .options(selectinload(Tournament.engine_events))
+        .order_by(Tournament.created_at.desc(), Tournament.id.desc())
+        .all()
+    )
     if not selected_event_ids:
         today = date.today()
         selected_event_ids = [e.id for e in all_events if e.date == today][:12]
