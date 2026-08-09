@@ -579,10 +579,14 @@
 <script>
   console.log("HELLO FROM ROUND_MATCHES.HTML SCRIPTS BLOCK!"); // <-- เพิ่มบรรทัดนี้
 </script>
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   // ตรวจสอบให้แน่ใจว่าพอร์ตตรงกับที่คุณตั้งค่าใน app.py
-  const socket = io(); // ปล่อยให้ auto เลือก transport เอง
+  const socket = io({
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 10000
+  })
   window.roundLiveSocket = socket;
 
   function updateMatchRowStatus(matchId) {
@@ -724,32 +728,37 @@
     const row = input.closest('tr');
     const matchId = input.dataset.matchId;
 
-    // ตัวแปรสำหรับ debounce timeout ของ input field นั้นๆ
-    input._typingTimeout = null;
-
-    input.addEventListener('input', () => { // <--- ใช้ 'input' event เพื่ออัปเดตทันที
-      const scoreA = row.querySelector('.score-a').value;
-      const scoreB = row.querySelector('.score-b').value;
+    input.addEventListener('input', () => {
       updateMatchRowStatus(matchId);
       updateDrawWarning({ popup: true });
 
-      // ล้าง timeout ก่อนหน้า ถ้าผู้ใช้ยังพิมพ์อยู่
-      clearTimeout(input._typingTimeout);
+      // debounce ต่อคู่ เพื่อ request เก่าไม่ทับค่าล่าสุด
+      clearTimeout(row._scoreSaveTimer);
+      row._scoreSaveTimer = setTimeout(() => {
+        const latestScoreA = row.querySelector('.score-a').value;
+        const latestScoreB = row.querySelector('.score-b').value;
+        if (latestScoreA === '' || latestScoreB === '') return;
 
-      // ตั้ง timeout ใหม่เพื่อส่งข้อมูลหลังจากหยุดพิมพ์ 500ms
-      input._typingTimeout = setTimeout(() => {
-        updateMatchRowStatus(matchId);
-        if (scoreA === '' || scoreB === '') {
-          // ยังพิมพ์ไม่ครบ 2 ฝั่ง ไม่ส่งไป server เพื่อกัน error และกันจังหวะกระตุก
-          return;
-        }
-        console.log(`[CLIENT] Emitting update_score: Match ID: ${matchId}, Score A: ${scoreA}, Score B: ${scoreB}`); // เพิ่ม log
-        socket.emit('update_score', {
-          match_id: matchId,
-          team_a_score: scoreA,
-          team_b_score: scoreB
-        });
-      }, 500); // 500ms delay
+        fetch(`/event/{{ event.id }}/match/${matchId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            team_a_score: latestScoreA,
+            team_b_score: latestScoreB
+          })
+        })
+          .then(async response => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+              throw new Error(data.message || `HTTP ${response.status}`);
+            }
+            updateMatchRowStatus(matchId);
+          })
+          .catch(err => {
+            console.error('[CLIENT] Save score failed:', err);
+            alert(`บันทึกคะแนนไม่สำเร็จ: ${err.message}`);
+          });
+      }, 500);
     });
   });
 

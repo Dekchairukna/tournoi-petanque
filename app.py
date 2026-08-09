@@ -118,7 +118,7 @@ socketio = SocketIO(
     app,
     async_mode="threading",
     cors_allowed_origins=[origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()] or None,
-    ping_timeout=60,
+    ping_timeout=20,
     ping_interval=25,
     max_http_buffer_size=10_000_000,
     logger=False,
@@ -1915,13 +1915,57 @@ def pair_next_round(event_id):
 
 @app.route("/event/<int:event_id>/match/<int:match_id>", methods=["POST"])
 @login_required
-@roles_required('admin')  # เพิ่มบรรทัดนี้
+@roles_required('admin')
 def submit_score(event_id, match_id):
- 
+    """บันทึกคะแนนผ่าน HTTP; รองรับทั้ง form เดิมและ JSON จากหน้า round."""
     match = Match.query.get_or_404(match_id)
-    match.team1_score = int(request.form.get("team1_score", 0))
-    match.team2_score = int(request.form.get("team2_score", 0))
-    db.session.commit()
+    if match.event_id != event_id:
+        abort(404)
+
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        team1_raw = data.get("team_a_score")
+        team2_raw = data.get("team_b_score")
+    else:
+        team1_raw = request.form.get("team1_score", 0)
+        team2_raw = request.form.get("team2_score", 0)
+
+    try:
+        match.team1_score = int(team1_raw)
+        match.team2_score = int(team2_raw)
+        db.session.commit()
+    except (TypeError, ValueError):
+        db.session.rollback()
+        if request.is_json:
+            return jsonify({'ok': False, 'message': 'Invalid score format'}), 400
+        flash('รูปแบบคะแนนไม่ถูกต้อง', 'danger')
+        return redirect(url_for("event_detail", event_id=event_id))
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.exception('HTTP score save failed for match %s', match_id)
+        if request.is_json:
+            return jsonify({'ok': False, 'message': 'Server error updating score'}), 500
+        raise
+
+    if request.is_json:
+        payload = {
+            'match_id': match.id,
+            'team_a_score': match.team1_score,
+            'team_b_score': match.team2_score,
+            'pending_team_a_score': match.pending_team1_score,
+            'pending_team_b_score': match.pending_team2_score,
+            'has_pending': match.pending_team1_score is not None or match.pending_team2_score is not None,
+            'pending_is_submitted': bool(match.pending_is_submitted),
+            'updated_by_username': current_user.username,
+            'timestamp': datetime.utcnow().isoformat(),
+        }
+        # คะแนนถูก commit แล้วก่อน emit; realtime พังต้องไม่ทำให้การบันทึกพังตาม
+        try:
+            socketio.emit('score_updated', payload)
+        except Exception:
+            app.logger.exception('Realtime emit failed after HTTP score save for match %s', match_id)
+        return jsonify({'ok': True, **payload})
+
     return redirect(url_for("event_detail", event_id=event_id))
 
 
