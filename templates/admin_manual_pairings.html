@@ -33,7 +33,7 @@
   <div class="alert alert-warning">{{ error_message }}</div>
   {% endif %}
 
-  {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+  {% if current_user.is_authenticated and current_user.role in ['admin', 'mainadmin', 'superadmin'] %}
 
   {% if auto_pairings %}
   <div class="alert alert-info">

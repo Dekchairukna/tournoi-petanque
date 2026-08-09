@@ -1,0 +1,54 @@
+Tournoi Petanque - Permission + Knockout Bracket V4
+
+ฐาน: Performance V3
+
+เพิ่ม Role
+- Viewer
+- User / Scorekeeper
+- Admin
+- Mainadmin
+- Superadmin
+
+กติกา Admin
+- ปกติเห็น/จัดการเฉพาะ Tournament และ Event ที่ตัวเองสร้าง
+- ถ้า Superadmin เปิด permission access_other_events จึงเห็น/จัดการงานคนอื่นได้
+- ป้องกันทั้งหน้า UI และการเข้าผ่าน URL โดยตรง
+
+Mainadmin
+- เห็นทุก Tournament/Event
+- ใช้งานจัดการ Event พื้นฐานแบบ Admin
+- ใช้ฟังก์ชันพิเศษตาม permission ที่ Superadmin เปิด
+- ไม่มีสิทธิ์จัดการ User
+
+Permission พิเศษ (เห็นในหน้า User Management ของ Superadmin เท่านั้น)
+- create_non_swiss_event: สร้าง Event ใหม่ด้วย Round Robin / Knockout / Double Knockout
+- multi_score: คีย์หลาย Event
+- multi_manage: จัดการหลาย Event + Multi Playoff
+- access_other_events: Admin เห็น/จัดการงานของผู้อื่น (Mainadmin ได้อัตโนมัติ)
+
+กติกา Swiss -> Playoff
+- ไม่ผูกกับ create_non_swiss_event
+- ผู้จัด Event ที่เริ่ม Swiss สามารถดึง Knockout/Double Knockout/Round Robin/A-B ไปจัดต่อจาก Standing/Playoff ได้ตาม flow เดิม
+
+Knockout Bracket
+- เพิ่มสาย Knockout แนวนอนในหน้า playoff_detail
+- ใช้ข้อมูล playoff backend เดิม ไม่สร้างคะแนน/Match ซ้ำ
+- รอบถัดไปอยู่กึ่งกลางระหว่างสองคู่ก่อนหน้า
+- วาดเส้นเชื่อมด้วย SVG ตามตำแหน่งจริง
+- คะแนนใน bracket รับ realtime event playoff_score_updated เดิม
+- ตารางคีย์คะแนนเดิมยังอยู่ด้านล่าง
+
+ทดสอบ
+- py_compile app.py/models.py ผ่าน
+- Jinja parse ทุก template ผ่าน
+- Flask app import/route registration ผ่าน (107 routes)
+- SQLite runtime migration permissions_json ผ่าน
+- Admin own-only index ผ่าน
+- Admin direct URL งานคนอื่น = 403 ผ่าน
+- access_other_events เปิดแล้วเห็นงานอื่นผ่าน
+- Mainadmin เห็นทุก Event ผ่าน
+- Mainadmin เข้า User Management ไม่ได้ ผ่าน
+- create_non_swiss_event ปิด/เปิด backend ผ่าน
+- multi_score permission ปิด/เปิดผ่าน
+- multi_manage permission ผ่าน
+- หน้า Knockout Bracket render 200 จากข้อมูล playoff จริงผ่าน

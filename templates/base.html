@@ -132,22 +132,23 @@
         <li class="nav-item">
         </li>
         {% endif %}
-        {% if current_user.is_authenticated and current_user.role == 'superadmin' %}
+        {% if current_user.is_authenticated and current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
         <li class="nav-item">
-          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_score_center' %}active{% endif %}"
-            href="{{ url_for('multi_event_score_center') }}">
+          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_score_center' %}active{% endif %}" href="{{ url_for('multi_event_score_center') }}">
             <i class="bi bi-pencil-square me-1"></i> คีย์หลายอีเว้นท์
           </a>
         </li>
+        {% endif %}
+        {% if current_user.is_authenticated and current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
         <li class="nav-item">
-          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_manager' %}active{% endif %}"
-            href="{{ url_for('multi_event_manager') }}">
+          <a class="nav-link px-3 rounded {% if request.endpoint in ['multi_event_manager','multi_playoff_score_center'] %}active{% endif %}" href="{{ url_for('multi_event_manager') }}">
             <i class="bi bi-diagram-3 me-1"></i> จัดการอีเว้นท์รวม
           </a>
         </li>
+        {% endif %}
+        {% if current_user.is_authenticated and current_user.role == 'superadmin' %}
         <li class="nav-item">
-          <a class="nav-link px-3 rounded {% if request.endpoint == 'admin_users' %}active{% endif %}"
-            href="{{ url_for('admin_users') }}">
+          <a class="nav-link px-3 rounded {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
             <i class="bi bi-people-fill me-1"></i> {{ t('users') }}
           </a>
         </li>

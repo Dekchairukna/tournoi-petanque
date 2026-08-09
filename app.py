@@ -184,6 +184,7 @@ def ensure_runtime_columns():
         db.session.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS finished_by_id INTEGER"))
         db.session.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS competition_format VARCHAR(40) DEFAULT 'swiss' NOT NULL"))
         db.session.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS tournament_id INTEGER"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json TEXT DEFAULT '{}'"))
     else:
         event_existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(events)"))}
         if 'is_finished' not in event_existing:
@@ -196,6 +197,10 @@ def ensure_runtime_columns():
             db.session.execute(text("ALTER TABLE events ADD COLUMN competition_format VARCHAR(40) DEFAULT 'swiss' NOT NULL"))
         if 'tournament_id' not in event_existing:
             db.session.execute(text("ALTER TABLE events ADD COLUMN tournament_id INTEGER"))
+
+        user_existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(users)"))}
+        if 'permissions_json' not in user_existing:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN permissions_json TEXT DEFAULT '{}'"))
 
         existing = {row[1] for row in db.session.execute(text("PRAGMA table_info(matches)"))}
         if 'pending_team1_score' not in existing:
@@ -516,7 +521,7 @@ def handle_join_playoff(data):
 @login_required
 def handle_update_score(data):
     """อัปเดตคะแนนจริงจากหน้า round สำหรับ admin/superadmin เท่านั้น"""
-    if current_user.role not in ['admin', 'superadmin']:
+    if current_user.role not in ['admin', 'mainadmin', 'superadmin']:
         emit('error_message', {'message': 'เฉพาะ admin เท่านั้นที่แก้คะแนนจริงจากหน้า round ได้'}, room=request.sid)
         return
 
@@ -585,6 +590,13 @@ app.jinja_env.globals.update(thai_date_full=thai_date_full)
 # /admin/users/*                       : จัดการบัญชีผู้ใช้
 # /playoff/* และ knockout routes       : สายแข่งขัน รอบถัดไป และรายงาน
 # /scorecard/*, /api/* และ Socket.IO   : สกอร์การ์ดและข้อมูลเรียลไทม์
+SPECIAL_PERMISSIONS = {
+    'create_non_swiss_event': 'สร้างอีเวนต์ด้วยระบบอื่นนอกจาก Swiss',
+    'multi_score': 'คีย์หลายอีเวนต์',
+    'multi_manage': 'จัดการหลายอีเวนต์',
+    'access_other_events': 'เห็น/จัดการอีเวนต์ของผู้อื่น',
+}
+
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
@@ -593,17 +605,64 @@ def roles_required(*roles):
                 flash("กรุณาเข้าสู่ระบบก่อน", "warning")
                 return redirect(url_for('login'))
 
-            role = current_user.role.lower()
+            role = (current_user.role or '').lower()
+            allowed = [r.lower() for r in roles]
             if role == 'superadmin':
                 return f(*args, **kwargs)
-
-            if role in [r.lower() for r in roles]:
+            # mainadmin ใช้ฟังก์ชันจัดการอีเวนต์พื้นฐานได้เหมือน admin แต่จัดการ User ไม่ได้
+            if role == 'mainadmin' and 'admin' in allowed:
+                return f(*args, **kwargs)
+            if role in allowed:
                 return f(*args, **kwargs)
 
             flash("คุณไม่มีสิทธิ์ทำรายการนี้", "warning")
             return redirect(url_for('index'))
         return decorated_function
     return decorator
+
+def permission_required(permission_key, allowed_roles=None):
+    allowed_roles = set(allowed_roles or [])
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                flash("กรุณาเข้าสู่ระบบก่อน", "warning")
+                return redirect(url_for('login'))
+            role = (current_user.role or '').lower()
+            if role == 'superadmin':
+                return f(*args, **kwargs)
+            if allowed_roles and role not in allowed_roles:
+                flash("คุณไม่มีสิทธิ์ทำรายการนี้", "warning")
+                return redirect(url_for('index'))
+            if current_user.has_permission(permission_key):
+                return f(*args, **kwargs)
+            flash("คุณไม่มีสิทธิ์ใช้ฟังก์ชันนี้", "warning")
+            return redirect(url_for('index'))
+        return decorated_function
+    return decorator
+
+def _can_access_other_events():
+    if not current_user.is_authenticated:
+        return False
+    role = (current_user.role or '').lower()
+    return role in {'superadmin', 'mainadmin'} or current_user.has_permission('access_other_events')
+
+def _can_manage_event(event):
+    if not current_user.is_authenticated or event is None:
+        return False
+    return _can_access_other_events() or int(event.creator_id) == int(current_user.id)
+
+def _visible_events_query():
+    query = Event.query
+    if current_user.is_authenticated and (current_user.role or '').lower() == 'admin' and not _can_access_other_events():
+        query = query.filter(Event.creator_id == current_user.id)
+    return query
+
+def _visible_tournaments_query():
+    query = Tournament.query
+    if current_user.is_authenticated and (current_user.role or '').lower() == 'admin' and not _can_access_other_events():
+        query = query.filter(Tournament.creator_id == current_user.id)
+    return query
 
 
 def _event_for_playoff(playoff_id):
@@ -614,9 +673,7 @@ def _event_for_playoff(playoff_id):
 
 
 def _owns_event(event):
-    return bool(current_user.is_authenticated and (
-        current_user.role == 'superadmin' or event.creator_id == current_user.id
-    ))
+    return _can_manage_event(event)
 
 
 @app.before_request
@@ -624,7 +681,7 @@ def protect_mutating_object_routes():
     """Block cross-owner writes caused by changing numeric IDs in a URL."""
     if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'} or not current_user.is_authenticated:
         return None
-    if current_user.role == 'superadmin':
+    if (current_user.role or '').lower() in {'superadmin', 'mainadmin'} or current_user.has_permission('access_other_events'):
         return None
     endpoint = request.endpoint or ''
     if endpoint in {'autosave_online_scorecard', 'finish_online_scorecard'} and current_user.role == 'user':
@@ -675,6 +732,25 @@ def protect_mutating_object_routes():
         return None
     if event and not _owns_event(event):
         abort(403)
+    return None
+
+@app.before_request
+def protect_admin_object_visibility():
+    """Admin เห็นเฉพาะงานตัวเอง เว้นแต่ Superadmin เปิดสิทธิ์ access_other_events."""
+    if not current_user.is_authenticated or (current_user.role or '').lower() != 'admin' or _can_access_other_events():
+        return None
+    values = request.view_args or {}
+    event = None
+    if values.get('event_id'):
+        event = Event.query.get(values['event_id'])
+    elif values.get('playoff_id'):
+        event = _event_for_playoff(values['playoff_id'])
+    if event is not None and int(event.creator_id) != int(current_user.id):
+        abort(403)
+    if values.get('tournament_id'):
+        tournament = Tournament.query.get(values['tournament_id'])
+        if tournament is not None and int(tournament.creator_id) != int(current_user.id):
+            abort(403)
     return None
 
 # ฟังก์ชันช่วยแปลงค่าเป็น int และคืน 0 ถ้าค่าเป็น None หรือไม่ถูกต้อง
@@ -849,9 +925,9 @@ def manual_pairing(event_id, round_num):
 def index():
     """หน้าแรก: แยกอีเว้นท์ที่กำลังดำเนินการ และประวัติตามปี/เดือน"""
     # แสดงทั้งอีเวนต์เดี่ยวและอีเวนต์ภายใต้ทัวร์นาเมนต์ในตารางเดียวกัน
-    all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
+    all_events = _visible_events_query().order_by(Event.date.desc(), Event.id.desc()).all()
     tournaments = (
-        Tournament.query
+        _visible_tournaments_query()
         .options(selectinload(Tournament.engine_events))
         .order_by(Tournament.created_at.desc(), Tournament.id.desc())
         .all()
@@ -1614,8 +1690,8 @@ def add_event_route():
         allowed_formats = {"swiss", "round_robin", "double_knockout", "knockout"}
         if competition_format not in allowed_formats:
             competition_format = "swiss"
-        if competition_format != 'swiss' and current_user.role != 'superadmin':
-            flash('การสร้างอีเว้นท์ระบบอื่นที่ไม่ใช่ Swiss ใช้ได้เฉพาะ superadmin', 'warning')
+        if competition_format != 'swiss' and not current_user.has_permission('create_non_swiss_event'):
+            flash('บัญชีนี้สร้างอีเวนต์ใหม่ได้เฉพาะระบบ Swiss', 'warning')
             return redirect(url_for('index'))
 
         # Swiss กำหนดจำนวนครั้งตั้งแต่สร้างอีเวนต์ได้ทันที
@@ -1674,7 +1750,7 @@ def add_event_route():
         tournament_id = request.form.get("tournament_id", type=int)
         if tournament_id:
             tournament = Tournament.query.get_or_404(tournament_id)
-            if current_user.role != 'superadmin' and tournament.creator_id != current_user.id:
+            if not _can_access_other_events() and tournament.creator_id != current_user.id:
                 abort(403)
         new_event = Event(
             name=name,
@@ -2217,9 +2293,9 @@ def edit_event(event_id):
             event.rounds = int(request.form.get("rounds", event.rounds or 1))
             old_format = event.competition_format or 'swiss'
             requested_format = (request.form.get("competition_format") or old_format).strip()
-            if requested_format != 'swiss' and current_user.role != 'superadmin':
+            if requested_format != old_format and requested_format != 'swiss' and not current_user.has_permission('create_non_swiss_event'):
                 requested_format = old_format
-                flash('เฉพาะ superadmin เท่านั้นที่เปลี่ยนอีเว้นท์เป็นระบบอื่นที่ไม่ใช่ Swiss ได้', 'warning')
+                flash('บัญชีนี้ไม่ได้รับสิทธิ์เปลี่ยนอีเวนต์เป็นระบบอื่นที่ไม่ใช่ Swiss', 'warning')
             if requested_format in {"swiss", "round_robin", "double_knockout", "knockout"}:
                 if requested_format != old_format:
                     # เปลี่ยนระบบการแข่งขัน = เริ่มจัดการแข่งขันใหม่ แต่เก็บรายชื่อทีมเดิมไว้
@@ -2310,7 +2386,7 @@ def _event_has_unlocked_matches(event_id):
 
 @app.route("/multi-score", methods=["GET", "POST"])
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_score', allowed_roles={'user','admin','mainadmin'})
 def multi_event_score_center():
     """หน้าเดียวสำหรับเลือกหลายอีเว้นท์ แล้วคีย์คะแนนตามครั้ง/รอบรวมกัน"""
     today = date.today()
@@ -2319,7 +2395,7 @@ def multi_event_score_center():
     field_query = (request.values.get("field") or "").strip()
     selected_event_ids = _selected_event_ids_from_request()
 
-    events_query = Event.query.order_by(Event.date.desc().nullslast(), Event.id.desc())
+    events_query = _visible_events_query().order_by(Event.date.desc().nullslast(), Event.id.desc())
     all_events = events_query.all()
 
     if not selected_event_ids:
@@ -2329,6 +2405,7 @@ def multi_event_score_center():
 
     selected_events = [e for e in all_events if e.id in set(selected_event_ids)]
     selected_events.sort(key=lambda e: (e.date or date.min, e.name or "", e.id))
+    selected_event_ids = [e.id for e in selected_events]
     # เลือกรอบแยกต่ออีเว้นท์ได้ เช่น U12 คีย์ครั้งที่ 2 แต่ U14 คีย์ครั้งที่ 3 ในหน้าเดียว
     event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
     event_rounds_param = _beta_event_rounds_param(event_round_map)
@@ -2337,7 +2414,10 @@ def multi_event_score_center():
         action = request.form.get("action")
         selected_matches = (
             Match.query
-            .filter(Match.id.in_([int(x) for x in request.form.getlist("match_ids") if str(x).isdigit()]))
+            .filter(
+                Match.id.in_([int(x) for x in request.form.getlist("match_ids") if str(x).isdigit()]),
+                Match.event_id.in_(selected_event_ids or [-1]),
+            )
             .all()
         )
         match_map = {m.id: m for m in selected_matches}
@@ -3278,7 +3358,7 @@ def admin_add_user():
         role = request.form['role']
         duration = request.form.get('duration', '1m')  # default 1 เดือน
 
-        if role not in ['user', 'admin', 'superadmin']:
+        if role not in ['viewer', 'user', 'admin', 'mainadmin', 'superadmin']:
             flash("สิทธิ์ผู้ใช้ไม่ถูกต้อง", "danger")
             return redirect(url_for('admin_add_user'))
 
@@ -3290,13 +3370,14 @@ def admin_add_user():
         end_time = calculate_end_time(duration)
 
         new_user = User(username=username, role=role, start_time=start_time, end_time=end_time)
+        new_user.set_permissions({key: request.form.get(f'perm_{key}') == '1' for key in SPECIAL_PERMISSIONS})
         new_user.set_password(password)
         db.session.add(new_user)
         db.session.commit()
         flash("เพิ่มผู้ใช้เรียบร้อยแล้ว", "success")
         return redirect(url_for('admin_users'))  # ไปหน้ารายชื่อผู้ใช้
 
-    return render_template('admin_add_user.html')
+    return render_template('admin_add_user.html', special_permissions=SPECIAL_PERMISSIONS)
   
 
 
@@ -3310,7 +3391,7 @@ def admin_users():
             u.end_time_str = u.end_time.strftime('%Y-%m-%d %H:%M:%S')
         else:
             u.end_time_str = "ถาวร"
-    return render_template('admin_users.html', users=users, now=datetime.utcnow())
+    return render_template('admin_users.html', users=users, now=datetime.utcnow(), special_permissions=SPECIAL_PERMISSIONS)
 
 
 @app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
@@ -3375,12 +3456,13 @@ def edit_user(user_id):
             flash('ชื่อผู้ใช้นี้มีอยู่แล้ว', 'danger')
             return redirect(url_for('edit_user', user_id=user.id))
 
-        if new_role not in ['user', 'admin', 'superadmin']:
+        if new_role not in ['viewer', 'user', 'admin', 'mainadmin', 'superadmin']:
             flash('สิทธิ์ผู้ใช้ไม่ถูกต้อง', 'danger')
             return redirect(url_for('edit_user', user_id=user.id))
 
         user.username = new_username
         user.role = new_role
+        user.set_permissions({key: request.form.get(f'perm_{key}') == '1' for key in SPECIAL_PERMISSIONS})
 
         if new_password.strip():
             user.set_password(new_password.strip())
@@ -3395,7 +3477,7 @@ def edit_user(user_id):
         flash('แก้ไขผู้ใช้สำเร็จ', 'success')
         return redirect(url_for('admin_users'))
 
-    return render_template('admin_edit_user.html', user=user)
+    return render_template('admin_edit_user.html', user=user, special_permissions=SPECIAL_PERMISSIONS)
 
 @app.route('/match/event/<int:event_id>/match_pairs')
 def match_pairs(event_id):
@@ -6448,6 +6530,33 @@ def _playoff_source_status_map(view, source_team_ids=None):
             status_map[int(tid)] = 'เข้ารอบ'
     return status_map
 
+def _knockout_bracket_rounds(view):
+    """ข้อมูลสำหรับวาดสาย Knockout จาก playoff backend เดิม ไม่สร้างข้อมูลแข่งขันซ้ำ."""
+    bracket = []
+    for rv in (view or {}).get('round_views', []):
+        if (rv.get('round') or {}).get('round_type') != 'knockout':
+            continue
+        matches = []
+        for group in rv.get('group_views', []):
+            slots = sorted(group.get('slots') or [], key=lambda x: int(x.get('slot_no') or 0))[:2]
+            rows = []
+            winner_name = ((group.get('result') or {}).get('winner') or {}).get('team_name')
+            for slot in slots:
+                slot_no = int(slot.get('slot_no') or 0)
+                team_name = 'X' if slot.get('is_bye') else (slot.get('team_name') or 'รอผู้ชนะ')
+                score = rv.get('score_map', {}).get((group.get('group_no'), slot_no, 1), '')
+                rows.append({
+                    'slot_no': slot_no, 'team_name': team_name, 'score': score,
+                    'is_bye': bool(slot.get('is_bye')),
+                    'is_winner': bool(winner_name and team_name == winner_name),
+                })
+            while len(rows) < 2:
+                rows.append({'slot_no': len(rows)+1, 'team_name': 'รอผู้ชนะ', 'score': '', 'is_bye': False, 'is_winner': False})
+            court = next((slot.get('court_name') for slot in slots if slot.get('court_name')), None)
+            matches.append({'group_no': group.get('group_no'), 'teams': rows, 'court': court})
+        bracket.append({'round': rv.get('round'), 'matches': matches})
+    return bracket
+
 def _render_playoff_detail(playoff_id, native_competition_mode=None):
     view = _fetch_playoff(playoff_id)
     if not view:
@@ -6481,6 +6590,7 @@ def _render_playoff_detail(playoff_id, native_competition_mode=None):
         full_report_rows=_playoff_report_rows(view),
         ab_status=_ab_status_for_view(view),
         native_competition_mode=native_competition_mode,
+        knockout_bracket_rounds=_knockout_bracket_rounds(view),
     )
 
 
@@ -6558,7 +6668,7 @@ def playoff_print_report(playoff_id):
 
 @app.route('/multi-manage/print-final-reports')
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_event_print_final_reports():
     """Print one report book containing the latest playoff report of each selected event."""
     selected_event_ids = _selected_event_ids_from_request()
@@ -7906,14 +8016,14 @@ def _beta_multi_create_next_for_event(event):
 def _beta_selected_manage_events(selected_event_ids):
     if not selected_event_ids:
         return []
-    events = Event.query.filter(Event.id.in_(selected_event_ids)).all()
+    events = _visible_events_query().filter(Event.id.in_(selected_event_ids)).all()
     events.sort(key=lambda e: (e.date or date.min, e.name or '', e.id))
     return events
 
 
 @app.route('/multi-manage', methods=['GET', 'POST'])
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_event_manager():
     """บริหารจัดการหลายอีเว้นท์: เลือกอีเว้นท์ จับคู่ ใส่สนาม ลบคู่ และพิมพ์รวม
     รองรับกรณีที่แต่ละอีเว้นท์อยู่คนละรอบ โดยเลือกครั้ง/รอบแยกต่ออีเว้นท์ได้
@@ -7935,9 +8045,9 @@ def multi_event_manager():
     event_field_start_map = _beta_event_field_start_map_from_request([], field_start)
 
     # ใช้ order_by แบบปลอดภัยกับ SQLite/Railway หลายเวอร์ชัน ไม่ใช้ nullslast() กัน Internal Server Error
-    all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
+    all_events = _visible_events_query().order_by(Event.date.desc(), Event.id.desc()).all()
     tournaments = (
-        Tournament.query
+        _visible_tournaments_query()
         .options(selectinload(Tournament.engine_events))
         .order_by(Tournament.created_at.desc(), Tournament.id.desc())
         .all()
@@ -7948,12 +8058,14 @@ def multi_event_manager():
         selected_event_ids = [e.id for e in all_events if e.date == today][:12]
 
     selected_events = _beta_selected_manage_events(selected_event_ids)
+    selected_event_ids = [e.id for e in selected_events]
     event_round_map = _beta_event_rounds_map_from_request(selected_events, selected_round)
     event_field_start_map = _beta_event_field_start_map_from_request(selected_events, field_start)
 
     if request.method == 'POST':
         action = request.form.get('action') or 'refresh'
         selected_events = _beta_selected_manage_events(selected_event_ids)
+        selected_event_ids = [e.id for e in selected_events]
         selected_round = request.form.get('round', type=int) or selected_round
         selected_round = max(1, min(int(selected_round or 1), 50))
         field_start = request.form.get('field_start', type=int) or field_start
@@ -8288,7 +8400,7 @@ def multi_event_manager():
 
 @app.route('/api/multi-playoff-readiness')
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_playoff_readiness_api():
     """อัปเดตสถานะหมวด 5 ในหน้าเดิมโดยไม่ต้องกดรีเฟรช"""
     event_ids = []
@@ -8311,7 +8423,7 @@ def multi_playoff_readiness_api():
 
 @app.route('/multi-manage/print-pairings')
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_event_print_pairings():
     selected_round = request.args.get('round', type=int) or 1
     selected_event_ids = _selected_event_ids_from_request()
@@ -8333,7 +8445,7 @@ def multi_event_print_pairings():
 
 @app.route('/multi-manage/print-score-sheets')
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_event_print_score_sheets():
     selected_round = request.args.get('round', type=int) or 1
     selected_event_ids = _selected_event_ids_from_request()
@@ -8356,7 +8468,7 @@ def multi_event_print_score_sheets():
 
 @app.route('/multi-manage/print-standings')
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_event_print_standings():
     selected_event_ids = _selected_event_ids_from_request()
     events = _beta_selected_manage_events(selected_event_ids)
@@ -8650,12 +8762,12 @@ def _beta_playoff_pairs_for_round(playoff_id, round_id):
 
 @app.route('/multi-playoff-score', methods=['GET', 'POST'])
 @login_required
-@roles_required('superadmin')
+@permission_required('multi_manage', allowed_roles={'admin','mainadmin'})
 def multi_playoff_score_center():
     selected_event_ids = _selected_event_ids_from_request()
-    all_events = Event.query.order_by(Event.date.desc(), Event.id.desc()).all()
+    all_events = _visible_events_query().order_by(Event.date.desc(), Event.id.desc()).all()
     tournaments = (
-        Tournament.query
+        _visible_tournaments_query()
         .options(selectinload(Tournament.engine_events))
         .order_by(Tournament.created_at.desc(), Tournament.id.desc())
         .all()
@@ -8664,6 +8776,7 @@ def multi_playoff_score_center():
         today = date.today()
         selected_event_ids = [e.id for e in all_events if e.date == today][:12]
     selected_events = _beta_selected_manage_events(selected_event_ids)
+    selected_event_ids = [e.id for e in selected_events]
     playoffs = _beta_latest_playoffs_for_events(selected_event_ids)
     playoff_round_map = _beta_playoff_round_map_from_request(selected_events)
 

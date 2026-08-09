@@ -102,6 +102,7 @@
           <th>ชื่อผู้ใช้</th>
           <th>สิทธิ์</th>
           <th>หมดอายุ</th>
+          <th>สิทธิ์พิเศษ</th>
           {% if current_user.role == 'superadmin' %}
           <th>การจัดการ</th>
           {% endif %}
@@ -122,6 +123,17 @@
               {% endif %}
             {% else %}
               <span class="badge bg-success">ถาวร</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.role == 'superadmin' %}<span class="badge bg-dark">ทั้งหมด</span>
+            {% else %}
+              {% set pmap = u.permissions() %}
+              {% set has_any = pmap.values()|select('equalto', true)|list|length > 0 or u.role == 'mainadmin' %}
+              {% for key, label in special_permissions.items() %}
+                {% if pmap.get(key) or (u.role == 'mainadmin' and key == 'access_other_events') %}<span class="badge bg-info text-dark me-1 mb-1">{{ label }}</span>{% endif %}
+              {% endfor %}
+              {% if not has_any %}<span class="text-muted">-</span>{% endif %}
             {% endif %}
           </td>
           {% if current_user.role == 'superadmin' %}

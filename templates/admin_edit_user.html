@@ -1,59 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container mt-5">
-  <h2 class="mb-4">แก้ไขผู้ใช้</h2>
+<div class="container my-4" style="max-width:900px;">
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-header bg-dark text-white rounded-top-4"><h4 class="mb-0">แก้ไขผู้ใช้: {{ user.username }}</h4></div>
+    <form method="POST">
+      <div class="card-body">
+        <div class="alert alert-info py-2">หมดอายุปัจจุบัน: <strong>{{ user.end_time.strftime('%Y-%m-%d %H:%M:%S') if user.end_time else 'ถาวร' }}</strong></div>
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label fw-semibold">ชื่อผู้ใช้</label><input class="form-control" name="username" value="{{ user.username }}" required></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">รหัสผ่านใหม่</label><input type="password" class="form-control" name="password" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Role</label>
+            <select name="role" id="role" class="form-select" required>
+              <option value="viewer" {% if user.role=='viewer' %}selected{% endif %}>Viewer</option>
+              <option value="user" {% if user.role=='user' %}selected{% endif %}>User / Scorekeeper</option>
+              <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+              <option value="mainadmin" {% if user.role=='mainadmin' %}selected{% endif %}>Mainadmin</option>
+              <option value="superadmin" {% if user.role=='superadmin' %}selected{% endif %}>Superadmin</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">เปลี่ยนระยะเวลาใช้งาน</label>
+            <select name="duration" class="form-select">
+              <option value="" selected>ไม่เปลี่ยน</option><option value="1d">ต่อ 1 วัน</option><option value="1w">ต่อ 1 สัปดาห์</option>
+              <option value="1m">ต่อ 1 เดือน</option><option value="3m">ต่อ 3 เดือน</option><option value="6m">ต่อ 6 เดือน</option>
+              <option value="1y">ต่อ 1 ปี</option><option value="forever">ถาวร</option>
+            </select>
+          </div>
+        </div>
 
-  <div class="alert alert-info">
-    วันหมดอายุปัจจุบัน:
-    {% if user.end_time %}
-      <strong>{{ user.end_time.strftime('%Y-%m-%d %H:%M:%S') }}</strong>
-    {% else %}
-      <strong>ถาวร</strong>
-    {% endif %}
-  </div>
-
-  <form method="POST">
-    <div class="mb-3">
-      <label for="username" class="form-label">ชื่อผู้ใช้</label>
-      <input type="text" class="form-control" name="username" id="username" value="{{ user.username }}" required>
-    </div>
-
-    <div class="mb-3">
-      <label for="password" class="form-label">รหัสผ่านใหม่</label>
-      <input type="password" class="form-control" name="password" id="password" placeholder="เว้นว่างไว้ถ้าไม่ต้องการเปลี่ยนรหัสผ่าน">
-    </div>
-
-    <div class="mb-3">
-      <label for="role" class="form-label">สิทธิ์</label>
-      <select name="role" id="role" class="form-select" required>
-        <option value="user" {% if user.role == 'user' %}selected{% endif %}>user</option>
-        <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>admin</option>
-        <option value="superadmin" {% if user.role == 'superadmin' %}selected{% endif %}>superadmin</option>
-      </select>
-    </div>
-
-    <div class="mb-3">
-      <label for="duration" class="form-label">เปลี่ยนระยะเวลาใช้งาน</label>
-      <select name="duration" id="duration" class="form-select">
-        <option value="" selected>ไม่เปลี่ยนวันหมดอายุเดิม</option>
-        <option value="1d">ต่ออายุ 1 วันจากตอนนี้</option>
-        <option value="1w">ต่ออายุ 1 สัปดาห์จากตอนนี้</option>
-        <option value="1m">ต่ออายุ 1 เดือนจากตอนนี้</option>
-        <option value="3m">ต่ออายุ 3 เดือนจากตอนนี้</option>
-        <option value="6m">ต่ออายุ 6 เดือนจากตอนนี้</option>
-        <option value="1y">ต่ออายุ 1 ปีจากตอนนี้</option>
-        <option value="forever">ตั้งเป็นถาวร</option>
-      </select>
-      <div class="form-text text-danger">
-        ถ้าไม่ต้องการเปลี่ยนวันหมดอายุ ให้เลือก “ไม่เปลี่ยนวันหมดอายุเดิม” เพื่อป้องกันบัญชีกลายเป็นถาวรโดยไม่ตั้งใจ
+        {% set perms = user.permissions() %}
+        <div class="mt-4 p-3 border rounded-4 bg-light">
+          <div class="fw-bold mb-2">สิทธิ์ฟังก์ชันพิเศษ <span class="badge bg-danger">Superadmin เห็นเท่านั้น</span></div>
+          <div class="row g-2">
+            {% for key, label in special_permissions.items() %}
+            <div class="col-md-6 permission-row" data-permission="{{ key }}">
+              <label class="form-check border rounded-3 p-3 w-100 bg-white">
+                <input class="form-check-input me-2" type="checkbox" name="perm_{{ key }}" value="1" {% if perms.get(key) %}checked{% endif %}>
+                <span class="fw-semibold">{{ label }}</span>
+                {% if key == 'access_other_events' %}<div class="small text-muted mt-1">Mainadmin เห็นทุกอีเวนต์อัตโนมัติ ไม่ต้องเปิดข้อนี้</div>{% endif %}
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
       </div>
-    </div>
-
-    <button type="submit" class="btn btn-yellow btn-custom">บันทึกการแก้ไข</button>
-  </form>
-
-  <div class="mt-4">
-    <a href="{{ url_for('admin_users') }}" class="btn btn-dark-outline btn-custom" style="min-width: 120px;">← กลับ</a>
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">ยกเลิก</a>
+        <button class="btn btn-primary">บันทึก</button>
+      </div>
+    </form>
   </div>
 </div>
+<script>
+(function(){
+  const role=document.getElementById('role');
+  const access=document.querySelector('[data-permission="access_other_events"] input');
+  function sync(){ if(!access) return; if(role.value==='mainadmin'){ access.checked=false; access.disabled=true; } else { access.disabled=false; } }
+  role.addEventListener('change',sync); sync();
+})();
+</script>
 {% endblock %}

@@ -16,9 +16,13 @@
             <label class="form-label fw-semibold">รูปแบบการแข่งขัน</label>
             <select name="competition_format" class="form-select">
               <option value="swiss" {% if (event.competition_format or 'swiss') == 'swiss' %}selected{% endif %}>Swiss</option>
+              {% if current_user.has_permission('create_non_swiss_event') %}
               <option value="round_robin" {% if event.competition_format == 'round_robin' %}selected{% endif %}>Round Robin</option>
               <option value="double_knockout" {% if event.competition_format == 'double_knockout' %}selected{% endif %}>Double Knockout</option>
               <option value="knockout" {% if event.competition_format == 'knockout' %}selected{% endif %}>Knockout</option>
+              {% elif event.competition_format and event.competition_format != 'swiss' %}
+              <option value="{{ event.competition_format }}" selected>{{ event.competition_format|replace('_',' ')|title }}</option>
+              {% endif %}
             </select>
           </div>
           <div class="col-md-4">

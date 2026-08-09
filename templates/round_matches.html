@@ -248,7 +248,7 @@
 
 
       {% set late_rows = matches | selectattr('team2_id', 'none') | selectattr('is_manual', 'equalto', False) | list %}
-      {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] and late_rows|length > 0 %}
+      {% if current_user.is_authenticated and current_user.role in ['admin', 'mainadmin', 'superadmin'] and late_rows|length > 0 %}
       <div class="alert alert-primary no-print">
         <div class="fw-bold mb-2">มีทีมเพิ่มภายหลังรอประกบ {{ late_rows|length }} รายการ</div>
         <form method="POST" action="{{ url_for('late_pairing_route', event_id=event.id) }}" class="d-flex flex-wrap gap-2 align-items-center mb-2">
@@ -299,7 +299,7 @@
       <div class="alert alert-warning">{{ error_message }}</div>
       {% endif %}
 
-      {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+      {% if current_user.is_authenticated and current_user.role in ['admin', 'mainadmin', 'superadmin'] %}
       <form method="POST">
         <div class="mb-3">
           <label for="fieldStart" class="form-label">เริ่มที่สนามหมายเลข</label>
@@ -433,7 +433,7 @@
                   <span class="text-muted small">ต้องล็อกอินระดับ user ขึ้นไป</span>
                   {% endif %}
 
-                  {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+                  {% if current_user.is_authenticated and current_user.role in ['admin', 'mainadmin', 'superadmin'] %}
                   <div class="d-grid gap-1 mt-2 {% if not pending_submitted %}d-none{% endif %}" data-pending-actions="{{ match.id }}">
                     <button type="submit"
                             formaction="{{ url_for('approve_pending_score', event_id=event.id, match_id=match.id) }}"
@@ -456,7 +456,7 @@
             </tbody>
           </table>
         </div>
-        {% if current_user.is_authenticated and current_user.role in ['admin', 'superadmin'] %}
+        {% if current_user.is_authenticated and current_user.role in ['admin', 'mainadmin', 'superadmin'] %}
         <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start mb-3">
 
           <div class="d-flex flex-wrap gap-2">

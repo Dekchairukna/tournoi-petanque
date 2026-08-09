@@ -16,9 +16,31 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
+    permissions_json = db.Column(db.Text, nullable=True, default='{}')
 
     def has_roles(self, *roles):
         return self.role in roles
+
+    def permissions(self):
+        import json
+        try:
+            data = json.loads(self.permissions_json or '{}')
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def has_permission(self, key):
+        role = (self.role or '').lower()
+        if role == 'superadmin':
+            return True
+        # mainadmin เห็นทุกอีเวนต์โดยบทบาท ไม่ต้องเปิด permission นี้เพิ่ม
+        if key == 'access_other_events' and role == 'mainadmin':
+            return True
+        return bool(self.permissions().get(key, False))
+
+    def set_permissions(self, mapping):
+        import json
+        self.permissions_json = json.dumps({str(k): bool(v) for k, v in (mapping or {}).items()}, ensure_ascii=False)
     
     events = db.relationship(
     "Event",
@@ -40,6 +62,9 @@ class User(UserMixin, db.Model):
 
     def is_admin(self):
         return self.role == "admin"
+
+    def is_mainadmin(self):
+        return self.role == "mainadmin"
 
     def is_superadmin(self):
         return self.role == "superadmin"

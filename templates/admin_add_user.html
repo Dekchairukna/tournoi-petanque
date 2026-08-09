@@ -1,42 +1,60 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container mt-5">
-  <h2 class="mb-4">เพิ่มผู้ใช้ใหม่</h2>
+<div class="container my-4" style="max-width:900px;">
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-header bg-dark text-white rounded-top-4"><h4 class="mb-0">เพิ่มผู้ใช้ใหม่</h4></div>
+    <form method="POST">
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label fw-semibold">ชื่อผู้ใช้</label><input class="form-control" name="username" required></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">รหัสผ่าน</label><input type="password" class="form-control" name="password" required></div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Role</label>
+            <select name="role" id="role" class="form-select" required>
+              <option value="viewer">Viewer</option>
+              <option value="user">User / Scorekeeper</option>
+              <option value="admin" selected>Admin</option>
+              <option value="mainadmin">Mainadmin</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">ระยะเวลาใช้งาน</label>
+            <select name="duration" class="form-select">
+              <option value="1d">1 วัน</option><option value="1w">1 สัปดาห์</option><option value="1m" selected>1 เดือน</option>
+              <option value="3m">3 เดือน</option><option value="6m">6 เดือน</option><option value="1y">1 ปี</option><option value="forever">ถาวร</option>
+            </select>
+          </div>
+        </div>
 
-  <form method="POST">
-    <div class="mb-3">
-      <label for="username" class="form-label">ชื่อผู้ใช้</label>
-      <input type="text" class="form-control" name="username" id="username" required>
-    </div>
-    <div class="mb-3">
-      <label for="password" class="form-label">รหัสผ่าน</label>
-      <input type="password" class="form-control" name="password" id="password" required>
-    </div>
-    <div class="mb-3">
-      <label for="role" class="form-label">สิทธิ์</label>
-      <select name="role" id="role" class="form-select" required>
-        <option value="user">user</option>
-        <option value="admin">admin</option>
-        <option value="superadmin">superadmin</option>
-      </select>
-    </div>
-    <div class="mb-3">
-      <label for="duration" class="form-label">ระยะเวลาใช้งาน</label>
-      <select name="duration" id="duration" class="form-select">
-        <option value="1d">1 วัน</option>
-        <option value="1w">1 สัปดาห์</option>
-        <option value="1m">1 เดือน</option>
-        <option value="3m">3 เดือน</option>
-        <option value="6m">6 เดือน</option>
-        <option value="1y">1 ปี</option>
-        <option value="forever">ถาวร</option>
-      </select>
-    </div>
-    <button type="submit" class="btn btn-yellow btn-custom">เพิ่มผู้ใช้</button>
-  </form>
-
-  <div class="mt-4">
-    <a href="{{ url_for('index') }}" class="btn btn-dark-outline btn-custom" style="min-width: 120px;">← กลับหน้าแรก</a>
+        <div class="mt-4 p-3 border rounded-4 bg-light">
+          <div class="fw-bold mb-2">สิทธิ์ฟังก์ชันพิเศษ <span class="badge bg-danger">Superadmin เห็นเท่านั้น</span></div>
+          <div class="row g-2">
+            {% for key, label in special_permissions.items() %}
+            <div class="col-md-6 permission-row" data-permission="{{ key }}">
+              <label class="form-check border rounded-3 p-3 w-100 bg-white">
+                <input class="form-check-input me-2" type="checkbox" name="perm_{{ key }}" value="1">
+                <span class="fw-semibold">{{ label }}</span>
+                {% if key == 'access_other_events' %}<div class="small text-muted mt-1">Admin ปกติเห็นเฉพาะงานตัวเอง · Mainadmin เห็นทุกงานอัตโนมัติ</div>{% endif %}
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">ยกเลิก</a>
+        <button class="btn btn-primary">เพิ่มผู้ใช้</button>
+      </div>
+    </form>
   </div>
 </div>
+<script>
+(function(){
+  const role=document.getElementById('role');
+  const access=document.querySelector('[data-permission="access_other_events"] input');
+  function sync(){ if(!access) return; if(role.value==='mainadmin'){ access.checked=false; access.disabled=true; } else { access.disabled=false; } }
+  role.addEventListener('change',sync); sync();
+})();
+</script>
 {% endblock %}

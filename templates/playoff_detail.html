@@ -81,6 +81,62 @@
 
 
 
+    {% if view.competition.competition_type == 'knockout' and knockout_bracket_rounds %}
+    {% set base_matches = knockout_bracket_rounds[0].matches|length %}
+    <section class="card knockout-bracket-card no-print" id="knockoutBracket" style="margin-top:20px; padding:18px;">
+      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+        <div>
+          <h3 class="mb-1" style="font-weight:900;">สาย Knockout</h3>
+          <div class="text-muted">รอบ 8 / รอบ 4 / ชิง แสดงต่อเนื่องจากข้อมูลการแข่งขันจริง</div>
+        </div>
+        <button type="button" class="btn btn-outline-secondary" onclick="drawKnockoutConnectors()">จัดเส้นสายใหม่</button>
+      </div>
+      <div class="knockout-bracket-scroll">
+        <div class="knockout-bracket" style="--bracket-height: {{ (base_matches * 126) if base_matches > 1 else 190 }}px;">
+          <svg class="knockout-connectors" id="knockoutConnectors" aria-hidden="true"></svg>
+          {% for br in knockout_bracket_rounds %}
+          <div class="knockout-round-column" data-bracket-round-index="{{ loop.index0 }}">
+            <div class="knockout-round-title">{{ br.round.round_name }}</div>
+            <div class="knockout-round-matches">
+              {% for bm in br.matches %}
+              <div class="knockout-match" data-bracket-match="{{ loop.index0 }}" data-round-id="{{ br.round.id }}" data-group-no="{{ bm.group_no }}">
+                {% if bm.court %}<div class="knockout-court">สนาม {{ bm.court }}</div>{% endif %}
+                {% for team in bm.teams %}
+                <div class="knockout-team {% if team.is_winner %}winner{% endif %} {% if team.is_bye %}bye{% endif %}" data-bracket-slot="{{ team.slot_no }}">
+                  <span class="knockout-team-name">{{ team.team_name }}</span>
+                  <span class="knockout-score" data-bracket-score data-round="{{ br.round.id }}" data-group="{{ bm.group_no }}" data-slot="{{ team.slot_no }}" data-stage="1">{{ team.score }}</span>
+                </div>
+                {% endfor %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <style>
+      .knockout-bracket-card{overflow:hidden;background:#fff}
+      .knockout-bracket-scroll{overflow-x:auto;padding:8px 4px 20px}
+      .knockout-bracket{position:relative;display:flex;gap:72px;min-width:max-content;padding:8px 26px 18px}
+      .knockout-connectors{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible}
+      .knockout-round-column{width:260px;position:relative;z-index:1}
+      .knockout-round-title{text-align:center;font-weight:900;font-size:18px;margin-bottom:10px;padding:8px 12px;border-radius:12px;background:#111827;color:#fff}
+      .knockout-round-matches{height:var(--bracket-height);min-height:190px;display:flex;flex-direction:column;justify-content:space-around}
+      .knockout-match{position:relative;background:#fff;border:1px solid #d8dee8;border-radius:14px;box-shadow:0 5px 16px rgba(15,23,42,.08);overflow:hidden;min-height:86px}
+      .knockout-court{font-size:11px;font-weight:800;color:#64748b;background:#f8fafc;padding:3px 9px;border-bottom:1px solid #eef2f7}
+      .knockout-team{height:40px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 10px;border-bottom:1px solid #edf1f5;font-weight:700}
+      .knockout-team:last-child{border-bottom:0}
+      .knockout-team.winner{background:#ecfdf3;font-weight:900}
+      .knockout-team.bye{color:#94a3b8;background:#f8fafc}
+      .knockout-team-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .knockout-score{min-width:28px;text-align:center;font-size:18px;font-weight:900}
+      .knockout-connector-path{fill:none;stroke:#94a3b8;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+      @media(max-width:768px){.knockout-round-column{width:220px}.knockout-bracket{gap:54px}}
+    </style>
+    {% endif %}
+
     {% for rv in view.round_views %}
     <div class="card round-card js-round-panel" data-round-panel="{{ rv.round.id }}" id="saved-round-{{ rv.round.id }}" style="padding:18px; margin-top:20px;">
       <div class="round-header no-print">
@@ -1928,6 +1984,8 @@
     }
   }
   document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(drawKnockoutConnectors, 80);
+    window.addEventListener('resize', () => requestAnimationFrame(drawKnockoutConnectors));
     initRoundAndGroupTabs();
     document.querySelectorAll('.next-stage-select').forEach(sel => {
       syncNextStageName(sel);
@@ -1983,6 +2041,8 @@
     const el = document.querySelector(`.autosave-score[data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`);
     if (!el) return false;
     const newValue = (p.score === null || p.score === undefined) ? '' : String(p.score);
+    const bracketScore = document.querySelector(`[data-bracket-score][data-round="${p.round_id}"][data-group="${p.group_no}"][data-slot="${p.slot_no}"][data-stage="${p.stage_no}"]`);
+    if (bracketScore) { bracketScore.textContent = newValue; refreshBracketWinner(p.round_id, p.group_no); }
     if (document.activeElement !== el && el.value !== newValue) {
       el.value = newValue;
       refreshGroupColors(p.round_id, p.group_no);
@@ -1991,6 +2051,48 @@
     }
     refreshGroupColors(p.round_id, p.group_no);
     return false;
+  }
+
+  function refreshBracketWinner(roundId, groupNo) {
+    const match = document.querySelector(`.knockout-match[data-round-id="${roundId}"][data-group-no="${groupNo}"]`);
+    if (!match) return;
+    const rows = Array.from(match.querySelectorAll('.knockout-team'));
+    rows.forEach(r => r.classList.remove('winner'));
+    if (rows.length < 2) return;
+    const scores = rows.map(r => { const t=(r.querySelector('.knockout-score')?.textContent || '').trim(); return t==='' ? null : Number(t); });
+    if (scores[0] === null || scores[1] === null || !Number.isFinite(scores[0]) || !Number.isFinite(scores[1]) || scores[0] === scores[1]) return;
+    rows[scores[0] > scores[1] ? 0 : 1].classList.add('winner');
+  }
+
+  function drawKnockoutConnectors() {
+    const bracket = document.querySelector('.knockout-bracket');
+    const svg = document.getElementById('knockoutConnectors');
+    if (!bracket || !svg) return;
+    const root = bracket.getBoundingClientRect();
+    const width = Math.max(bracket.scrollWidth, bracket.clientWidth);
+    const height = Math.max(bracket.scrollHeight, bracket.clientHeight);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', width); svg.setAttribute('height', height);
+    svg.innerHTML = '';
+    const cols = Array.from(bracket.querySelectorAll('.knockout-round-column'));
+    for (let c=0; c<cols.length-1; c++) {
+      const from = Array.from(cols[c].querySelectorAll('.knockout-match'));
+      const to = Array.from(cols[c+1].querySelectorAll('.knockout-match'));
+      for (let i=0; i<to.length; i++) {
+        const targets=[from[i*2], from[i*2+1]].filter(Boolean);
+        const next=to[i]; if(!next) continue;
+        const nr=next.getBoundingClientRect();
+        const x2=nr.left-root.left, y2=nr.top-root.top+nr.height/2;
+        targets.forEach(node=>{
+          const r=node.getBoundingClientRect();
+          const x1=r.right-root.left, y1=r.top-root.top+r.height/2;
+          const xm=x1+(x2-x1)/2;
+          const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+          path.setAttribute('d',`M ${x1} ${y1} H ${xm} V ${y2} H ${x2}`);
+          path.setAttribute('class','knockout-connector-path'); svg.appendChild(path);
+        });
+      }
+    }
   }
 
   function startPlayoffRealtime() {
