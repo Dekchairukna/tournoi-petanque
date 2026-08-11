@@ -832,6 +832,9 @@ def swiss_pairing(event_id, round_no, separate_same_name=False):
 
 
     db.session.add_all(matches)
+    event = db.session.get(Event, event_id)
+    if event is not None:
+        event.current_round = max(1, int(round_no or 1))
     db.session.commit()
 
     return True, "จับคู่สำเร็จ"
@@ -874,6 +877,7 @@ def manual_pairing(event_id, round_num):
                           team1_id=t1_id, team2_id=t2_id,
                           is_manual=True, is_locked=False)
             db.session.add(match)
+        event.current_round = max(1, int(round_num or 1))
         db.session.commit()
 
         flash(f"บันทึกคู่แข่งขันรอบที่ {round_num} แบบแมนนวลเรียบร้อยแล้ว", "success")
@@ -937,6 +941,7 @@ def index():
     team_counts = {}
     match_counts = {}
     field_counts = {}
+    round_counts = {}
 
     if event_ids:
         team_counts = dict(
@@ -957,6 +962,12 @@ def index():
             .group_by(Match.event_id)
             .all()
         )
+        round_counts = dict(
+            db.session.query(Match.event_id, func.max(Match.round))
+            .filter(Match.event_id.in_(event_ids))
+            .group_by(Match.event_id)
+            .all()
+        )
 
     active_events = []
     finished_nested = defaultdict(lambda: defaultdict(list))
@@ -966,6 +977,8 @@ def index():
         event.team_count = int(team_counts.get(event.id, 0) or 0)
         event.match_count = int(match_counts.get(event.id, 0) or 0)
         event.field_count = int(field_counts.get(event.id, 0) or 0)
+        # current_round ในฐานเก่าอาจค้างที่ 1; Dashboard ใช้รอบที่มี Match จริงเสมอ
+        event.display_current_round = int(round_counts.get(event.id) or event.current_round or 1)
 
         if getattr(event, 'is_finished', False):
             year = event.date.year if event.date else 0
@@ -1604,8 +1617,9 @@ def tournament_workspace(tournament_id):
                 "pending": int(pending or 0),
                 "field_min": field_min,
                 "field_max": field_max,
+                "current_round": int(current_round or 1),
             }
-            for event_id, total, locked, pending, field_min, field_max in (
+            for event_id, total, locked, pending, field_min, field_max, current_round in (
                 db.session.query(
                     Match.event_id,
                     func.count(Match.id),
@@ -1613,6 +1627,7 @@ def tournament_workspace(tournament_id):
                     func.sum(db.case((Match.pending_is_submitted.is_(True), 1), else_=0)),
                     func.min(Match.field),
                     func.max(Match.field),
+                    func.max(Match.round),
                 )
                 .filter(Match.event_id.in_(event_ids))
                 .group_by(Match.event_id)
@@ -1622,7 +1637,7 @@ def tournament_workspace(tournament_id):
 
     event_stats = {}
     for event in events:
-        row = match_rows.get(event.id, {"matches": 0, "locked": 0, "pending": 0, "field_min": None, "field_max": None})
+        row = match_rows.get(event.id, {"matches": 0, "locked": 0, "pending": 0, "field_min": None, "field_max": None, "current_round": int(event.current_round or 1)})
         total = row["matches"]
         locked = row["locked"]
         event_stats[event.id] = {
@@ -1879,6 +1894,7 @@ def pair_first_round(event_id):
         )
         db.session.add(match)
 
+    event.current_round = 1
     db.session.commit()
     flash("จับคู่รอบแรกเสร็จสิ้น", "success")
     return redirect(url_for("round_matches", event_id=event_id, round=1))
@@ -1927,6 +1943,11 @@ def delete_team_route(event_id, team_id):
 @roles_required('admin', 'superadmin')
 def delete_round_pairings(event_id, round):
     deleted = Match.query.filter_by(event_id=event_id, round=round).delete()
+    db.session.flush()
+    event = db.session.get(Event, event_id)
+    if event is not None:
+        latest_round = db.session.query(func.max(Match.round)).filter_by(event_id=event_id).scalar()
+        event.current_round = int(latest_round or 1)
     db.session.commit()
 
     if deleted:
@@ -7217,7 +7238,10 @@ def _lr_match_payload(match):
     }
 
 
-def _lr_event_payload(event):
+def _lr_event_payload(event, current_round=None):
+    if current_round is None:
+        current_round = db.session.query(func.max(Match.round)).filter_by(event_id=event.id).scalar()
+    current_round = int(current_round or event.current_round or 1)
     return {
         "id": event.id,
         "name": event.name,
@@ -7226,7 +7250,7 @@ def _lr_event_payload(event):
         "sex": event.sex,
         "age_group": event.age_group,
         "rounds": event.rounds,
-        "current_round": event.current_round,
+        "current_round": current_round,
         "date": event.date.isoformat() if event.date else None,
         "team_count": Team.query.filter_by(event_id=event.id).count(),
         "match_count": Match.query.filter_by(event_id=event.id).count(),
@@ -7236,7 +7260,16 @@ def _lr_event_payload(event):
 @app.route('/api/public/events')
 def api_public_events():
     events = Event.query.order_by(Event.created_at.desc(), Event.id.desc()).all()
-    return jsonify({"ok": True, "events": [_lr_event_payload(e) for e in events]})
+    event_ids = [e.id for e in events]
+    round_map = {}
+    if event_ids:
+        round_map = dict(
+            db.session.query(Match.event_id, func.max(Match.round))
+            .filter(Match.event_id.in_(event_ids))
+            .group_by(Match.event_id)
+            .all()
+        )
+    return jsonify({"ok": True, "events": [_lr_event_payload(e, round_map.get(e.id)) for e in events]})
 
 
 @app.route('/api/public/event/<int:event_id>/live')
@@ -7253,9 +7286,9 @@ def api_public_event_live(event_id):
     return jsonify({
         "ok": True,
         "source": "tournoi",
-        "event": _lr_event_payload(event),
+        "event": _lr_event_payload(event, max(rounds) if rounds else None),
         "rounds": rounds,
-        "current_round": event.current_round,
+        "current_round": int(max(rounds) if rounds else (event.current_round or 1)),
         "matches": [_lr_match_payload(m) for m in matches],
         "live_matches": [_lr_match_payload(m) for m in live_matches],
         "latest_results": [_lr_match_payload(m) for m in finished_matches[-20:]],
@@ -7680,6 +7713,7 @@ def _beta_pair_first_round(event, separate_same_name=False):
             match.is_locked = True
         db.session.add(match)
         created += 1
+    event.current_round = 1
     return True, "จับคู่รอบแรกแล้ว", created
 
 

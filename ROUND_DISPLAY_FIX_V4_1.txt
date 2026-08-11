@@ -1,0 +1,10 @@
+ROUND DISPLAY FIX V4.1
+- Fix Swiss current-round display stuck at 1/N.
+- Dashboard/index derives display round from MAX(match.round) in one grouped query.
+- Tournament workspace derives current round from MAX(match.round) in the existing grouped stats query.
+- swiss_pairing updates Event.current_round whenever a round is created.
+- Manual pairing updates Event.current_round.
+- First-round pairing and multi-event beta first-round sync current_round.
+- Deleting all pairings for a round recalculates current_round from remaining matches.
+- Public event/live payload reports the actual current round from matches.
+- Existing events with stale current_round values display correctly immediately without manual DB edits.
