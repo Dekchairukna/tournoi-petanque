@@ -61,6 +61,7 @@
 </style>
 
 <div class="container-fluid msc-shell my-4">
+{% with scoring_active='swiss' %}{% include '_scoring_switcher.html' %}{% endwith %}
   <div class="msc-hero mb-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
       <div>
@@ -233,8 +234,8 @@ document.getElementById('applyBulkEventRound')?.addEventListener('click', () => 
       <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
         <div class="text-muted fw-semibold">บันทึกลงระบบหลักทันทีและส่งสัญญาณเรียลไทม์ ถ้ามีอีกหน้าคีย์ก่อน ระบบจะกันคะแนนทับและให้รีเฟรชตรวจ</div>
         <div class="d-flex gap-2 flex-wrap">
-          <button type="submit" name="action" value="save_scores" class="btn btn-success fw-bold">บันทึกคะแนน</button>
-          <button type="submit" name="action" value="save_and_lock" class="btn btn-danger fw-bold" onclick="return confirm('บันทึกและล็อกผลเฉพาะคู่ที่กรอกคะแนนแล้ว ใช่หรือไม่?');">บันทึก + ล็อกคู่ที่กรอกแล้ว</button>
+          <button type="submit" name="action" value="save_scores" class="btn btn-outline-primary fw-bold">บันทึกคะแนน</button>
+          <button type="submit" name="action" value="save_and_lock" class="btn btn-success fw-bold" onclick="return confirm('บันทึกและล็อกผลเฉพาะคู่ที่กรอกคะแนนแล้ว ใช่หรือไม่?');">บันทึก + ล็อกคู่ที่กรอกแล้ว</button>
         </div>
       </div>
     </div>

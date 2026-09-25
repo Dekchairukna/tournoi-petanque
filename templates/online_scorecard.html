@@ -213,7 +213,7 @@
       </div>
     </div>
 
-    <button type="submit" class="btn btn-danger btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>{{ t('finish_match') }}</button>
+    <button type="submit" class="btn btn-success btn-lg w-100 py-3 fw-bold mt-4" {% if match.is_locked or match.pending_is_submitted %}disabled{% endif %}>{{ t('finish_match') }}</button>
   </form>
 </div>
 {% endblock %}

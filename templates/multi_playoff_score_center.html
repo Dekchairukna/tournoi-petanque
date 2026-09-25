@@ -15,6 +15,7 @@
   .stage-badge-3 { background:#7b3fc6; color:#fff; }
 </style>
 <div class="wrap">
+{% with scoring_active='playoff' %}{% include '_scoring_switcher.html' %}{% endwith %}
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
       <h2 class="mb-1">คีย์เพลย์ออฟรวม</h2>

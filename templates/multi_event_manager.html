@@ -6,7 +6,17 @@
   .event-check { border: 1px solid #dee2e6; border-radius: .85rem; padding: .65rem .75rem; background: #fff; }
   .event-check.today { border-color: #0d6efd; background: #eef6ff; }
   .stat-card { border-radius: 1rem; border: 0; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
-  .sticky-actions { position: sticky; bottom: 0; z-index: 20; background: rgba(255,255,255,.95); backdrop-filter: blur(6px); border-top: 1px solid #dee2e6; padding: .75rem; }
+  .sticky-actions { position: sticky; bottom: 0; z-index: 20; background: rgba(255,255,255,.96); backdrop-filter: blur(6px); border-top: 1px solid #dee2e6; padding: .75rem; }
+  .phase-nav { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+  .phase-nav a { text-decoration: none; border: 1px solid #dfe6ee; background: #fff; color: #1f2d3d; border-radius: 999px; padding: .4rem .85rem; font-weight: 600; font-size: .9rem; }
+  .phase-nav a:hover { background: #f1f5f9; }
+  .phase-nav .phase-label { font-size: .78rem; font-weight: 800; color: #8492a6; align-self: center; margin-right: .1rem; }
+  .phase-heading { display: flex; align-items: center; gap: .6rem; margin: 1.75rem 0 .75rem; font-weight: 800; color: #334155; }
+  .phase-heading::after { content: ""; flex: 1; height: 1px; background: #dfe6ee; }
+  .phase-heading small { font-weight: 500; color: #8492a6; }
+  .section-anchor { scroll-margin-top: 1rem; }
+  .danger-zone { border: 1px dashed #f1aeb5; border-radius: .75rem; padding: .5rem .75rem; background: #fff; }
+  .danger-zone summary { cursor: pointer; color: #b02a37; font-weight: 700; font-size: .9rem; }
   .table td, .table th { vertical-align: middle; }
   .event-title { font-weight: 700; }
   @media print { .no-print { display:none !important; } }
@@ -19,10 +29,21 @@
       <div class="text-muted">เลือกหลายอีเว้นท์ แล้วสั่งจับคู่/ระบุสนาม/ลบคู่/พิมพ์รวมได้ แม้แต่ละอีเว้นท์อยู่คนละรอบ</div>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-outline-primary" href="{{ url_for('multi_event_score_center', events=selected_events_param, round=selected_round) }}">ไปหน้าคีย์หลายอีเว้นท์</a>
       <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">กลับรายการอีเว้นท์</a>
     </div>
   </div>
+
+  <nav class="phase-nav no-print" aria-label="ขั้นตอน">
+    <span class="phase-label">ช่วง Swiss</span>
+    <a href="#sec-1">1 เลือกอีเว้นท์</a>
+    <a href="#sec-2">2 จับคู่ / ลงสนาม / ปริ้น</a>
+    <span class="phase-label ms-2">หลังจบ Swiss</span>
+    <a href="#sec-3">3 สร้างเพลย์ออฟ</a>
+    <a href="#sec-4">4 สนามเพลย์ออฟ</a>
+    <a href="#sec-5">5 จับสลากรอบถัดไป</a>
+    <span class="phase-label ms-2">สรุป</span>
+    <a href="#sec-6">6 รายงาน</a>
+  </nav>
 
   <form method="post" id="managerForm">
     <div class="row g-3 mb-3">
@@ -40,14 +61,15 @@
       </div>
     </div>
 
-    <div class="card shadow-sm mb-3">
+    <div class="phase-heading">ช่วง Swiss <small>ก่อนและระหว่างแข่งรอบคัดเลือก</small></div>
+    <div class="card shadow-sm mb-3 section-anchor" id="sec-1">
       <div class="card-header bg-primary text-white fw-bold">1) เลือกอีเว้นท์</div>
       <div class="card-body">
         <div class="d-flex flex-wrap gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectTodayEvents()">เลือกเฉพาะวันนี้</button>
           <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAllEvents(true)">เลือกทั้งหมด</button>
-          <button type="button" class="btn btn-sm btn-outline-danger" onclick="setAllEvents(false)">ล้างเลือก</button>
-          <button type="submit" name="action" value="refresh" class="btn btn-sm btn-success">โหลดรายการที่เลือก</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAllEvents(false)">ล้างเลือก</button>
+          <button type="submit" name="action" value="refresh" class="btn btn-sm btn-primary fw-bold">โหลดรายการที่เลือก</button>
         </div>
         <div class="event-check-grid">
           {% for event in all_events %}
@@ -61,8 +83,8 @@
       </div>
     </div>
 
-    <div class="card shadow-sm mb-3">
-      <div class="card-header bg-success text-white fw-bold">2) อีเว้นท์ที่เลือก</div>
+    <div class="card shadow-sm mb-3 section-anchor" id="sec-2">
+      <div class="card-header bg-success text-white fw-bold">2) จับคู่ ลงสนาม และปริ้นเอกสาร ของอีเว้นท์ที่เลือก</div>
       <div class="card-body border-bottom bg-light">
         <div class="row g-2 align-items-end">
           <div class="col-6 col-md-2"><label class="form-label small">สนามเริ่ม</label><input type="number" class="form-control form-control-sm" name="field_start" value="{{ field_start }}" min="1"></div>
@@ -73,7 +95,6 @@
         </div>
         <div class="d-flex flex-wrap gap-3 mt-2">
           <label class="form-check-label"><input class="form-check-input me-1" type="checkbox" name="separate_same_name" {% if separate_same_name %}checked{% endif %}>กันทีมชื่อฐานเดียวกัน</label>
-          <label class="form-check-label text-danger"><input class="form-check-input me-1" type="checkbox" name="force_delete_locked" {% if force_delete_locked %}checked{% endif %}>อนุญาตลบคู่ที่ล็อกผลแล้ว</label>
         </div>
         <div class="small text-muted mt-2">เลือกรอบแยกแต่ละอีเว้นท์จากตารางด้านล่างได้ สนามจะจัดรวมโดยไม่ชนกัน และ BYE ไม่ใช้สนาม</div>
       </div>
@@ -151,10 +172,31 @@
           </tbody>
         </table>
       </div>
+      <div class="sticky-actions d-flex flex-wrap gap-2 justify-content-between align-items-start">
+        <div class="d-flex flex-wrap gap-2">
+          <button type="submit" name="action" value="pair_and_assign_selected_round" class="btn btn-success fw-bold" onclick="return confirm('จับคู่และใส่สนามตามรอบที่เลือกของแต่ละอีเว้นท์?')">จับคู่ + ใส่สนาม</button>
+          <button type="submit" name="action" value="pair_selected_round" class="btn btn-outline-success fw-bold" onclick="return confirm('จับคู่ตามรอบที่เลือกของแต่ละอีเว้นท์? อีเว้นท์ที่มีคู่ในรอบนั้นแล้วจะถูกข้าม')">จับคู่อย่างเดียว</button>
+          <button type="submit" name="action" value="assign_fields" class="btn btn-outline-primary fw-bold">ใส่สนามอย่างเดียว</button>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-dark fw-bold" target="_blank" id="printPairsLink" href="{{ url_for('multi_event_print_pairings', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นใบประกบคู่</a>
+          <a class="btn btn-outline-dark fw-bold" target="_blank" id="printScoresLink" href="{{ url_for('multi_event_print_score_sheets', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นสกอร์ชีท</a>
+          <a class="btn btn-outline-primary fw-bold" href="{{ url_for('multi_event_score_center', events=selected_events_param, round=selected_round) }}">ไปคีย์คะแนน →</a>
+        </div>
+        <details class="danger-zone w-100">
+          <summary>เครื่องมือที่ย้อนกลับไม่ได้ (ล้างสนาม / ลบคู่)</summary>
+          <div class="d-flex flex-wrap gap-2 align-items-center pt-2">
+            <button type="submit" name="action" value="clear_fields" class="btn btn-outline-danger fw-bold" onclick="return confirm('ล้างเลขสนามของรอบที่เลือกทั้งหมด? คู่แข่งขันยังอยู่ ไม่ลบคะแนน')">ล้างเลขสนาม</button>
+            <button type="submit" name="action" value="delete_round_matches" class="btn btn-danger fw-bold" onclick="return confirm('ลบคู่แข่งขันในรอบที่เลือกของอีเว้นท์ที่เลือก? ถ้าลบแล้วต้องจับคู่ใหม่')">ลบคู่รอบที่เลือก</button>
+            <label class="form-check-label text-danger small"><input class="form-check-input me-1" type="checkbox" name="force_delete_locked" {% if force_delete_locked %}checked{% endif %}>อนุญาตลบคู่ที่ล็อกผลแล้วด้วย</label>
+          </div>
+        </details>
+      </div>
     </div>
 
 
-    <div class="card shadow-sm mb-3">
+    <div class="phase-heading">หลังจบ Swiss <small>สร้างและเดินเพลย์ออฟ</small></div>
+    <div class="card shadow-sm mb-3 section-anchor" id="sec-3">
       <div class="card-header bg-warning fw-bold">3) จัดการหน้าสแตนดิ้ง / ทีมเข้ารอบ / สร้างระบบจัดต่อ แบบแยกอีเว้นท์</div>
       <div class="card-body">
         <div class="alert alert-info mb-3">
@@ -235,7 +277,7 @@
         <div class="d-flex flex-wrap gap-2 mt-3">
           <a class="btn btn-outline-warning fw-bold" target="_blank" id="printStandingsLink" href="#">ปริ้นสแตนดิ้ง/ทีมเข้ารอบที่เลือก</a>
           <a class="btn btn-outline-primary fw-bold" target="_blank" id="playoffScoreLink" href="#">คีย์เพลย์ออฟรวม</a>
-          <button type="submit" name="action" value="create_next_competitions" class="btn btn-warning fw-bold" onclick="return confirm('สร้างระบบจัดต่อจาก Standing ให้แต่ละอีเว้นท์ตามค่าที่ตั้งในแถว?')">สร้างระบบจัดต่อจาก Standing</button>
+          <button type="submit" name="action" value="create_next_competitions" class="btn btn-success fw-bold" onclick="return confirm('สร้างระบบจัดต่อจาก Standing ให้แต่ละอีเว้นท์ตามค่าที่ตั้งในแถว?')">สร้างระบบจัดต่อจาก Standing</button>
         </div>
         <div class="small text-muted mt-2">ระบบจะข้ามอีเว้นท์ที่ยังลงคะแนน/ล็อกผลไม่ครบ หรือมีเพลย์ออฟเดิมอยู่แล้ว เว้นแต่ติ๊ก “สร้างซ้ำได้” ในแถวนั้น</div>
         <input type="hidden" id="directAdvanceCount" value="0">
@@ -245,7 +287,7 @@
       </div>
     </div>
 
-    <div class="card shadow-sm mb-3">
+    <div class="card shadow-sm mb-3 section-anchor" id="sec-4">
       <div class="card-header bg-info fw-bold">4) กำหนดสนามระบบจัดต่อ แบบแยกอีเว้นท์</div>
       <div class="card-body">
         <div class="border rounded-3 p-3 mb-3 bg-light">
@@ -255,7 +297,7 @@
             <div class="col-6 col-md-2"><label class="form-label small">จำนวนสนาม</label><input type="number" min="1" class="form-control form-control-sm" name="playoff_field_max" value="{{ playoff_field_max }}"></div>
             <div class="col-6 col-md-2"><label class="form-label small">Prefix สนาม</label><input class="form-control form-control-sm" name="playoff_field_prefix" value="{{ playoff_field_prefix }}" placeholder="เช่น A"></div>
             <div class="col-6 col-md-3"><label class="form-label small">เว้นสนาม</label><input class="form-control form-control-sm" name="playoff_field_exclude" value="{{ playoff_field_exclude }}" placeholder="เช่น 3,7,11"></div>
-            <div class="col-12 col-md-3"><button type="submit" name="action" value="assign_playoff_fields" class="btn btn-info fw-bold w-100" onclick="return confirm('กำหนดสนามให้ระบบจัดต่อล่าสุดของอีเว้นท์ที่เลือก?')">กำหนดสนามระบบจัดต่อ</button></div>
+            <div class="col-12 col-md-3"><button type="submit" name="action" value="assign_playoff_fields" class="btn btn-success fw-bold w-100" onclick="return confirm('กำหนดสนามให้ระบบจัดต่อล่าสุดของอีเว้นท์ที่เลือก?')">กำหนดสนามระบบจัดต่อ</button></div>
           </div>
         </div>
 
@@ -305,7 +347,7 @@
       </div>
     </div>
 
-    <div class="card shadow-sm mb-3">
+    <div class="card shadow-sm mb-3 section-anchor" id="sec-5">
       <div class="card-header text-white fw-bold" style="background:#6f42c1;">5) จับสลากเพลย์ออฟรอบถัดไป</div>
       <div class="card-body">
         <div class="alert alert-info">จับสลากจากผู้ชนะ/ทีมเข้ารอบของเพลย์ออฟล่าสุดได้ในหน้านี้ ระบบจะข้ามรายการที่ยังบันทึกผลไม่ครบ</div>
@@ -376,23 +418,16 @@
           </table>
         </div>
         <div class="d-flex justify-content-end mt-3">
-          <button type="submit" name="action" value="draw_next_playoff_rounds" class="btn btn-lg text-white fw-bold" style="background:#6f42c1;" onclick="return confirm('จับสลากและสร้างเพลย์ออฟรอบถัดไปตามรายการที่เลือก?')">จับสลากเพลย์ออฟรอบถัดไป</button>
+          <button type="submit" name="action" value="draw_next_playoff_rounds" class="btn btn-lg btn-success fw-bold" onclick="return confirm('จับสลากและสร้างเพลย์ออฟรอบถัดไปตามรายการที่เลือก?')">จับสลากเพลย์ออฟรอบถัดไป</button>
         </div>
       </div>
     </div>
 
-    <div class="sticky-actions rounded shadow-sm d-flex flex-wrap gap-2 justify-content-between">
-      <div class="d-flex flex-wrap gap-2">
-        <button type="submit" name="action" value="pair_selected_round" class="btn btn-warning fw-bold" onclick="return confirm('จับคู่ตามรอบที่เลือกของแต่ละอีเว้นท์? อีเว้นท์ที่มีคู่ในรอบนั้นแล้วจะถูกข้าม')">จับคู่ตามรอบที่เลือก</button>
-        <button type="submit" name="action" value="assign_fields" class="btn btn-info fw-bold">ระบุสนามตามรอบที่เลือก</button>
-        <button type="submit" name="action" value="pair_and_assign_selected_round" class="btn btn-success fw-bold" onclick="return confirm('จับคู่และใส่สนามตามรอบที่เลือกของแต่ละอีเว้นท์?')">จับคู่ + ใส่สนาม</button>
-        <button type="submit" name="action" value="clear_fields" class="btn btn-outline-danger fw-bold" onclick="return confirm('ล้างเลขสนามของรอบที่เลือกทั้งหมด? คู่แข่งขันยังอยู่ ไม่ลบคะแนน')">ล้างเลขสนาม</button>
-        <button type="submit" name="action" value="delete_round_matches" class="btn btn-danger fw-bold" onclick="return confirm('ลบคู่แข่งขันในรอบที่เลือกของอีเว้นท์ที่เลือก? ถ้าลบแล้วต้องจับคู่ใหม่')">ลบคู่รอบที่เลือก</button>
-      </div>
-      <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printPairsLink" href="{{ url_for('multi_event_print_pairings', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นใบประกบคู่ทั้งหมด</a>
-        <a class="btn btn-outline-dark fw-bold" target="_blank" id="printScoresLink" href="{{ url_for('multi_event_print_score_sheets', events=selected_events_param, round=selected_round, event_rounds=event_rounds_param) }}">ปริ้นสกอร์ชีททั้งหมด</a>
+    <div class="card shadow-sm mb-3 section-anchor" id="sec-6">
+      <div class="card-header bg-dark text-white fw-bold">6) รายงานผล</div>
+      <div class="card-body d-flex flex-wrap gap-2 align-items-center">
         <a class="btn btn-primary fw-bold" target="_blank" id="printFinalReportsLink" href="{{ url_for('multi_event_print_final_reports', events=selected_events_param, section='all') }}">รายงานผลรวมทุกอีเว้นท์</a>
+        <span class="small text-muted">รวม Standing และผลเพลย์ออฟของอีเว้นท์ที่เลือกไว้ในเอกสารเดียว</span>
       </div>
     </div>
   </form>

@@ -136,20 +136,33 @@
       <h3 class="page-title">รายการแข่งขัน</h3>
       <p class="page-subtitle">จัดการอีเว้นท์ที่กำลังแข่งขัน และเปิดดูประวัติตามปีและเดือน</p>
     </div>
-    <div class="d-flex flex-wrap gap-2 justify-content-end">
-      {% if current_user.is_authenticated and current_user.role == 'superadmin' %}
-      <a href="{{ url_for('download_event_import_template') }}" class="btn btn-dark-outline btn-custom"><i class="bi bi-file-earmark-excel"></i> โหลดเทมเพลต</a>
-      <button class="btn btn-green btn-custom" data-bs-toggle="modal" data-bs-target="#bulkImportEventModal"><i class="bi bi-upload"></i> Import หลายอีเว้นท์</button>
-      {% endif %}
-      {% if current_user.is_authenticated and current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
-      <a href="{{ url_for('multi_event_score_center') }}" class="btn btn-green btn-custom"><i class="bi bi-pencil-square"></i> คีย์หลายอีเว้นท์</a>
-      {% endif %}
-      {% if current_user.is_authenticated and current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
-      <a href="{{ url_for('multi_event_manager') }}" class="btn btn-blue btn-custom"><i class="bi bi-diagram-3"></i> จัดการอีเว้นท์รวม</a>
+    <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
+      {% if current_user.is_authenticated and current_user.role in ['user','admin','mainadmin','superadmin'] %}
+      <a href="{{ url_for('live_field_scoring') }}" class="btn btn-green btn-custom"><i class="bi bi-broadcast-pin"></i> Live Score</a>
+      <a href="{{ url_for('live_center') }}#board" class="btn btn-dark-outline btn-custom"><i class="bi bi-display"></i> Live Board</a>
       {% endif %}
       {% if current_user.is_authenticated and current_user.role in ['admin','mainadmin','superadmin'] %}
       <button class="btn btn-blue btn-custom" data-bs-toggle="modal" data-bs-target="#legacyAddEventModal"><i class="bi bi-calendar-plus"></i> สร้างอีเวนต์</button>
       <button class="btn btn-yellow btn-custom" data-bs-toggle="modal" data-bs-target="#addTournamentModal"><i class="bi bi-plus-lg"></i> สร้างทัวร์นาเมนต์</button>
+      {% endif %}
+      {% set show_tools = current_user.is_authenticated and (current_user.role == 'superadmin' or (current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin']) or (current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'])) %}
+      {% if show_tools %}
+      <div class="inline-pop" data-pop>
+        <button class="btn btn-dark-outline btn-custom inline-pop-btn" type="button" data-pop-toggle aria-expanded="false"><i class="bi bi-tools"></i> เครื่องมือ <i class="bi bi-caret-down-fill pop-caret small"></i></button>
+        <div class="inline-pop-menu" data-pop-menu>
+          {% if current_user.role == 'superadmin' %}
+          <a href="{{ url_for('download_event_import_template') }}"><i class="bi bi-file-earmark-excel"></i><span>โหลดเทมเพลต</span></a>
+          <button type="button" data-bs-toggle="modal" data-bs-target="#bulkImportEventModal"><i class="bi bi-upload"></i><span>Import หลายอีเว้นท์</span></button>
+          <div class="pop-divider"></div>
+          {% endif %}
+          {% if current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
+          <a href="{{ url_for('multi_event_score_center') }}"><i class="bi bi-pencil-square"></i><span>คีย์หลายอีเว้นท์</span></a>
+          {% endif %}
+          {% if current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
+          <a href="{{ url_for('multi_event_manager') }}"><i class="bi bi-diagram-3"></i><span>จัดการอีเว้นท์รวม</span></a>
+          {% endif %}
+        </div>
+      </div>
       {% endif %}
     </div>
   </div>
@@ -175,9 +188,9 @@
   <section class="section-panel mb-4"><div class="section-heading"><h5><span class="status-dot"></span>กำลังดำเนินการแข่งขัน</h5><span class="badge rounded-pill text-bg-success">{{ upcoming_events|length }} อีเวนต์</span></div>
     {% if active_events_by_month %}
     <div class="month-header mb-3 no-print" id="activeMonthCarousel">
-      <button type="button" class="btn btn-light rounded-circle shadow-sm" id="activeMonthPrev" aria-label="เดือนก่อนหน้า"><i class="bi bi-chevron-left"></i><</button>
+      <button type="button" class="btn btn-light rounded-circle shadow-sm" id="activeMonthPrev" aria-label="เดือนก่อนหน้า"><i class="bi bi-chevron-left"></i></button>
       <div class="text-center flex-grow-1"><p class="month-title mb-0" id="activeMonthTitle"></p><div class="small text-muted" id="activeMonthCounter"></div></div>
-      <button type="button" class="btn btn-light rounded-circle shadow-sm" id="activeMonthNext" aria-label="เดือนถัดไป"><i class="bi bi-chevron-right"></i>></button>
+      <button type="button" class="btn btn-light rounded-circle shadow-sm" id="activeMonthNext" aria-label="เดือนถัดไป"><i class="bi bi-chevron-right"></i></button>
       <div class="d-none" id="activeMonthOptions">{% for month_group in active_events_by_month %}<span class="active-month-option" data-month-key="{{ month_group.key }}" data-month-label="{{ month_group.month_name }} {{ month_group.year + 543 if month_group.year else '' }}" data-event-count="{{ month_group.event_count }}"></span>{% endfor %}</div>
     </div>
     {% endif %}

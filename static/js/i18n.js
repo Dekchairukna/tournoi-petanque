@@ -11,6 +11,16 @@
     return String(s || '').replace(/\s+/g, ' ').trim();
   }
 
+  // ภาษาไทยไม่มีช่องว่างคั่นคำ การแทนคำย่อยตรง ๆ จึงทำให้ข้อความพัง
+  // (เช่น "การแข่งขัน" -> "การPlayedขัน" หรือชื่อทีม "เปรมติณฯ" -> "เปรมติatฯ")
+  // จึงแทนเฉพาะวลีที่ขอบทั้งสองข้างไม่ใช่ตัวอักษรไทย (ต้นข้อความ/ท้ายข้อความ/ช่องว่าง/ตัวเลข/เครื่องหมาย)
+  const THAI = '\u0E00-\u0E7F';
+  const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const phrases = Object.keys(dict)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map((th) => ({ th, to: dict[th], re: new RegExp(`(^|[^${THAI}])${escapeRe(th)}(?=$|[^${THAI}])`, 'g') }));
+
   function translateString(value) {
     if (!value) return value;
     const original = String(value);
@@ -20,10 +30,11 @@
       return original.replace(compact, dict[compact]);
     }
     let out = original;
-    // Replace longer phrases first so full labels win over small words.
-    Object.keys(dict).sort((a, b) => b.length - a.length).forEach((th) => {
-      if (th && out.includes(th)) out = out.split(th).join(dict[th]);
-    });
+    for (const p of phrases) {
+      if (!out.includes(p.th)) continue;
+      out = out.replace(p.re, (m, lead) => lead + p.to);
+      if (!/[\u0E00-\u0E7F]/.test(out)) break;
+    }
     return out;
   }
 
@@ -59,6 +70,8 @@
       acceptNode(node) {
         const p = node.parentElement;
         if (!p || skipTags.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        // ชื่อทีม/ชื่ออีเว้นท์เป็นข้อมูล ไม่ต้องแปล: ใส่ translate="no" ที่ element ได้
+        if (p.closest('[translate="no"], .notranslate')) return NodeFilter.FILTER_REJECT;
         if (!node.nodeValue || !/[\u0E00-\u0E7F]/.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       }

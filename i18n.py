@@ -237,3 +237,13 @@ EXTRA_TEXT_TRANSLATIONS = {
 
 for _lang, _items in EXTRA_TEXT_TRANSLATIONS.items():
     TEXT_TRANSLATIONS.setdefault(_lang, {}).update(_items)
+
+# คำแปลหน้าใช้งานหลักชุดใหม่ (เมนู/คีย์คะแนน/จัดการรวม) อยู่ใน i18n_ux.py
+from i18n_ux import ux_text_translations as _ux_text_translations
+for _lang, _items in _ux_text_translations().items():
+    TEXT_TRANSLATIONS.setdefault(_lang, {}).update(_items)
+
+# แก้คำแปลเดิมที่ผิด: "ทีม" ในหัวตาราง/ข้อความทั่วไปหมายถึง Team (ไม่ใช่ประเภท Triples และสะกดผิดเป็น Tripple)
+TEXT_TRANSLATIONS["en"]["ทีม"] = "Team"
+TEXT_TRANSLATIONS["en"]["คู่ชาย"] = "Men's Doubles"
+

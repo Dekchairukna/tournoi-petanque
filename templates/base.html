@@ -8,6 +8,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
   <style>
     /* โค้ดเดิมของคุณ */
@@ -104,6 +105,53 @@
   border-radius: 999px;
   font-weight: 600;
 }
+  
+
+    /* เมนูคลิกเองแบบไม่พึ่ง Bootstrap dropdown เพื่อให้ปุ่ม จัดการ/เครื่องมือ ใช้งานแน่นอน */
+    .nav-pop, .inline-pop { position: relative; }
+    .nav-pop-btn {
+      border: 0; background: transparent; color: #fff; padding: 0.6rem 1rem; font-weight: 500;
+      border-radius: 0.5rem; display: inline-flex; align-items: center; gap: .35rem;
+    }
+    .inline-pop-btn {
+      display: inline-flex; align-items: center; gap: .35rem;
+    }
+    .nav-pop-btn:hover, .nav-pop-btn.is-open { background-color: rgba(255,255,255,.15); color: #ffe066; }
+    .nav-pop-menu, .inline-pop-menu {
+      position: absolute; top: calc(100% + 10px); right: 0; min-width: 250px; z-index: 1080;
+      background: #fff; border: 1px solid rgba(15,23,42,.1); border-radius: 14px; box-shadow: 0 18px 40px rgba(15,23,42,.18);
+      padding: .45rem; display: none;
+    }
+    .nav-pop.open .nav-pop-menu, .inline-pop.open .inline-pop-menu { display: block; }
+    .nav-pop-menu a, .nav-pop-menu button, .inline-pop-menu a, .inline-pop-menu button {
+      width: 100%; border: 0; background: transparent; text-align: left; color: #1f2d3d; text-decoration: none;
+      display: flex; align-items: center; gap: .65rem; padding: .72rem .85rem; border-radius: 10px; font-weight: 600;
+    }
+    .nav-pop-menu a:hover, .nav-pop-menu button:hover, .inline-pop-menu a:hover, .inline-pop-menu button:hover { background: #f5f7fb; }
+    .pop-divider { height: 1px; background: #e9edf3; margin: .35rem 0; }
+    .pop-section { font-size: .72rem; font-weight: 800; letter-spacing: .02em; color: #8492a6; padding: .35rem .85rem .15rem; }
+    .pop-item-text { display: flex; flex-direction: column; line-height: 1.2; }
+    .pop-item-text b { font-weight: 700; }
+    .pop-item-text small { font-weight: 500; color: #6c757d; font-size: .78rem; margin-top: .15rem; }
+    .nav-pop-menu { min-width: 290px; }
+    .pop-caret { transition: transform .18s ease; }
+    .nav-pop.open .pop-caret, .inline-pop.open .pop-caret { transform: rotate(180deg); }
+    @media (max-width: 576px) {
+      .nav-pop-menu { left: 0; right: auto; min-width: 220px; }
+    }
+    .navbar-custom .nav-link { white-space: nowrap; }
+    @media (min-width: 1200px) and (max-width: 1749.98px) {
+      .navbar { font-size: 1rem; }
+      .navbar-brand { font-size: 1.1rem; }
+      .navbar-custom .nav-link { padding: .5rem .6rem !important; }
+      .navbar-nav.gap-2 { gap: .15rem !important; }
+      .navbar-custom .nav-link > .bi:first-child { display: none; }
+    }
+    /* จอเล็ก (เมนูพับ): ให้เมนูย่อยกางลงในแถบเมนูเลย ไม่ลอยทับเนื้อหา */
+    @media (max-width: 1199.98px) {
+      .navbar-custom .nav-pop-menu { position: static; box-shadow: none; margin: .25rem 0 .5rem; min-width: 0; }
+    }
+
   </style>
 </head>
 
@@ -111,7 +159,7 @@
 
 
   <!-- Navbar -->
- <nav class="navbar navbar-expand-lg navbar-dark navbar-custom shadow-sm py-3">
+ <nav class="navbar navbar-expand-xl navbar-dark navbar-custom shadow-sm py-3">
   <div class="container-fluid d-flex"> {# 1. เปลี่ยนเป็น container-fluid และ 2. มี d-flex #}
     <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="{{ url_for('index') }}"> {# 3. ลบ me-auto ออก #}
       <i class="bi bi-trophy-fill fs-4 "></i> Swiss Tournament For Petanque Sport 
@@ -128,24 +176,39 @@
             <i class="bi bi-list-task me-1"></i> {{ t('events') }}
           </a>
         </li>
-        {% if current_user.is_authenticated %}
-        <li class="nav-item">
+        {# เมนูจัดตามคนใช้งาน: กรรมการสนาม = คีย์คะแนน, ฝ่ายจัด = จัดการแข่งขัน, ฝ่ายผล/จอ = ผลและจอแสดงผล #}
+        {% set can_live = current_user.is_authenticated and current_user.role in ['user','admin','mainadmin','superadmin'] %}
+        {% set can_multi_score = current_user.is_authenticated and current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
+        {% set can_multi_manage = current_user.is_authenticated and current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
+        {% if can_live or can_multi_score %}
+        <li class="nav-item nav-pop" data-pop>
+          <button type="button" class="nav-link nav-pop-btn px-3 rounded {% if request.endpoint in ['live_field_scoring','multi_event_score_center','multi_playoff_score_center'] %}active{% endif %}" data-pop-toggle aria-expanded="false">
+            <i class="bi bi-pencil-square me-1"></i> คีย์คะแนน <i class="bi bi-caret-down-fill pop-caret small"></i>
+          </button>
+          <div class="nav-pop-menu" data-pop-menu>
+            {% if can_live %}<a href="{{ url_for('live_field_scoring') }}"><i class="bi bi-phone"></i><span class="pop-item-text"><b>คีย์คะแนนหน้าสนาม</b><small>สำหรับกรรมการ เลือกสนามแล้วกด + / −</small></span></a>{% endif %}
+            {% if can_multi_score or can_multi_manage %}<div class="pop-divider"></div><div class="pop-section">คีย์ทีละหลายอีเว้นท์ (โต๊ะกลาง)</div>{% endif %}
+            {% if can_multi_score %}<a href="{{ url_for('multi_event_score_center') }}"><i class="bi bi-table"></i><span class="pop-item-text"><b>คีย์ Swiss หลายอีเว้นท์</b><small>กรอกจากใบบันทึกคะแนน แล้วล็อกผล</small></span></a>{% endif %}
+            {% if can_multi_manage %}<a href="{{ url_for('multi_playoff_score_center') }}"><i class="bi bi-diagram-2"></i><span class="pop-item-text"><b>คีย์เพลย์ออฟหลายอีเว้นท์</b><small>Knockout / Double Knockout</small></span></a>{% endif %}
+          </div>
         </li>
         {% endif %}
-        {% if current_user.is_authenticated and current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
+        {% if can_multi_manage %}
         <li class="nav-item">
-          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_score_center' %}active{% endif %}" href="{{ url_for('multi_event_score_center') }}">
-            <i class="bi bi-pencil-square me-1"></i> คีย์หลายอีเว้นท์
+          <a class="nav-link px-3 rounded {% if request.endpoint == 'multi_event_manager' %}active{% endif %}" href="{{ url_for('multi_event_manager') }}">
+            <i class="bi bi-diagram-3 me-1"></i> จัดการแข่งขัน
           </a>
         </li>
         {% endif %}
-        {% if current_user.is_authenticated and current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
-        <li class="nav-item">
-          <a class="nav-link px-3 rounded {% if request.endpoint in ['multi_event_manager','multi_playoff_score_center'] %}active{% endif %}" href="{{ url_for('multi_event_manager') }}">
-            <i class="bi bi-diagram-3 me-1"></i> จัดการอีเว้นท์รวม
-          </a>
+        <li class="nav-item nav-pop" data-pop>
+          <button type="button" class="nav-link nav-pop-btn px-3 rounded {% if request.endpoint in ['live_center','live_board'] %}active{% endif %}" data-pop-toggle aria-expanded="false">
+            <i class="bi bi-broadcast-pin me-1"></i> ผลสด / จอ <i class="bi bi-caret-down-fill pop-caret small"></i>
+          </button>
+          <div class="nav-pop-menu" data-pop-menu>
+            {% if can_live %}<a href="{{ url_for('live_center') }}"><i class="bi bi-broadcast"></i><span class="pop-item-text"><b>Live Center</b><small>ภาพรวมผลสดทุกอีเว้นท์</small></span></a>{% endif %}
+            <a href="{{ url_for('live_board') }}" target="_blank" rel="noopener"><i class="bi bi-display"></i><span class="pop-item-text"><b>Live Board</b><small>เปิดบนจอใหญ่/โปรเจกเตอร์ (แท็บใหม่)</small></span></a>
+          </div>
         </li>
-        {% endif %}
         {% if current_user.is_authenticated and current_user.role == 'superadmin' %}
         <li class="nav-item">
           <a class="nav-link px-3 rounded {% if request.endpoint == 'admin_users' %}active{% endif %}" href="{{ url_for('admin_users') }}">
@@ -450,6 +513,35 @@
     }, 5000); // 5000 มิลลิวินาที = 5 วินาที
   </script>
    {% endblock %}
+
+<script>
+(() => {
+  const pops = [...document.querySelectorAll('[data-pop]')];
+  function closeAll(except=null){
+    pops.forEach(pop => {
+      if (pop !== except) {
+        pop.classList.remove('open');
+        const btn = pop.querySelector('[data-pop-toggle]');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+  pops.forEach(pop => {
+    const btn = pop.querySelector('[data-pop-toggle]');
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const open = pop.classList.contains('open');
+      closeAll(pop);
+      pop.classList.toggle('open', !open);
+      btn.setAttribute('aria-expanded', String(!open));
+    });
+  });
+  document.addEventListener('click', () => closeAll());
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+})();
+</script>
+
 </body>
 
 </html>

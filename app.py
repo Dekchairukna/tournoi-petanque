@@ -27,6 +27,9 @@ from collections import defaultdict
 from routes.match import match_bp  # import blueprint ที่สร้างในไฟล์ routes/match.py
 from flask_wtf.file import FileField, FileAllowed
 from flask_wtf.csrf import CSRFProtect
+from flask_caching import Cache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import json
 import hashlib
 import secrets
@@ -54,6 +57,18 @@ app.config.update(
     MAX_CONTENT_LENGTH=16 * 1024 * 1024,
 )
 csrf = CSRFProtect(app)
+
+# แคชผลลัพธ์ของ endpoint สาธารณะสั้นๆ (ค่าเริ่มต้น 2 วิ) เพื่อให้คนดูจำนวนมาก
+# (เช่น live board ในงานระดับโลก) แชร์ query เดียวกันแทนที่จะยิง DB คนละรอบ
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 2})
+
+# กันโหลดผิดปกติที่ endpoint สาธารณะ (refresh รัวๆ/บอท) โดยไม่กระทบผู้ใช้ปกติ
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri='memory://',
+)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -113,6 +128,9 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# คะแนนสูงสุดของเกมเปตอง 1 เกม ใช้ตรวจทุกช่องทางคีย์คะแนนให้เป็นกติกาเดียวกัน
+MAX_GAME_SCORE = 13
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 
 socketio = SocketIO(
@@ -684,7 +702,7 @@ def protect_mutating_object_routes():
     if (current_user.role or '').lower() in {'superadmin', 'mainadmin'} or current_user.has_permission('access_other_events'):
         return None
     endpoint = request.endpoint or ''
-    if endpoint in {'autosave_online_scorecard', 'finish_online_scorecard'} and current_user.role == 'user':
+    if endpoint in {'autosave_online_scorecard', 'finish_online_scorecard', 'live_field_scoring_save'} and current_user.role == 'user':
         return None
     values = request.view_args or {}
     playoff_id = values.get('playoff_id')
@@ -2033,13 +2051,17 @@ def submit_score(event_id, match_id):
         team2_raw = request.form.get("team2_score", 0)
 
     try:
-        match.team1_score = int(team1_raw)
-        match.team2_score = int(team2_raw)
+        new_team1_score = int(team1_raw)
+        new_team2_score = int(team2_raw)
+        if not (0 <= new_team1_score <= MAX_GAME_SCORE and 0 <= new_team2_score <= MAX_GAME_SCORE):
+            raise ValueError('score out of range')
+        match.team1_score = new_team1_score
+        match.team2_score = new_team2_score
         db.session.commit()
     except (TypeError, ValueError):
         db.session.rollback()
         if request.is_json:
-            return jsonify({'ok': False, 'message': 'Invalid score format'}), 400
+            return jsonify({'ok': False, 'message': f'คะแนนต้องเป็นตัวเลข 0-{MAX_GAME_SCORE}'}), 400
         flash('รูปแบบคะแนนไม่ถูกต้อง', 'danger')
         return redirect(url_for("event_detail", event_id=event_id))
     except Exception as exc:
@@ -2405,6 +2427,290 @@ def _event_has_unlocked_matches(event_id):
     return Match.query.filter_by(event_id=event_id, is_locked=False).count() > 0
 
 
+
+# -----------------------------------------------------------------------------
+# Live Field Scoring - เลือกหลายอีเวนต์/หลายสนามและคีย์คะแนนสด
+# -----------------------------------------------------------------------------
+def _live_scoring_role_allowed():
+    return current_user.is_authenticated and (current_user.role or '').lower() in {'user', 'admin', 'mainadmin', 'superadmin'}
+
+
+def _live_scoring_event_allowed(event):
+    if not _live_scoring_role_allowed() or event is None:
+        return False
+    role = (current_user.role or '').lower()
+    if role in {'superadmin', 'mainadmin', 'user'} or current_user.has_permission('access_other_events'):
+        return True
+    if role == 'admin':
+        return int(event.creator_id) == int(current_user.id)
+    return False
+
+
+def _live_event_sort_key(event, today=None):
+    """รายการที่วันที่ใกล้วันนี้ที่สุดขึ้นก่อน; ถ้าห่างเท่ากันให้วันข้างหน้าขึ้นก่อนวันย้อนหลัง."""
+    today = today or date.today()
+    if event.date is None:
+        return (10**9, 2, date.max, (event.name or '').lower(), event.id)
+    delta = (event.date - today).days
+    return (abs(delta), 0 if delta >= 0 else 1, event.date, (event.name or '').lower(), event.id)
+
+
+@app.route('/live-scoring')
+@login_required
+def live_field_scoring():
+    if not _live_scoring_role_allowed():
+        abort(403)
+
+    today = date.today()
+    query = _visible_events_query()
+    events = query.all()
+    events.sort(key=lambda e: _live_event_sort_key(e, today))
+
+    event_rows = []
+    for event in events:
+        rounds = [r[0] for r in db.session.query(Match.round).filter(
+            Match.event_id == event.id,
+            Match.team2_id.isnot(None),
+        ).distinct().order_by(Match.round.asc()).all() if r[0] is not None]
+        # หน้า Live Score มีไว้คีย์คะแนน จึงซ่อนเฉพาะอีเวนต์ที่ยังไม่เคยมีคู่แข่งขันเลย
+        if not rounds:
+            continue
+        current_round = int(event.current_round or 0)
+        if current_round not in rounds:
+            # ใช้รอบล่าสุดที่ยังมีคู่ไม่ล็อกก่อน ถ้าไม่มีค่อยใช้รอบล่าสุดทั้งหมด
+            unlocked_rounds = [r[0] for r in db.session.query(Match.round).filter(
+                Match.event_id == event.id,
+                Match.team2_id.isnot(None),
+                Match.is_locked.is_(False),
+            ).distinct().order_by(Match.round.asc()).all() if r[0] is not None]
+            current_round = int(max(unlocked_rounds or rounds))
+        delta = (event.date - today).days if event.date else None
+        event_rows.append({
+            'id': event.id,
+            'name': event.name,
+            'location': event.location or '',
+            'date': event.date.isoformat() if event.date else '',
+            'date_display': event.date.strftime('%d/%m/%Y') if event.date else 'ไม่ระบุวันที่',
+            'days_from_today': delta,
+            'is_today': bool(event.date == today),
+            'is_finished': bool(event.is_finished),
+            'current_round': current_round,
+            'rounds': rounds,
+        })
+
+    return render_template('live_field_scoring.html', today=today, event_rows=event_rows)
+
+
+@app.route('/live-scoring/event/<int:event_id>/round/<int:round_no>/matches')
+@login_required
+def live_field_scoring_matches(event_id, round_no):
+    if not _live_scoring_role_allowed():
+        abort(403)
+    event = Event.query.get_or_404(event_id)
+    if not _live_scoring_event_allowed(event):
+        abort(403)
+
+    matches = (Match.query
+               .filter_by(event_id=event_id, round=round_no)
+               .filter(Match.team2_id.isnot(None))
+               .order_by(Match.field.asc().nullslast(), Match.id.asc())
+               .all())
+    rows = []
+    for m in matches:
+        if m.field is None:
+            continue
+        rows.append({
+            'id': m.id,
+            'event_id': event.id,
+            'event_name': event.name,
+            'round': m.round,
+            'field': m.field,
+            'team1': m.team1.name if m.team1 else '-',
+            'team2': m.team2.name if m.team2 else '-',
+            'team1_score': int(m.team1_score or 0),
+            'team2_score': int(m.team2_score or 0),
+            'is_locked': bool(m.is_locked),
+        })
+    return jsonify({'ok': True, 'event_id': event.id, 'event_name': event.name, 'round': round_no, 'matches': rows})
+
+
+@app.route('/live-scoring/match/<int:match_id>/score', methods=['POST'])
+@login_required
+def live_field_scoring_save(match_id):
+    if not _live_scoring_role_allowed():
+        abort(403)
+    match = Match.query.get_or_404(match_id)
+    event = Event.query.get_or_404(match.event_id)
+    if not _live_scoring_event_allowed(event):
+        abort(403)
+    if match.is_locked:
+        return jsonify({'ok': False, 'message': 'ผลคู่นี้ถูกล็อกแล้ว'}), 409
+
+    data = request.get_json(silent=True) or {}
+    try:
+        score1 = int(data.get('team1_score'))
+        score2 = int(data.get('team2_score'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'คะแนนต้องเป็นตัวเลข'}), 400
+    if not (0 <= score1 <= MAX_GAME_SCORE and 0 <= score2 <= MAX_GAME_SCORE):
+        return jsonify({'ok': False, 'message': f'คะแนนต้องอยู่ระหว่าง 0-{MAX_GAME_SCORE}'}), 400
+
+    match.team1_score = score1
+    match.team2_score = score2
+    db.session.commit()
+
+    payload = {
+        'match_id': match.id,
+        'event_id': match.event_id,
+        'round': match.round,
+        'field': match.field,
+        'team_a_score': match.team1_score,
+        'team_b_score': match.team2_score,
+        'pending_team_a_score': match.pending_team1_score,
+        'pending_team_b_score': match.pending_team2_score,
+        'has_pending': match.pending_team1_score is not None or match.pending_team2_score is not None,
+        'pending_is_submitted': bool(match.pending_is_submitted),
+        'updated_by_username': current_user.username,
+        'timestamp': datetime.utcnow().isoformat(),
+        'source': 'live_field_scoring',
+    }
+    try:
+        socketio.emit('score_updated', payload)
+    except Exception:
+        app.logger.exception('Live field scoring emit failed for match %s', match.id)
+    return jsonify({'ok': True, **payload})
+
+
+# -----------------------------------------------------------------------------
+# Public Live Board - จอรวมทุกสนามที่กำลังแข่งขัน
+# -----------------------------------------------------------------------------
+def _live_board_target_date(today=None):
+    today = today or date.today()
+    rows = (db.session.query(Event.date)
+            .join(Match, Match.event_id == Event.id)
+            .filter(Event.date.isnot(None), Match.team2_id.isnot(None), Match.field.isnot(None))
+            .distinct().all())
+    dates = [r[0] for r in rows if r[0] is not None]
+    if not dates:
+        return today
+    if today in dates:
+        return today
+    return min(dates, key=lambda d: (abs((d - today).days), 0 if d >= today else 1, d))
+
+
+@app.route('/live')
+@login_required
+def live_center():
+    if not _live_scoring_role_allowed():
+        abort(403)
+    today = date.today()
+    events = _visible_events_query().all()
+    events.sort(key=lambda e: _live_event_sort_key(e, today))
+    rows = []
+    for event in events:
+        has_matches = db.session.query(Match.id).filter(
+            Match.event_id == event.id,
+            Match.team2_id.isnot(None),
+            Match.field.isnot(None),
+        ).first() is not None
+        if not has_matches:
+            continue
+        delta = (event.date - today).days if event.date else None
+        rows.append({
+            'id': event.id,
+            'name': event.name,
+            'location': event.location or '',
+            'date_display': event.date.strftime('%d/%m/%Y') if event.date else 'ไม่ระบุวันที่',
+            'days_from_today': delta,
+            'is_today': bool(event.date == today),
+            'is_finished': bool(event.is_finished),
+        })
+    return render_template('live_center.html', event_rows=rows, today=today)
+
+
+@app.route('/live-board')
+def live_board():
+    raw_ids = (request.args.get('events') or '').strip()
+    event_ids = [int(x) for x in raw_ids.split(',') if x.strip().isdigit()]
+    try:
+        pages = int(request.args.get('pages', 1))
+    except (TypeError, ValueError):
+        pages = 1
+    pages = max(1, min(12, pages))
+    try:
+        interval = int(request.args.get('interval', 8))
+    except (TypeError, ValueError):
+        interval = 8
+    interval = max(3, min(60, interval))
+    return render_template('live_board.html', selected_event_ids=event_ids, page_count=pages, rotate_interval=interval)
+
+
+@app.route('/api/public/live-board')
+@limiter.limit('5 per second')
+@cache.cached(timeout=2, query_string=True)
+def api_public_live_board():
+    today = date.today()
+    requested = (request.args.get('date') or '').strip()
+    target_date = None
+    if requested:
+        try:
+            target_date = datetime.strptime(requested, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'ok': False, 'message': 'รูปแบบวันที่ไม่ถูกต้อง'}), 400
+    target_date = target_date or _live_board_target_date(today)
+
+    raw_ids = (request.args.get('events') or '').strip()
+    selected_event_ids = [int(x) for x in raw_ids.split(',') if x.strip().isdigit()]
+    events_query = Event.query
+    if selected_event_ids:
+        events_query = events_query.filter(Event.id.in_(selected_event_ids))
+    else:
+        events_query = events_query.filter(Event.date == target_date)
+    events = events_query.order_by(Event.date.asc().nullslast(), Event.name.asc(), Event.id.asc()).all()
+    cards = []
+    event_rows = []
+    for event in events:
+        unlocked_rounds = [r[0] for r in db.session.query(Match.round).filter(
+            Match.event_id == event.id,
+            Match.team2_id.isnot(None),
+            Match.field.isnot(None),
+            Match.is_locked.is_(False),
+        ).distinct().all() if r[0] is not None]
+        if not unlocked_rounds:
+            continue
+        current_round = int(event.current_round or 0)
+        if current_round not in unlocked_rounds:
+            current_round = int(max(unlocked_rounds))
+        matches = (Match.query
+                   .filter_by(event_id=event.id, round=current_round, is_locked=False)
+                   .filter(Match.team2_id.isnot(None), Match.field.isnot(None))
+                   .order_by(Match.field.asc(), Match.id.asc()).all())
+        if not matches:
+            continue
+        event_rows.append({'id': event.id, 'name': event.name, 'round': current_round, 'location': event.location or ''})
+        for m in matches:
+            cards.append({
+                'match_id': m.id,
+                'event_id': event.id,
+                'event_name': event.name,
+                'round': m.round,
+                'field': m.field,
+                'team1': m.team1.name if m.team1 else '-',
+                'team2': m.team2.name if m.team2 else '-',
+                'score1': int(m.team1_score or 0),
+                'score2': int(m.team2_score or 0),
+            })
+    cards.sort(key=lambda x: (int(x['field']) if str(x['field']).isdigit() else 10**9, str(x['field']), x['event_name'], x['match_id']))
+    return jsonify({
+        'ok': True,
+        'date': target_date.isoformat(),
+        'date_display': target_date.strftime('%d/%m/%Y'),
+        'events': event_rows,
+        'matches': cards,
+        'updated_at': datetime.utcnow().isoformat(),
+    })
+
+
 @app.route("/multi-score", methods=["GET", "POST"])
 @login_required
 @permission_required('multi_score', allowed_roles={'user','admin','mainadmin'})
@@ -2484,6 +2790,9 @@ def multi_event_score_center():
                 except Exception:
                     flash("คะแนนต้องเป็นตัวเลขเท่านั้น", "danger")
                     return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
+                if not (0 <= match.team1_score <= MAX_GAME_SCORE):
+                    flash(f"คะแนนต้องอยู่ระหว่าง 0-{MAX_GAME_SCORE}: {match.event.name} สนาม {match.field or '-'}", "danger")
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
             else:
                 if score1_raw == "" or score2_raw == "":
                     flash("มีรายการที่กรอกคะแนนไม่ครบ กรุณาตรวจช่องคะแนน", "danger")
@@ -2493,6 +2802,9 @@ def multi_event_score_center():
                     match.team2_score = int(score2_raw)
                 except Exception:
                     flash("คะแนนต้องเป็นตัวเลขเท่านั้น", "danger")
+                    return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
+                if not (0 <= match.team1_score <= MAX_GAME_SCORE and 0 <= match.team2_score <= MAX_GAME_SCORE):
+                    flash(f"คะแนนต้องอยู่ระหว่าง 0-{MAX_GAME_SCORE}: {match.event.name} สนาม {match.field or '-'}", "danger")
                     return redirect(url_for("multi_event_score_center", events=",".join(map(str, selected_event_ids)), round=selected_round, status=status_filter, field=field_query, event_rounds=event_rounds_param))
 
                 if match.team1_score == match.team2_score:
@@ -7258,6 +7570,8 @@ def _lr_event_payload(event, current_round=None):
 
 
 @app.route('/api/public/events')
+@limiter.limit('5 per second')
+@cache.cached(timeout=2, query_string=True)
 def api_public_events():
     events = Event.query.order_by(Event.created_at.desc(), Event.id.desc()).all()
     event_ids = [e.id for e in events]
@@ -7273,6 +7587,8 @@ def api_public_events():
 
 
 @app.route('/api/public/event/<int:event_id>/live')
+@limiter.limit('5 per second')
+@cache.cached(timeout=2, query_string=True)
 def api_public_event_live(event_id):
     event = Event.query.get_or_404(event_id)
     round_no = request.args.get('round', type=int)
@@ -7296,6 +7612,8 @@ def api_public_event_live(event_id):
 
 
 @app.route('/api/public/event/<int:event_id>/standings')
+@limiter.limit('5 per second')
+@cache.cached(timeout=2, query_string=True)
 def api_public_event_standings(event_id):
     event = Event.query.get_or_404(event_id)
     rows = calculate_standings(event.id)
@@ -7318,6 +7636,8 @@ def api_public_event_standings(event_id):
 
 
 @app.route('/api/public/event/<int:event_id>/playoffs')
+@limiter.limit('5 per second')
+@cache.cached(timeout=2, query_string=True)
 def api_public_event_playoffs(event_id):
     event = Event.query.get_or_404(event_id)
     playoffs = []
@@ -7331,6 +7651,8 @@ def api_public_event_playoffs(event_id):
 
 
 @app.route('/api/public/event/<int:event_id>/report')
+@limiter.limit('5 per second')
+@cache.cached(timeout=2, query_string=True)
 def api_public_event_report(event_id):
     """One-call endpoint for Report Board."""
     event = Event.query.get_or_404(event_id)

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Board</title>
+<style>
+:root{
+  --orange:#ef4c07;
+  --orange2:#f56a12;
+  --orange3:#ff7a1a;
+  --cream:#fff7ef;
+  --cream2:#fff1e4;
+  --cream3:#fde6d4;
+  --ink:#15223b;
+  --line:#efb184;
+  --line-strong:#d56a22;
+  --white:#fff;
+  --red:#e51d20;
+  --teal:#70c9bf;
+  --yellow:#f5c642;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f4eee9;font-family:Arial,"Noto Sans Thai",Tahoma,sans-serif;color:var(--ink)}
+body{display:flex;align-items:stretch}
+.board{width:100vw;height:100vh;display:grid;grid-template-rows:17% 8.5% 64.5% 10%;overflow:hidden;background:var(--orange)}
+
+/* ===== HERO ===== */
+.hero{position:relative;overflow:hidden;background:linear-gradient(100deg,#ef4b06 0%,#f2670e 58%,#ee4a05 100%);color:#fff}
+.hero .goddess{position:absolute;left:0;bottom:-45%;height:165%;opacity:.72;pointer-events:none}
+.hero .flags{position:absolute;right:-1%;bottom:-92%;height:190%;opacity:.35;pointer-events:none;filter:saturate(1.1)}
+.hero-inner{position:relative;z-index:2;height:100%;display:grid;grid-template-columns:19% 1fr 29%;align-items:center;gap:.8%;padding:.8% 1.2%}
+.brand-left{display:flex;align-items:center;gap:.75vw;min-width:0}
+.kku-logo{height:74%;max-height:118px;max-width:42%;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.18))}
+.brand-text{min-width:0}
+.brand-text .kku{font-size:clamp(17px,1.35vw,26px);font-weight:1000;line-height:.98}
+.brand-text .small{font-size:clamp(9px,.62vw,12px);font-weight:800;line-height:1.1;margin-top:4px}
+.hero-center{text-align:center;text-shadow:0 2px 2px rgba(0,0,0,.12);min-width:0}
+.hero-center .title{font-size:clamp(24px,2.2vw,42px);font-weight:1000;line-height:.96;text-transform:uppercase;white-space:normal;overflow:visible;text-overflow:clip}
+.hero-center .sub{font-size:clamp(15px,1.2vw,24px);font-weight:900;margin-top:.22vw}
+.hero-center .date{font-size:clamp(11px,.86vw,16px);font-weight:800;margin-top:.18vw}
+.hero-right{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:.45vw;min-width:0}
+.org-strip{width:100%;max-height:62px;object-fit:contain;object-position:right center;border-radius:10px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.12))}
+.slogan{font-family:cursive;font-size:clamp(12px,1.05vw,21px);line-height:.9;text-align:right;font-style:italic;transform:rotate(-2deg);text-shadow:0 1px 2px rgba(0,0,0,.2)}
+.hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:linear-gradient(90deg,var(--teal),#fff 28%,var(--yellow) 64%,#fff 82%,var(--teal))}
+
+/* ===== META ===== */
+.meta{display:grid;grid-template-columns:30% 30% 28% 12%;background:#fff8f1;border-bottom:2px solid var(--line-strong);min-height:0}
+.meta>div{display:flex;align-items:center;justify-content:center;text-align:center;border-right:1px solid #efcfb8;padding:.2vw .5vw;min-width:0}
+.meta>div:last-child{border-right:0}
+.current{font-size:clamp(21px,1.95vw,38px);font-weight:1000;color:var(--red);line-height:1}
+.division{font-size:clamp(19px,1.65vw,32px);font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.round{font-size:clamp(18px,1.6vw,31px);font-weight:1000;white-space:nowrap}
+.livebox{display:flex!important;flex-direction:column;gap:2px;font-size:clamp(10px,.8vw,15px);font-weight:900;color:#33415a}
+.livebox strong{color:var(--red);font-size:clamp(14px,1.05vw,19px);display:flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block}
+
+/* ===== TABLE ===== */
+.table-shell{position:relative;min-height:0;padding:.4% 1.7% .9%;background:linear-gradient(180deg,#f46a13 0%,#f2600f 7%,#f1550a 100%)}
+.table-card{height:100%;background:rgba(255,248,240,.985);border:2px solid rgba(255,255,255,.9);border-radius:18px;overflow:hidden;box-shadow:0 4px 14px rgba(113,42,4,.14)}
+.table-zone{height:100%;display:grid;grid-template-columns:1fr 1fr}
+.half{min-width:0;min-height:0}.half:first-child{border-right:2px solid var(--line-strong)}
+table{width:100%;height:100%;border-collapse:collapse;table-layout:fixed}
+thead{height:10%}tbody{height:90%}
+thead tr{height:100%}tbody tr{height:8.333333%}
+th,td{border-right:1px solid var(--line);border-bottom:1px solid #f3c5a3;padding:0 .55vw;vertical-align:middle;overflow:hidden}
+th:last-child,td:last-child{border-right:0}
+thead th{background:linear-gradient(180deg,#ef4a07,#f26a13);color:#fff;font-size:clamp(12px,1.05vw,20px);font-weight:1000;text-align:center;text-shadow:0 1px 1px rgba(0,0,0,.12)}
+tbody td{background:var(--cream);font-size:clamp(13px,1.1vw,21px);font-weight:900}
+tbody tr:nth-child(even) td{background:var(--cream2)}
+.lane{width:13%;text-align:center;font-size:clamp(15px,1.28vw,24px);font-weight:1000}
+.team{width:32%;font-size:clamp(13px,1vw,19px)}
+.score{width:11%;text-align:center;font-size:clamp(17px,1.45vw,27px);font-weight:1000}
+.team-wrap{display:flex;align-items:center;gap:.5vw;min-width:0}
+.team-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lane-badge{display:inline-flex;min-width:42px;height:64%;align-items:center;justify-content:center;border-radius:8px;background:linear-gradient(180deg,#f26a13,#ef4d08);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)}
+
+/* ===== FOOTER ===== */
+.footer{position:relative;overflow:hidden;background:linear-gradient(90deg,#ef4b07,#f76c14 55%,#ed4d06);color:#fff}
+.footer .arch{position:absolute;left:32%;bottom:-8%;height:105%;opacity:.35;filter:brightness(1.7) sepia(.4)}
+.footer .balls{position:absolute;right:-1%;bottom:-28%;height:145%;opacity:.88}
+.footer::before{content:"";position:absolute;left:-8%;right:-8%;bottom:-4%;height:44%;border-top:7px solid #fff;border-radius:50% 50% 0 0/100% 100% 0 0;transform:rotate(-2deg);opacity:.92}
+.footer::after{content:"";position:absolute;left:-8%;right:-8%;bottom:-10%;height:48%;border-top:12px solid var(--teal);border-radius:50% 50% 0 0/100% 100% 0 0;transform:rotate(1.8deg);opacity:.95}
+.footer-content{position:relative;z-index:3;height:100%;display:flex;align-items:flex-end;justify-content:space-between;padding:0 2.2% 1.05%;gap:1rem}
+.footer-left{font-size:clamp(10px,.72vw,14px);font-weight:900;letter-spacing:.26em;white-space:nowrap}
+.footer-right{text-align:right;font-size:clamp(10px,.78vw,15px);font-weight:900;line-height:1.2}.footer-right .page{font-size:1.05em}
+
+@media(max-aspect-ratio:4/3){html,body{overflow:auto}.board{height:auto;min-height:100vh;grid-template-rows:180px 95px 820px 110px}.table-zone{grid-template-columns:1fr}.half:first-child{border-right:0;border-bottom:2px solid var(--line-strong)}.hero-inner{grid-template-columns:30% 1fr}.hero-right{display:none}}
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="hero">
+    <img class="goddess" src="{{ url_for('static', filename='live_board/goddess_left.png') }}" alt="">
+    <img class="flags" src="{{ url_for('static', filename='live_board/flags_right.png') }}" alt="">
+    <div class="hero-inner">
+      <div class="brand-left">
+        <img class="kku-logo" src="{{ url_for('static', filename='live_board/kku_logo_real.png') }}" alt="KKU 2026">
+        <div class="brand-text"><div class="kku">KKU 2026</div><div class="small">World Championships<br>Khon Kaen University, Thailand</div></div>
+      </div>
+      <div class="hero-center">
+        <div class="title">52nd PÉTANQUE WORLD CHAMPIONSHIP 2026</div>
+        <div class="sub">Khon Kaen University, Thailand</div>
+        <div class="date">20 - 24 November 2026</div>
+      </div>
+      <div class="hero-right">
+        <img class="org-strip" src="{{ url_for('static', filename='live_board/org_strip_real.png') }}" alt="Official organizations">
+        <div class="slogan">Pétanque<br>Unites the World</div>
+      </div>
+    </div>
+  </header>
+
+  <section class="meta">
+    <div class="current">Current scores</div>
+    <div class="division" id="divisionTitle">LIVE EVENT</div>
+    <div class="round" id="roundTitle">ROUND 1 / TOUR 1</div>
+    <div class="livebox"><strong><span class="dot"></span> LIVE</strong><span id="updatedText">Updated --:--:--</span></div>
+  </section>
+
+  <main class="table-shell">
+    <div class="table-card">
+      <div class="table-zone">
+        <div class="half"><table><thead><tr><th class="lane">LANE</th><th class="team">TEAM</th><th class="score">SCORE</th><th class="score">SCORE</th><th class="team">TEAM</th></tr></thead><tbody id="leftRows"></tbody></table></div>
+        <div class="half"><table><thead><tr><th class="lane">LANE</th><th class="team">TEAM</th><th class="score">SCORE</th><th class="score">SCORE</th><th class="team">TEAM</th></tr></thead><tbody id="rightRows"></tbody></table></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <img class="arch" src="{{ url_for('static', filename='live_board/architecture_bottom.png') }}" alt="">
+    <img class="balls" src="{{ url_for('static', filename='live_board/balls_right.png') }}" alt="">
+    <div class="footer-content">
+      <div class="footer-left">SPORT &nbsp; | &nbsp; CULTURE &nbsp; | &nbsp; FRIENDSHIP &nbsp; | &nbsp; A BRIGHTER TOMORROW</div>
+      <div class="footer-right"><div>Khon Kaen University, Thailand</div><div class="page" id="pageBadge">PAGE 1/1</div></div>
+    </div>
+  </footer>
+</div>
+<script>
+(() => {
+  const SELECTED={{ selected_event_ids|tojson }};
+  const REQUESTED_PAGES={{ page_count|int }};
+  const INTERVAL={{ rotate_interval|int }}*1000;
+  const leftRows=document.getElementById('leftRows'),rightRows=document.getElementById('rightRows'),divisionTitle=document.getElementById('divisionTitle'),roundTitle=document.getElementById('roundTitle'),updatedText=document.getElementById('updatedText'),pageBadge=document.getElementById('pageBadge');
+  let matches=[],events=[],page=0,totalPages=1;
+  function esc(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML}
+  function teamCell(name){if(!name)return '<td></td>';return `<td class="team"><div class="team-wrap"><span class="team-name">${esc(name)}</span></div></td>`}
+  function blankRow(){return '<tr><td class="lane"></td><td></td><td></td><td></td><td></td></tr>'}
+  function row(m){return `<tr><td class="lane"><span class="lane-badge">${esc(m.field??'')}</span></td>${teamCell(m.team1)}<td class="score">${m.score1??''}</td><td class="score">${m.score2??''}</td>${teamCell(m.team2)}</tr>`}
+  function renderHalf(items){let out='';for(let i=0;i<12;i++){const m=items[i];out+=m?row(m):blankRow()}return out}
+  function splitPages(items,desired){const min=Math.max(1,Math.ceil(items.length/24));const count=Math.max(min,Math.max(1,desired));const out=[],base=Math.floor(items.length/count),extra=items.length%count;let at=0;for(let i=0;i<count;i++){const size=base+(i<extra?1:0);out.push(items.slice(at,at+size));at+=size}return out}
+  function setTitles(current){if(events.length===1){divisionTitle.textContent=events[0].name||'LIVE EVENT'}else if(events.length>1){divisionTitle.textContent='MULTI EVENTS'}else{divisionTitle.textContent='LIVE EVENT'}const rounds=[...new Set(current.map(x=>x.round).filter(v=>v!=null))];roundTitle.textContent=`ROUND ${rounds.length===1?rounds[0]:'MULTI'} / TOUR ${page+1}`}
+  function render(){const pages=splitPages(matches,REQUESTED_PAGES);totalPages=pages.length||1;if(page>=totalPages)page=0;const current=pages[page]||[];leftRows.innerHTML=renderHalf(current.slice(0,12));rightRows.innerHTML=renderHalf(current.slice(12,24));setTitles(current);pageBadge.textContent=`PAGE ${page+1}/${totalPages}`}
+  async function refresh(){try{const qs=new URLSearchParams();if(SELECTED.length)qs.set('events',SELECTED.join(','));const r=await fetch('/api/public/live-board?'+qs.toString(),{cache:'no-store',headers:{Accept:'application/json'}});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'load failed');matches=d.matches||[];events=d.events||[];render();updatedText.textContent='Updated '+new Date().toLocaleTimeString('en-GB')}catch(e){updatedText.textContent='Connection error'}}
+  refresh();setInterval(refresh,2000);setInterval(()=>{if(totalPages>1){page=(page+1)%totalPages;render()}},INTERVAL);
+})();
+</script>
+</body>
+</html>
