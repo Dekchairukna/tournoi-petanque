@@ -180,13 +180,12 @@
         {% set can_live = current_user.is_authenticated and current_user.role in ['user','admin','mainadmin','superadmin'] %}
         {% set can_multi_score = current_user.is_authenticated and current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
         {% set can_multi_manage = current_user.is_authenticated and current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
-        {% if can_live or can_multi_score %}
+        {% if can_multi_score or can_multi_manage %}
         <li class="nav-item nav-pop" data-pop>
-          <button type="button" class="nav-link nav-pop-btn px-3 rounded {% if request.endpoint in ['live_field_scoring','multi_event_score_center','multi_playoff_score_center'] %}active{% endif %}" data-pop-toggle aria-expanded="false">
+          <button type="button" class="nav-link nav-pop-btn px-3 rounded {% if request.endpoint in ['multi_event_score_center','multi_playoff_score_center'] %}active{% endif %}" data-pop-toggle aria-expanded="false">
             <i class="bi bi-pencil-square me-1"></i> คีย์คะแนน <i class="bi bi-caret-down-fill pop-caret small"></i>
           </button>
           <div class="nav-pop-menu" data-pop-menu>
-            {% if can_live %}<a href="{{ url_for('live_field_scoring') }}"><i class="bi bi-phone"></i><span class="pop-item-text"><b>คีย์คะแนนหน้าสนาม</b><small>สำหรับกรรมการ เลือกสนามแล้วกด + / −</small></span></a>{% endif %}
             {% if can_multi_score or can_multi_manage %}<div class="pop-divider"></div><div class="pop-section">คีย์ทีละหลายอีเว้นท์ (โต๊ะกลาง)</div>{% endif %}
             {% if can_multi_score %}<a href="{{ url_for('multi_event_score_center') }}"><i class="bi bi-table"></i><span class="pop-item-text"><b>คีย์ Swiss หลายอีเว้นท์</b><small>กรอกจากใบบันทึกคะแนน แล้วล็อกผล</small></span></a>{% endif %}
             {% if can_multi_manage %}<a href="{{ url_for('multi_playoff_score_center') }}"><i class="bi bi-diagram-2"></i><span class="pop-item-text"><b>คีย์เพลย์ออฟหลายอีเว้นท์</b><small>Knockout / Double Knockout</small></span></a>{% endif %}

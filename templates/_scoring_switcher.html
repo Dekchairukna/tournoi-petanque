@@ -1,7 +1,6 @@
 {# แถบสลับวิธีคีย์คะแนน: ใช้ร่วมกันทุกหน้าคีย์คะแนน ให้คนใช้รู้ว่ามีกี่ทางและควรใช้ทางไหน
-   ใช้: {% with scoring_active='field' %}{% include '_scoring_switcher.html' %}{% endwith %}
-   scoring_active: field | swiss | playoff #}
-{% set _can_live = current_user.is_authenticated and current_user.role in ['user','admin','mainadmin','superadmin'] %}
+   ใช้: {% with scoring_active='swiss' %}{% include '_scoring_switcher.html' %}{% endwith %}
+   scoring_active: swiss | playoff #}
 {% set _can_swiss = current_user.is_authenticated and current_user.has_permission('multi_score') and current_user.role in ['user','admin','mainadmin','superadmin'] %}
 {% set _can_playoff = current_user.is_authenticated and current_user.has_permission('multi_manage') and current_user.role in ['admin','mainadmin','superadmin'] %}
 <style>
@@ -11,7 +10,6 @@
   .scoring-switcher a.active { border-color: #1677ff; background: #eef6ff; }
   .scoring-switcher b { display: block; font-size: .98rem; }
   .scoring-switcher small { color: #6c757d; }
-  .scoring-switcher .rec { display: inline-block; font-size: .68rem; font-weight: 800; background: #d3f9d8; color: #2b8a3e; border-radius: 999px; padding: .05rem .45rem; margin-left: .3rem; vertical-align: middle; }
   @media (max-width: 575.98px) {
     .scoring-switcher { flex-wrap: nowrap; overflow-x: auto; gap: .4rem; margin: .75rem 0; }
     .scoring-switcher a { flex: 0 0 auto; padding: .45rem .7rem; border-radius: 999px; }
@@ -21,12 +19,6 @@
   @media print { .scoring-switcher { display: none !important; } }
 </style>
 <nav class="scoring-switcher no-print" aria-label="วิธีคีย์คะแนน">
-  {% if _can_live %}
-  <a href="{{ url_for('live_field_scoring') }}" class="{% if scoring_active == 'field' %}active{% endif %}">
-    <b>คีย์หน้าสนาม <span class="rec">แนะนำ</span></b>
-    <small>กรรมการถือมือถือ เลือกสนาม กด + / − บันทึกทันที</small>
-  </a>
-  {% endif %}
   {% if _can_swiss %}
   <a href="{{ url_for('multi_event_score_center') }}" class="{% if scoring_active == 'swiss' %}active{% endif %}">
     <b>คีย์ Swiss จากใบบันทึก</b>
