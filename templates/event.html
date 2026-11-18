@@ -6,6 +6,7 @@
 {% endblock %}
 
 {% block content %}
+{% if event.kku_draw %}<a class="btn btn-warning my-3" href="{{ url_for('round_matches',event_id=event.id,round=1) }}">Round 1</a>{% endif %}
 
 {% set format_labels = {
   'swiss': 'Swiss',

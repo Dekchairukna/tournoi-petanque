@@ -7,7 +7,7 @@ from flask import session
 from PIL import Image
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, Match, Team, Event, User , Tournament
+from models import db, Match, Team, Event, User , Tournament, KkuSwissDraw
 import os
 from urllib.parse import quote, urlsplit
 from urllib.request import urlopen, Request
@@ -2463,6 +2463,8 @@ def _live_board_target_date(today=None):
 
 from live_timers import register_live_timers
 register_live_timers(app, _can_manage_event)
+from kku2026 import register_kku2026, flag_for_team
+register_kku2026(app, _can_manage_event)
 
 
 @app.route('/live')
@@ -2564,6 +2566,8 @@ def api_public_live_board():
                 'field': m.field,
                 'team1': m.team1.name if m.team1 else '-',
                 'team2': m.team2.name if m.team2 else '-',
+                'team1_flag': flag_for_team(m.team1.name) if m.team1 else None,
+                'team2_flag': flag_for_team(m.team2.name) if m.team2 else None,
                 'score1': int((m.pending_team1_score if m.pending_team1_score is not None else m.team1_score) or 0),
                 'score2': int((m.pending_team2_score if m.pending_team2_score is not None else m.team2_score) or 0),
             })
@@ -3214,6 +3218,7 @@ def round_matches(event_id, round):
         flash("ไม่พบรายการแข่งขันนี้", "warning")
         return redirect(url_for("index"))
     
+
     # ✅ แปลง logo_filename เป็น list
     try:
         event.logo_list = json.loads(event.logo_filename) if event.logo_filename else []

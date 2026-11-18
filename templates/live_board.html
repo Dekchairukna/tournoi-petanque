@@ -146,9 +146,9 @@ tbody tr:nth-child(even) td{background:var(--cream2)}
   const leftRows=document.getElementById('leftRows'),rightRows=document.getElementById('rightRows'),divisionTitle=document.getElementById('divisionTitle'),roundTitle=document.getElementById('roundTitle'),updatedText=document.getElementById('updatedText'),pageBadge=document.getElementById('pageBadge');
   let matches=[],events=[],page=0,totalPages=1;
   function esc(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML}
-  function teamCell(name){if(!name)return '<td></td>';return `<td class="team"><div class="team-wrap"><span class="team-name">${esc(name)}</span></div></td>`}
+  function teamCell(name,flag){if(!name)return '<td></td>';return `<td class="team"><div class="team-wrap">${flag?`<img src="/static/${esc(flag)}" alt="" style="width:2.5vw;min-width:24px;max-height:28px;object-fit:contain">`:""}<span class="team-name">${esc(name)}</span></div></td>`}
   function blankRow(){return '<tr><td class="lane"></td><td></td><td></td><td></td><td></td></tr>'}
-  function row(m){return `<tr><td class="lane"><span class="lane-badge">${esc(m.field??'')}</span></td>${teamCell(m.team1)}<td class="score">${m.score1??''}</td><td class="score">${m.score2??''}</td>${teamCell(m.team2)}</tr>`}
+  function row(m){return `<tr><td class="lane"><span class="lane-badge">${esc(m.field??'')}</span></td>${teamCell(m.team1,m.team1_flag)}<td class="score">${m.score1??''}</td><td class="score">${m.score2??''}</td>${teamCell(m.team2,m.team2_flag)}</tr>`}
   function renderHalf(items){let out='';for(let i=0;i<12;i++){const m=items[i];out+=m?row(m):blankRow()}return out}
   function splitPages(items,desired){const min=Math.max(1,Math.ceil(items.length/24));const count=Math.max(min,Math.max(1,desired));const out=[],base=Math.floor(items.length/count),extra=items.length%count;let at=0;for(let i=0;i<count;i++){const size=base+(i<extra?1:0);out.push(items.slice(at,at+size));at+=size}return out}
   function setTitles(current){if(events.length===1){divisionTitle.textContent=events[0].name||'LIVE EVENT'}else if(events.length>1){divisionTitle.textContent='MULTI EVENTS'}else{divisionTitle.textContent='LIVE EVENT'}const rounds=[...new Set(current.map(x=>x.round).filter(v=>v!=null))];roundTitle.textContent=`ROUND ${rounds.length===1?rounds[0]:'MULTI'} / TOUR ${page+1}`}

@@ -1,0 +1,290 @@
+[
+  {
+    "code": "ALG",
+    "name": "ALGERIA",
+    "flag": "kku2026/flags/ALG.png",
+    "source_slide": 1
+  },
+  {
+    "code": "AND",
+    "name": "Andorra",
+    "flag": "kku2026/flags/AND.png",
+    "source_slide": 2
+  },
+  {
+    "code": "ARG",
+    "name": "Argentina",
+    "flag": "kku2026/flags/ARG.png",
+    "source_slide": 3
+  },
+  {
+    "code": "AUS",
+    "name": "Australia",
+    "flag": "kku2026/flags/AUS.png",
+    "source_slide": 4
+  },
+  {
+    "code": "BEL",
+    "name": "Belgium",
+    "flag": "kku2026/flags/BEL.png",
+    "source_slide": 5
+  },
+  {
+    "code": "BEN",
+    "name": "Benin",
+    "flag": "kku2026/flags/BEN.png",
+    "source_slide": 6
+  },
+  {
+    "code": "BRU",
+    "name": "Brunei",
+    "flag": "kku2026/flags/BRU.png",
+    "source_slide": 7
+  },
+  {
+    "code": "BUR",
+    "name": "Burkina Faso",
+    "flag": "kku2026/flags/BUR.png",
+    "source_slide": 8
+  },
+  {
+    "code": "CAN",
+    "name": "Canada",
+    "flag": "kku2026/flags/CAN.png",
+    "source_slide": 9
+  },
+  {
+    "code": "CHN",
+    "name": "China",
+    "flag": "kku2026/flags/CHN.png",
+    "source_slide": 10
+  },
+  {
+    "code": "CIV",
+    "name": "Ivory Coast",
+    "flag": "kku2026/flags/CIV.png",
+    "source_slide": 11
+  },
+  {
+    "code": "CMR",
+    "name": "Cameroon",
+    "flag": "kku2026/flags/CMR.png",
+    "source_slide": 12
+  },
+  {
+    "code": "COM",
+    "name": "Comoros",
+    "flag": "kku2026/flags/COM.png",
+    "source_slide": 13
+  },
+  {
+    "code": "CZE",
+    "name": "Czech Republic",
+    "flag": "kku2026/flags/CZE.png",
+    "source_slide": 14
+  },
+  {
+    "code": "DEN",
+    "name": "Denmark",
+    "flag": "kku2026/flags/DEN.png",
+    "source_slide": 15
+  },
+  {
+    "code": "ENG",
+    "name": "England",
+    "flag": "kku2026/flags/ENG.png",
+    "source_slide": 16
+  },
+  {
+    "code": "ESP",
+    "name": "Spain",
+    "flag": "kku2026/flags/ESP.png",
+    "source_slide": 17
+  },
+  {
+    "code": "EST",
+    "name": "Estonia",
+    "flag": "kku2026/flags/EST.png",
+    "source_slide": 18
+  },
+  {
+    "code": "FIN",
+    "name": "Finland",
+    "flag": "kku2026/flags/FIN.png",
+    "source_slide": 19
+  },
+  {
+    "code": "FRA",
+    "name": "France",
+    "flag": "kku2026/flags/FRA.png",
+    "source_slide": 20
+  },
+  {
+    "code": "GER",
+    "name": "Germany",
+    "flag": "kku2026/flags/GER.png",
+    "source_slide": 21
+  },
+  {
+    "code": "HUN",
+    "name": "Hungary",
+    "flag": "kku2026/flags/HUN.png",
+    "source_slide": 22
+  },
+  {
+    "code": "INA",
+    "name": "Indonesia",
+    "flag": "kku2026/flags/INA.png",
+    "source_slide": 23
+  },
+  {
+    "code": "IRL",
+    "name": "Ireland",
+    "flag": "kku2026/flags/IRL.png",
+    "source_slide": 24
+  },
+  {
+    "code": "ISR",
+    "name": "Israel",
+    "flag": "kku2026/flags/ISR.png",
+    "source_slide": 25
+  },
+  {
+    "code": "ITA",
+    "name": "Italy",
+    "flag": "kku2026/flags/ITA.png",
+    "source_slide": 26
+  },
+  {
+    "code": "JPN",
+    "name": "JAPAN",
+    "flag": "kku2026/flags/JPN.png",
+    "source_slide": 27
+  },
+  {
+    "code": "LBN",
+    "name": "Lebanon",
+    "flag": "kku2026/flags/LBN.png",
+    "source_slide": 28
+  },
+  {
+    "code": "LUX",
+    "name": "Luxembourg",
+    "flag": "kku2026/flags/LUX.png",
+    "source_slide": 29
+  },
+  {
+    "code": "MAD",
+    "name": "Madagascar",
+    "flag": "kku2026/flags/MAD.png",
+    "source_slide": 30
+  },
+  {
+    "code": "MAS",
+    "name": "Malaysia",
+    "flag": "kku2026/flags/MAS.png",
+    "source_slide": 31
+  },
+  {
+    "code": "MLI",
+    "name": "Mali",
+    "flag": "kku2026/flags/MLI.png",
+    "source_slide": 32
+  },
+  {
+    "code": "MON",
+    "name": "Monaco",
+    "flag": "kku2026/flags/MON.png",
+    "source_slide": 33
+  },
+  {
+    "code": "MRI",
+    "name": "Mauritius",
+    "flag": "kku2026/flags/MRI.png",
+    "source_slide": 34
+  },
+  {
+    "code": "MTN",
+    "name": "Mauritania",
+    "flag": "kku2026/flags/MTN.png",
+    "source_slide": 35
+  },
+  {
+    "code": "NED",
+    "name": "Netherlands",
+    "flag": "kku2026/flags/NED.png",
+    "source_slide": 36
+  },
+  {
+    "code": "NIG",
+    "name": "Niger",
+    "flag": "kku2026/flags/NIG.png",
+    "source_slide": 37
+  },
+  {
+    "code": "POL",
+    "name": "Poland",
+    "flag": "kku2026/flags/POL.png",
+    "source_slide": 38
+  },
+  {
+    "code": "SEN",
+    "name": "Senegal",
+    "flag": "kku2026/flags/SEN.png",
+    "source_slide": 39
+  },
+  {
+    "code": "SGP",
+    "name": "Singapore",
+    "flag": "kku2026/flags/SGP.png",
+    "source_slide": 40
+  },
+  {
+    "code": "SUI",
+    "name": "Switzerland",
+    "flag": "kku2026/flags/SUI.png",
+    "source_slide": 41
+  },
+  {
+    "code": "SVK",
+    "name": "Slovakia",
+    "flag": "kku2026/flags/SVK.png",
+    "source_slide": 42
+  },
+  {
+    "code": "SWE",
+    "name": "Sweden",
+    "flag": "kku2026/flags/SWE.png",
+    "source_slide": 43
+  },
+  {
+    "code": "TAH",
+    "name": "French Polynesia : Tahiti",
+    "flag": "kku2026/flags/TAH.png",
+    "source_slide": 44
+  },
+  {
+    "code": "THA",
+    "name": "Thailand",
+    "flag": "kku2026/flags/THA.png",
+    "source_slide": 45
+  },
+  {
+    "code": "TPE",
+    "name": "Chinese Taipei",
+    "flag": "kku2026/flags/TPE.png",
+    "source_slide": 46
+  },
+  {
+    "code": "TUN",
+    "name": "Tunisia",
+    "flag": "kku2026/flags/TUN.png",
+    "source_slide": 47
+  },
+  {
+    "code": "USA",
+    "name": "United States",
+    "flag": "kku2026/flags/USA.png",
+    "source_slide": 48
+  }
+]

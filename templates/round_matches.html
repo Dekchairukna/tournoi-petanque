@@ -6,6 +6,7 @@
 {% endblock %}
 
 {% block content %}
+{% if event.kku_draw and selected_round == 1 %}<a class="btn btn-warning my-3" href="{{ url_for('kku2026_draw') }}">จับสลากแมนนวล</a>{% endif %}
 <style>
   /* ====== การปรับขนาดตารางสำหรับมือถือ (Mobile Responsiveness) - สำหรับ round_matches.html โดยเฉพาะ ====== */
   @media screen and (max-width: 768px) {

@@ -383,3 +383,14 @@ class LiveEventTimer(db.Model):
     version = db.Column(db.Integer, nullable=False, default=1)
     event = db.relationship('Event', backref=db.backref('live_timer', uselist=False, cascade='all, delete-orphan'))
     __mapper_args__ = {'version_id_col': version}
+
+
+class KkuSwissDraw(db.Model):
+    __tablename__ = 'kku_swiss_draws'
+    id = db.Column(db.Integer, primary_key=True)
+    preset_key = db.Column(db.String(50), unique=True, nullable=False)
+    event_id = db.Column(db.Integer, db.ForeignKey('events.id'), unique=True, nullable=False)
+    entries_json = db.Column(db.Text, nullable=False)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    event = db.relationship('Event', backref=db.backref('kku_draw', uselist=False, cascade='all, delete-orphan'))
+    __mapper_args__ = {'version_id_col': version}
