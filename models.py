@@ -371,3 +371,15 @@ class EventRoundRobinMember(db.Model):
     team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False, index=True)
     slot_no = db.Column(db.Integer, nullable=False)
     team = db.relationship("Team", foreign_keys=[team_id])
+
+
+class LiveEventTimer(db.Model):
+    """Persistent shared countdown; end_at is a UTC Unix timestamp."""
+    __tablename__ = 'live_event_timers'
+    event_id = db.Column(db.Integer, db.ForeignKey('events.id'), primary_key=True)
+    duration = db.Column(db.Integer, nullable=False, default=3600)
+    remaining = db.Column(db.Float, nullable=False, default=3600)
+    end_at = db.Column(db.Float, nullable=True)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    event = db.relationship('Event', backref=db.backref('live_timer', uselist=False, cascade='all, delete-orphan'))
+    __mapper_args__ = {'version_id_col': version}

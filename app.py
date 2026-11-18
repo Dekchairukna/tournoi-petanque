@@ -2461,6 +2461,10 @@ def _live_board_target_date(today=None):
     return min(dates, key=lambda d: (abs((d - today).days), 0 if d >= today else 1, d))
 
 
+from live_timers import register_live_timers
+register_live_timers(app, _can_manage_event)
+
+
 @app.route('/live')
 @login_required
 def live_center():
@@ -2487,6 +2491,7 @@ def live_center():
             'days_from_today': delta,
             'is_today': bool(event.date == today),
             'is_finished': bool(event.is_finished),
+            'can_control_timer': current_user.role in {'admin', 'mainadmin', 'superadmin'} and _can_manage_event(event),
         })
     return render_template('live_center.html', event_rows=rows, today=today)
 
