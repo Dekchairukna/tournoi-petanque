@@ -7,7 +7,7 @@
   function render(){
     fields.forEach((f,i)=>f.value=order[i]||'');
     summary.textContent=`เลือกแล้ว ${order.length}/${fields.length} ทีม${dirty?' · ยังไม่บันทึก':''}`;
-    if(apply)apply.disabled=order.length!==fields.length;
+    if(apply)apply.disabled=order.length!==fields.length||apply.dataset.blocked==='1';
     choices.forEach(b=>{const i=order.indexOf(b.dataset.code);b.classList.toggle('selected',i>=0);b.setAttribute('aria-pressed',String(i>=0));b.querySelector('[data-used]').textContent=i>=0?String(i+1):'–'});
     preview.replaceChildren();
     for(let i=0;i<order.length;i+=2){const item=document.createElement('li');item.textContent=`${names.get(order[i])} พบ ${names.get(order[i+1])||'รอเลือกทีม'}`;preview.appendChild(item)}

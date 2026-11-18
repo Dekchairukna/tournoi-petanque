@@ -1,4 +1,5 @@
 """Tournament operations desk for the existing Event engine."""
+import re
 from collections import defaultdict
 from datetime import datetime, time, timedelta
 
@@ -10,6 +11,14 @@ from models import (db, Tournament, Event, Team, Match, EventTeamRegistration,
 bp = Blueprint('tournament_desk', __name__)
 STATUSES = {'pending': 'รอรายงานตัว', 'checked_in': 'รายงานตัวแล้ว', 'withdrawn': 'ถอนทีม'}
 FORMATS = {'swiss': 'Swiss', 'round_robin': 'พบกันหมด', 'knockout': 'แพ้คัดออก', 'double_knockout': 'แพ้สองครั้งคัดออก'}
+
+
+def _field_key(value):
+    text = '' if value is None else str(value).strip()
+    if not text:
+        return (1, ())
+    parts = [p for p in re.split(r'(\d+)', text) if p]
+    return (0, tuple((1, int(p), '') if p.isdigit() else (0, 0, p.lower()) for p in parts))
 
 
 def _tournament(tournament_id):
@@ -208,7 +217,7 @@ def desk(tournament_id):
     registrations = {r.team_id: r for r in EventTeamRegistration.query.filter(EventTeamRegistration.team_id.in_([t.id for t in teams])).all()}
     matches = Match.query.filter(Match.event_id.in_(event_map), Match.team2_id.isnot(None)).all()
     schedules = {s.match_id: s for s in TournamentMatchSchedule.query.filter(TournamentMatchSchedule.match_id.in_([m.id for m in matches])).all()}
-    rows = sorted(matches, key=lambda m: (schedules[m.id].starts_at if m.id in schedules else datetime.max, m.field or 0, m.id))
+    rows = sorted(matches, key=lambda m: (schedules[m.id].starts_at if m.id in schedules else datetime.max, _field_key(m.field), m.id))
     counts = {e.id: {'teams': 0, 'checked_in': 0, 'matches': 0, 'locked': 0} for e in events}
     matrix = defaultdict(lambda: defaultdict(list))
     for team in teams:

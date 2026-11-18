@@ -19,8 +19,12 @@ uploads/*.xlsx
 * 2.png
 * 2.ini
 * 2.mako
+* 2
+* 2.*
 
 # virtual environments / secrets
+.venv
+.venv.nosync/
 venv/
 .venv/
 .env

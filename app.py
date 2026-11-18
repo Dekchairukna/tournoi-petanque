@@ -45,6 +45,16 @@ from openpyxl.utils import get_column_letter
 from itsdangerous import URLSafeSerializer, BadSignature
 
 load_dotenv()
+
+
+def field_sort_key(value):
+    """Sort key for field labels that may be numbers or text (e.g. 3, "A10", "CC").
+    Empty values go last; text comes before numbers; "A2" sorts before "A10"."""
+    text = '' if value is None else str(value).strip()
+    if not text:
+        return (1, ())
+    parts = [p for p in re.split(r'(\d+)', text) if p]
+    return (0, tuple((1, int(p), '') if p.isdigit() else (0, 0, p.lower()) for p in parts))
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 app.config.update(
@@ -408,7 +418,7 @@ def _round_live_state(event_id, round_no=None, matches=None, teams=None):
         matches = query.order_by(Match.round.asc(), Match.field.asc(), Match.id.asc()).all()
     else:
         matches = [m for m in matches if m.event_id == event_id and (not round_no or m.round == round_no)]
-        matches = sorted(matches, key=lambda m: (m.round or 0, m.field is None, m.field or 0, m.id))
+        matches = sorted(matches, key=lambda m: (m.round or 0, field_sort_key(m.field), m.id))
 
     team_ids = set()
     for match in matches:
@@ -2492,21 +2502,76 @@ def live_center():
     return render_template('live_center.html', event_rows=rows, today=today)
 
 
+LIVE_BOARD_THEMES = ('light', 'cream', 'dark', 'event')
+LIVE_BOARD_PER_PAGE = (8, 10, 12, 16, 20, 24)
+LIVE_BOARD_FONT_SIZES = ('s', 'm', 'l', 'xl')
+
+
+def _live_board_int_arg(name, default, low, high):
+    try:
+        value = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(low, min(high, value))
+
+
+def _live_board_events_for_ids(event_ids):
+    if event_ids:
+        return Event.query.filter(Event.id.in_(event_ids)).all()
+    return Event.query.filter(Event.date == _live_board_target_date()).all()
+
+
 @app.route('/live-board')
 def live_board():
     raw_ids = (request.args.get('events') or '').strip()
-    event_ids = [int(x) for x in raw_ids.split(',') if x.strip().isdigit()]
-    try:
-        pages = int(request.args.get('pages', 1))
-    except (TypeError, ValueError):
-        pages = 1
-    pages = max(1, min(12, pages))
-    try:
-        interval = int(request.args.get('interval', 8))
-    except (TypeError, ValueError):
-        interval = 8
-    interval = max(3, min(60, interval))
-    return render_template('live_board.html', selected_event_ids=event_ids, page_count=pages, rotate_interval=interval)
+    event_ids = [int(x) for x in raw_ids.split(',') if x.strip().isdigit()][:100]
+    pages = _live_board_int_arg('pages', 1, 1, 12)
+    interval = _live_board_int_arg('interval', 8, 3, 60)
+    events = _live_board_events_for_ids(event_ids)
+    is_kku = any(getattr(e, 'kku_draw', None) is not None for e in events)
+
+    # รูปแบบบอร์ดเก็บใน URL เพื่อให้จอทุกเครื่องที่เปิดลิงก์เดียวกันแสดงเหมือนกัน
+    theme = request.args.get('theme')
+    if theme not in LIVE_BOARD_THEMES:
+        theme = 'event' if is_kku else 'light'
+    per_page = _live_board_int_arg('per_page', 24, 1, 48)
+    if per_page not in LIVE_BOARD_PER_PAGE:
+        per_page = 24
+    font = request.args.get('font')
+    if font not in LIVE_BOARD_FONT_SIZES:
+        font = 'm'
+    lang = request.args.get('lang')
+    if lang not in ('th', 'en'):
+        lang = 'en' if is_kku else 'th'
+
+    event_logo = None
+    if not is_kku:
+        for e in events:
+            try:
+                logos = json.loads(e.logo_filename) if e.logo_filename else []
+            except (TypeError, ValueError):
+                logos = []
+            if logos:
+                event_logo = url_for('static', filename='logos/' + str(logos[0]))
+                break
+
+    # ปุ่มควบคุมเวลาเห็นเฉพาะผู้ดูแลที่จัดการอีเวนต์นั้นได้ ผู้ชมทั่วไปเห็นแค่เวลา
+    controllable_ids = []
+    if current_user.is_authenticated and current_user.role in {'admin', 'mainadmin', 'superadmin'}:
+        controllable_ids = sorted(e.id for e in events if _can_manage_event(e))
+
+    return render_template(
+        'live_board.html',
+        selected_event_ids=event_ids,
+        page_count=pages,
+        rotate_interval=interval,
+        board_settings={'theme': theme, 'per_page': per_page, 'font': font, 'lang': lang},
+        board_options={'themes': list(LIVE_BOARD_THEMES), 'per_page': list(LIVE_BOARD_PER_PAGE),
+                       'fonts': list(LIVE_BOARD_FONT_SIZES)},
+        is_kku=is_kku,
+        event_logo=event_logo,
+        controllable_ids=controllable_ids,
+    )
 
 
 @app.route('/api/public/live-board')
@@ -3225,7 +3290,7 @@ def round_matches(event_id, round):
     # โหลดข้อมูลหลักครั้งเดียว: หน้าเดิม query Match/Team ซ้ำหลายรอบต่อ 1 request
     all_matches = Match.query.filter_by(event_id=event_id).all()
     matches = [m for m in all_matches if m.round == round]
-    matches.sort(key=lambda m: (m.field is None, m.field or 0, m.id))
+    matches.sort(key=lambda m: (field_sort_key(m.field), m.id))
     team_rows = Team.query.filter_by(event_id=event_id).all()
     teams = {team.id: team.name for team in team_rows}
 
@@ -3322,7 +3387,6 @@ def round_matches(event_id, round):
                 for match in matches:
                     field_key = f"field_{match.id}"
                     field_value = request.form.get(field_key)
-                    print(f"{field_key} = {field_value}")  # debug
                     if field_value:
                         match.field = field_value.strip()
                     else:
@@ -9277,4 +9341,5 @@ if __name__ == '__main__':
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "5001")),
         debug=os.environ.get("FLASK_DEBUG", "0") == "1",
+        allow_unsafe_werkzeug=True,  # local/dev server only; production uses gunicorn (Procfile)
     )

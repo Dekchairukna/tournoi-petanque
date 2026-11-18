@@ -71,3 +71,55 @@ class KkuDrawTests(LiveBoardTests):
         self.client.get('/logout');g.pop('_login_user',None)
         self.assertEqual(self.post().status_code,302)
         self.assertNotIn('__slots',json.loads(self.draw.entries_json))
+
+
+class KkuLaterRoundTests(KkuDrawTests):
+    def post_round(self, rnd, slots=None, action='save'):
+        data={'action':action,'version':self.draw.version,'rounds':5,'slots':slots or ['']*48}
+        return self.client.post(f'/kku2026/round/{rnd}',data=data)
+
+    def _apply_round1_and_lock(self):
+        slots=[c['code'] for c in COUNTRIES]
+        self.assertEqual(self.post(slots,action='apply').status_code,302)
+        for m in Match.query.filter_by(event_id=self.draw.event_id,round=1):
+            m.is_locked=True
+        db.session.commit()
+        return slots
+
+    def test_round_two_requires_locked_round_one(self):
+        slots=[c['code'] for c in COUNTRIES]
+        self.assertEqual(self.post_round(2,slots,'apply').status_code,400)  # no round 1 yet
+        self.post(slots,action='apply')
+        self.assertEqual(self.post_round(2,slots,'apply').status_code,400)  # round 1 not locked
+        self.assertEqual(Match.query.filter_by(event_id=self.draw.event_id,round=2).count(),0)
+
+    def test_round_two_draw_and_clear(self):
+        slots=self._apply_round1_and_lock()
+        page=self.client.get('/kku2026/round/2')
+        self.assertEqual(page.status_code,200)
+        self.assertIn('ล้างประกบคู่'.encode(),page.data)
+        r2=slots[1:]+slots[:1]
+        self.assertEqual(self.post_round(2,r2,'apply').status_code,302)
+        self.assertEqual(Match.query.filter_by(event_id=self.draw.event_id,round=2).count(),24)
+        self.assertEqual(json.loads(self.draw.entries_json)['__slots'],slots)
+        # round 1 can no longer change while round 2 exists
+        self.assertEqual(self.post(slots,action='apply').status_code,400)
+        round_page=self.client.get(f'/event/{self.draw.event_id}/round/2')
+        self.assertIn('จับสลากแมนนวล Round 2'.encode(),round_page.data)
+        # clear round 2
+        self.assertEqual(self.post_round(2,r2,'clear').status_code,302)
+        self.assertEqual(Match.query.filter_by(event_id=self.draw.event_id,round=2).count(),0)
+        self.assertEqual(json.loads(self.draw.entries_json)['__slots_r2'],['']*48)
+        self.assertEqual(Match.query.filter_by(event_id=self.draw.event_id,round=1).count(),24)
+
+    def test_clear_refuses_started_round(self):
+        slots=self._apply_round1_and_lock()
+        self.assertEqual(self.post(slots,action='clear').status_code,400)  # round 1 locked
+        self.assertEqual(Match.query.filter_by(event_id=self.draw.event_id,round=1).count(),24)
+
+    def test_clear_unscored_round_one(self):
+        slots=[c['code'] for c in COUNTRIES]
+        self.post(slots,action='apply')
+        self.assertEqual(self.post(slots,action='clear').status_code,302)
+        self.assertEqual(Match.query.filter_by(event_id=self.draw.event_id).count(),0)
+        self.assertEqual(json.loads(self.draw.entries_json)['__slots'],['']*48)

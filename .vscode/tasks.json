@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Ensure Python environment",
+      "type": "shell",
+      "command": "[ -x .venv/bin/python ] && .venv/bin/python -c 'import flask, flask_socketio' 2>/dev/null || zsh ./setup_mac.command",
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    },
+    {
+      "label": "Setup Python environment (reinstall)",
+      "type": "shell",
+      "command": "zsh ./setup_mac.command",
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    }
+  ]
+}
