@@ -2477,13 +2477,6 @@ def live_center():
     events.sort(key=lambda e: _live_event_sort_key(e, today))
     rows = []
     for event in events:
-        has_matches = db.session.query(Match.id).filter(
-            Match.event_id == event.id,
-            Match.team2_id.isnot(None),
-            Match.field.isnot(None),
-        ).first() is not None
-        if not has_matches:
-            continue
         delta = (event.date - today).days if event.date else None
         rows.append({
             'id': event.id,
@@ -2491,6 +2484,7 @@ def live_center():
             'location': event.location or '',
             'date_display': event.date.strftime('%d/%m/%Y') if event.date else 'ไม่ระบุวันที่',
             'days_from_today': delta,
+            'awaiting_draw': not db.session.query(Match.id).filter_by(event_id=event.id).first(),
             'is_today': bool(event.date == today),
             'is_finished': bool(event.is_finished),
             'can_control_timer': current_user.role in {'admin', 'mainadmin', 'superadmin'} and _can_manage_event(event),
@@ -2546,6 +2540,9 @@ def api_public_live_board():
             Match.is_locked.is_(False),
         ).distinct().all() if r[0] is not None]
         if not unlocked_rounds:
+            if not db.session.query(Match.id).filter_by(event_id=event.id).first():
+                event_rows.append({'id': event.id, 'name': event.name, 'round': None,
+                                   'location': event.location or '', 'status': 'awaiting_draw'})
             continue
         current_round = int(event.current_round or 0)
         if current_round not in unlocked_rounds:

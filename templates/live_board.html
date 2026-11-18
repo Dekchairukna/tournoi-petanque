@@ -114,6 +114,7 @@ tbody tr:nth-child(even) td{background:var(--cream2)}
   <section class="meta">
     <div class="current">Current scores</div>
     <div class="division" id="divisionTitle">LIVE EVENT</div>
+    <div id="waitingDraw" role="status" style="text-align:center;font-weight:bold"></div>
     <div class="round" id="roundTitle">ROUND 1 / TOUR 1</div>
     <div class="livebox"><strong><span class="dot"></span> LIVE</strong><span id="updatedText">Updated --:--:--</span></div>
   </section>
@@ -151,7 +152,7 @@ tbody tr:nth-child(even) td{background:var(--cream2)}
   function row(m){return `<tr><td class="lane"><span class="lane-badge">${esc(m.field??'')}</span></td>${teamCell(m.team1,m.team1_flag)}<td class="score">${m.score1??''}</td><td class="score">${m.score2??''}</td>${teamCell(m.team2,m.team2_flag)}</tr>`}
   function renderHalf(items){let out='';for(let i=0;i<12;i++){const m=items[i];out+=m?row(m):blankRow()}return out}
   function splitPages(items,desired){const min=Math.max(1,Math.ceil(items.length/24));const count=Math.max(min,Math.max(1,desired));const out=[],base=Math.floor(items.length/count),extra=items.length%count;let at=0;for(let i=0;i<count;i++){const size=base+(i<extra?1:0);out.push(items.slice(at,at+size));at+=size}return out}
-  function setTitles(current){if(events.length===1){divisionTitle.textContent=events[0].name||'LIVE EVENT'}else if(events.length>1){divisionTitle.textContent='MULTI EVENTS'}else{divisionTitle.textContent='LIVE EVENT'}const rounds=[...new Set(current.map(x=>x.round).filter(v=>v!=null))];roundTitle.textContent=`ROUND ${rounds.length===1?rounds[0]:'MULTI'} / TOUR ${page+1}`}
+  function setTitles(current){if(events.length===1){divisionTitle.textContent=events[0].name||'LIVE EVENT'}else if(events.length>1){divisionTitle.textContent='MULTI EVENTS'}else{divisionTitle.textContent='LIVE EVENT'}const rounds=[...new Set(current.map(x=>x.round).filter(v=>v!=null))];roundTitle.textContent=!matches.length&&events.some(e=>e.status==='awaiting_draw')?'รอจับสลาก':`ROUND ${rounds.length===1?rounds[0]:'MULTI'} / TOUR ${page+1}`;document.getElementById('waitingDraw').textContent=events.filter(e=>e.status==='awaiting_draw').map(e=>e.name+' · รอจับสลาก').join(' | ')}
   function render(){const pages=splitPages(matches,REQUESTED_PAGES);totalPages=pages.length||1;if(page>=totalPages)page=0;const current=pages[page]||[];leftRows.innerHTML=renderHalf(current.slice(0,12));rightRows.innerHTML=renderHalf(current.slice(12,24));setTitles(current);pageBadge.textContent=`PAGE ${page+1}/${totalPages}`}
   async function refresh(){try{const qs=new URLSearchParams();if(SELECTED.length)qs.set('events',SELECTED.join(','));const r=await fetch('/api/public/live-board?'+qs.toString(),{cache:'no-store',headers:{Accept:'application/json'}});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'load failed');matches=d.matches||[];events=d.events||[];window.liveBoardTimerEventIds=SELECTED.length?SELECTED:events.map(e=>e.id);render();updatedText.textContent='Updated '+new Date().toLocaleTimeString('en-GB')}catch(e){updatedText.textContent='Connection error'}}
   refresh();setInterval(refresh,2000);setInterval(()=>{if(totalPages>1){page=(page+1)%totalPages;render()}},INTERVAL);

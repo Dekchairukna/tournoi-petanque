@@ -64,6 +64,23 @@ class LiveBoardTests(unittest.TestCase):
         db.session.commit()
         self.assertEqual(self.board()[0]['score1'], 5)
 
+    def test_undrawn_event_visible_then_transitions_to_matches(self):
+        event = Event(name='Waiting draw event', creator_id=self.match.event.creator_id,
+                      date=date.today(), rounds=1, current_round=1)
+        db.session.add(event); db.session.commit()
+        self.assertIn(b'Waiting draw event', self.client.get('/live').data)
+        url=f'/api/public/live-board?events={event.id}'
+        payload=self.client.get(url).get_json()
+        self.assertEqual(payload['events'][0]['status'], 'awaiting_draw')
+        self.assertEqual(payload['matches'], [])
+        a=Team(name='A',event_id=event.id); b=Team(name='B',event_id=event.id)
+        db.session.add_all([a,b]); db.session.flush()
+        db.session.add(Match(event_id=event.id,round=1,field=1,team1_id=a.id,team2_id=b.id,is_locked=False))
+        db.session.commit()
+        payload=self.client.get(url).get_json()
+        self.assertNotEqual(payload['events'][0].get('status'), 'awaiting_draw')
+        self.assertEqual(len(payload['matches']),1)
+
     def test_removed_entry_and_remaining_pages(self):
         for path in ['/live-scoring', '/live-scoring/event/1/round/1/matches']:
             self.assertEqual(self.client.get(path).status_code, 404)

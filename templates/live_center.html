@@ -25,6 +25,7 @@
           <div class="live-event-name">{{ e.name }}</div>
           <div class="live-meta">{{ e.date_display }}{% if e.location %} · {{ e.location }}{% endif %}</div>
           <div class="d-flex flex-wrap gap-1 mt-2">
+            {% if e.awaiting_draw %}<span class="live-badge">รอจับสลาก</span>{% endif %}
             {% if e.is_today %}<span class="live-badge today">วันนี้</span>{% endif %}
             {% if loop.first %}<span class="live-badge">ใกล้สุด</span>{% endif %}
             {% if e.is_finished %}<span class="live-badge">จบอีเวนต์แล้ว</span>{% endif %}
